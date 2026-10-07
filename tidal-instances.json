@@ -1,0 +1,12 @@
+{
+  "note": "Curated hifi-api-compatible Tidal instances for BitChord Next. Volunteers' servers: verify before relying on them, replace dead ones, keep this list fresh.",
+  "instances": [
+    { "url": "https://api.monochrome.tf", "label": "Monochrome (official)", "verified": false },
+    { "url": "https://wolf.qqdl.site", "label": "Lucida / QQDL", "verified": false },
+    { "url": "https://maus.qqdl.site", "label": "Lucida / QQDL", "verified": false },
+    { "url": "https://vogel.qqdl.site", "label": "Lucida / QQDL", "verified": false },
+    { "url": "https://katze.qqdl.site", "label": "Lucida / QQDL", "verified": false },
+    { "url": "https://hund.qqdl.site", "label": "Lucida / QQDL", "verified": false },
+    { "url": "https://tidal.kinoplus.online", "label": "Kinoplus", "verified": false }
+  ]
+}
