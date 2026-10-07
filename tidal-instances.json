@@ -1,6 +1,7 @@
 {
-  "note": "Curated hifi-api-compatible Tidal instances for BitChord Next. Volunteers' servers: verify before relying on them, replace dead ones, keep this list fresh.",
+  "note": "Curated Tidal instance list for BitChord Next. tracks.monochrome.st verified live 2026-10-07 (real search rows, fLaC stream bytes, artwork). Others unverified: the app probes from the device and only uses live ones.",
   "instances": [
+    { "url": "https://tracks.monochrome.st", "label": "Monochrome Tracks", "verified": true },
     { "url": "https://api.monochrome.tf", "label": "Monochrome (official)", "verified": false },
     { "url": "https://wolf.qqdl.site", "label": "Lucida / QQDL", "verified": false },
     { "url": "https://maus.qqdl.site", "label": "Lucida / QQDL", "verified": false },
