@@ -1167,4 +1167,9 @@
     <string name="save_cover_art">Save cover art</string>
     <string name="cover_saved">Saved %1$s</string>
     <string name="cover_save_failed">Couldn\'t save cover art</string>
+<!-- Diagnostics (Sources screen) -->
+    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics_footer">Recent source errors, newest last. Nothing leaves the device unless you copy it.</string>
+    <string name="diagnostics_empty">No errors recorded yet. Play something first — failures land here.</string>
+    <string name="diagnostics_refresh">Refresh</string>
 </resources>

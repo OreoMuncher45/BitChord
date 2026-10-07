@@ -281,4 +281,25 @@ object TrackLog {
     private const val MAX_LINE_CHARS = 2_000
 
     private const val MAX_REMEMBERED = 32
+
+    /**
+     * How many warning/error lines the diagnostics card keeps on screen. Past
+     * that the card links nothing and pastes nothing — Copy takes the same
+     * window, so what is shown is what is shared.
+     */
+    const val MAX_DIAGNOSTIC_LINES = 50
+
+    /**
+     * Recent warnings and errors, oldest first, for the diagnostics card.
+     *
+     * Unlike [forTrack] this is not filed by track: a failure to resolve is
+     * exactly what leaves a track with no lines of its own, so asking by
+     * track would show nothing at the moment something needs showing.
+     * Informational lines are left out — this is the "what went wrong" view,
+     * and a paste of it should read as one.
+     */
+    fun recentErrors(limit: Int = MAX_DIAGNOSTIC_LINES): List<String> =
+        synchronized(lines) {
+            lines.filter { it.level == 'W' || it.level == 'E' }.takeLast(limit.coerceAtLeast(1))
+        }.map { "${CLOCK.format(Date(it.at))} ${it.level} ${it.text}" }
 }
