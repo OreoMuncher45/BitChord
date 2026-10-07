@@ -40,10 +40,13 @@ object TidalInstances {
     private data class RemoteList(val instances: List<Entry> = emptyList())
 
     /**
-     * Bundled fallback: candidates seen in Monochrome's instance list.
-     * Unverified from any given network — the probe decides, not this list.
+     * Bundled fallback. tracks.monochrome.st is live-verified (real search
+     * rows + `fLaC` stream bytes + artwork, checked 2026-10-07); the rest are
+     * candidates from Monochrome's instance list, unverified from any given
+     * network — the on-device probe decides, not this list.
      */
     val BUNDLED = listOf(
+        Entry("https://tracks.monochrome.st", "Monochrome Tracks", verified = true),
         Entry("https://api.monochrome.tf", "Monochrome (official)"),
         Entry("https://wolf.qqdl.site", "Lucida / QQDL"),
         Entry("https://maus.qqdl.site", "Lucida / QQDL"),
@@ -143,7 +146,9 @@ object TidalInstances {
             }
             val results = urls.map { url ->
                 async {
-                    val ok = runCatching { TidalApi.probe(url) != null }.getOrDefault(false)
+                    // Either protocol counts: tracks instances have no
+                    // version document, hifi ones do — isLive tries both.
+                    val ok = runCatching { TidalApi.isLive(url) }.getOrDefault(false)
                     url to ok
                 }
             }.awaitAll()

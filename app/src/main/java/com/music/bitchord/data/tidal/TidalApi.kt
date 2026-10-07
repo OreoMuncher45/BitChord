@@ -67,10 +67,41 @@ object TidalApi {
         val artist: String,
         val album: String?,
         val coverSlug: String?,
+        /** Direct artwork URL when the catalogue hands one over (tracks protocol). */
+        val artDirectUrl: String?,
         val durationSec: Int?,
         val explicit: Boolean?,
         val audioQuality: String?,
+        /** Which protocol served this row — decides how it streams. */
+        val protocol: Protocol,
     )
+
+    enum class Protocol { TRACKS, HIFI }
+
+    /** Track ids carry their protocol so stream() never guesses. */
+    fun packId(protocol: Protocol, id: String): String =
+        if (protocol == Protocol.TRACKS) "t:$id" else id
+
+    fun unpackId(packed: String): Pair<Protocol, String> =
+        if (packed.startsWith("t:")) Protocol.TRACKS to packed.removePrefix("t:")
+        else Protocol.HIFI to packed
+
+    /**
+     * Which endpoint minted a track id. Tracks ids resolve on the instance
+     * that served them; the memo keeps stream() on that same instance
+     * instead of hoping ids are global.
+     */
+    private val originMemo = object : LinkedHashMap<String, String>(0, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, String>) = size > 500
+    }
+
+    @Synchronized
+    fun memoizeOrigin(packedId: String, base: String) {
+        originMemo[packedId] = base
+    }
+
+    @Synchronized
+    fun originOf(packedId: String): String? = originMemo[packedId]
 
     data class TidalStream(
         val url: String,
@@ -114,9 +145,13 @@ object TidalApi {
         parseVersion(body)
     }
 
-    /** Best-effort probe for identification: any failure reads as "not Tidal". */
+    /**
+     * Best-effort probe for identification: any failure reads as "not
+     * Tidal". Tracks protocol first (the live standard), hifi-api v2 after.
+     */
     suspend fun probeBestEffort(rawUrl: String): String? {
         val base = normalize(rawUrl) ?: return null
+        if (runCatching { searchTracks(base, "a", 1) }.getOrNull() != null) return "tracks"
         return runCatching { probe(base) }.getOrNull()
     }
 
@@ -145,10 +180,87 @@ object TidalApi {
             artist = artist,
             album = album?.str("title"),
             coverSlug = album?.str("cover"),
+            artDirectUrl = null,
             durationSec = (o["duration"] as? JsonPrimitive)?.content?.toIntOrNull(),
             explicit = (o["explicit"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull(),
             audioQuality = o.str("audioQuality"),
+            protocol = Protocol.HIFI,
         )
+    }
+
+    // ── Tracks protocol (tracks.monochrome.st family) ─────────────────────
+    //
+    // Search rows hand over direct artwork URLs, and `GET {base}/track/{id}`
+    // IS the FLAC bytes (verified: `fLaC` magic, 206 ranges) — no manifest
+    // dance, no per-track request. This is the live standard; hifi-api v2
+    // below stays as fallback for instances that still speak it.
+
+    /**
+     * Tracks-protocol rows, or null when the body is not that shape (so the
+     * caller can fall back to hifi). An empty-but-shaped answer is a real
+     * empty result, not a mismatch.
+     */
+    fun parseTracksSearch(body: String): List<TidalTrack>? {
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject
+            ?: return null
+        val items = (root["tracks"] as? JsonArray) ?: return null
+        return items.mapNotNull { it as? JsonObject }.mapNotNull { parseTracksTrack(it) }
+    }
+
+    private fun parseTracksTrack(o: JsonObject): TidalTrack? {
+        val rawId = o.str("trackId") ?: o.str("id") ?: return null
+        val id = rawId.takeIf { it.isNotBlank() } ?: return null
+        val title = o.str("title") ?: return null
+        val names = (o["artistNames"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content }
+            .orEmpty()
+        val fromArtists = (o["artists"] as? JsonArray)
+            ?.mapNotNull { ((it as? JsonObject)?.str("name")) }
+            .orEmpty()
+        val artist = (names + fromArtists).distinct().joinToString(", ").ifBlank { "Unknown Artist" }
+        // Duration arrives in seconds or millis — millis would read as hours.
+        // Rounded like upstream rather than truncated.
+        val rawDuration = (o["duration"] as? JsonPrimitive)?.content?.toLongOrNull()
+        val durationSec = rawDuration?.let { if (it > 10_000) ((it + 500) / 1000).toInt() else it.toInt() }
+        val art = o.str("artwork") ?: o.str("cover") ?: o.str("image")
+        return TidalTrack(
+            id = id,
+            title = title,
+            artist = artist,
+            album = o.str("albumTitle") ?: o.str("releaseTitle"),
+            coverSlug = null,
+            artDirectUrl = art,
+            durationSec = durationSec,
+            explicit = (o["explicit"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull(),
+            audioQuality = "LOSSLESS",
+            protocol = Protocol.TRACKS,
+        )
+    }
+
+    suspend fun searchTracks(base: String, query: String, limit: Int = 25): List<TidalTrack>? =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append(base)
+                append("/search/tracks?q=")
+                append(encode(query))
+                append("&limit=")
+                append(limit.coerceIn(1, 50))
+            }
+            val code = getWithCode(url, streamClient)
+            if (!code.ok) throw IOException("HTTP ${code.code}")
+            parseTracksSearch(code.body)
+        }
+
+    /** The direct FLAC URL — no request needed, the path IS the stream. */
+    fun tracksStreamUrl(base: String, id: String): String = "$base/track/$id"
+
+    /**
+     * Either protocol's version stamp, or null. Tracks instances answer
+     * search probes; hifi ones answer the root document.
+     */
+    suspend fun isLive(base: String): Boolean = withContext(Dispatchers.IO) {
+        if (runCatching { searchTracks(base, "a", 1) }.getOrNull() != null) return@withContext true
+        runCatching { probe(base) != null }.getOrDefault(false)
     }
 
     suspend fun search(base: String, query: String, limit: Int = 25): List<TidalTrack> =

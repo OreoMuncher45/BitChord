@@ -106,6 +106,68 @@ class TidalApiTest {
         assertNull(TidalApi.pickStream("{}"))
     }
 
+    // ---- Tracks protocol (live-verified shape) ----
+
+    private fun tracksBody() = """
+        {"tracks": [{"id": "155286577377972224", "trackId": "155286577377972224",
+          "title": "SexyBack (feat. Timbaland)",
+          "artistIds": ["153570359545696256", "152522292566429696"],
+          "artistNames": ["Justin Timberlake", "Timbaland"],
+          "releaseId": "155286553126506496",
+          "artwork": "https://tracks.monochrome.st/proxy/mi/155286553126506496-1A01.jpg",
+          "explicit": true, "playable": true, "duration": 242733,
+          "isrc": "USJI10600269", "recordingId": "154221092704096256", "searchPriority": 0}],
+         "releases": [], "artists": [], "topResults": [], "users": [], "playlists": []}
+    """.trimIndent()
+
+    @Test
+    fun `tracks search parses live shape`() {
+        val rows = TidalApi.parseTracksSearch(tracksBody())
+        assertTrue(rows != null)
+        assertEquals(1, rows!!.size)
+        val row = rows[0]
+        assertEquals("155286577377972224", row.id)
+        assertEquals("SexyBack (feat. Timbaland)", row.title)
+        assertEquals("Justin Timberlake, Timbaland", row.artist)
+        assertEquals(
+            "https://tracks.monochrome.st/proxy/mi/155286553126506496-1A01.jpg",
+            row.artDirectUrl,
+        )
+        // 242733 millis reads as 243 seconds, not 67 hours.
+        assertEquals(243, row.durationSec)
+        assertEquals(true, row.explicit)
+        assertEquals(TidalApi.Protocol.TRACKS, row.protocol)
+    }
+
+    @Test
+    fun `tracks search on wrong shape is null, empty stays empty`() {
+        assertNull(TidalApi.parseTracksSearch("""{"version": "2.10"}"""))
+        assertNull(TidalApi.parseTracksSearch("garbage"))
+        assertEquals(0, TidalApi.parseTracksSearch("""{"tracks": []}""")?.size)
+    }
+
+    @Test
+    fun `track ids pack and unpack their protocol`() {
+        val packed = TidalApi.packId(TidalApi.Protocol.TRACKS, "123")
+        assertEquals(TidalApi.Protocol.TRACKS to "123", TidalApi.unpackId(packed))
+        assertEquals(TidalApi.Protocol.HIFI to "456", TidalApi.unpackId("456"))
+    }
+
+    @Test
+    fun `direct stream url is the track path`() {
+        assertEquals(
+            "https://tracks.monochrome.st/track/155286577377972224",
+            TidalApi.tracksStreamUrl("https://tracks.monochrome.st", "155286577377972224"),
+        )
+    }
+
+    @Test
+    fun `origin memo round-trips`() {
+        TidalApi.memoizeOrigin("t:abc", "https://x.example")
+        assertEquals("https://x.example", TidalApi.originOf("t:abc"))
+        assertNull(TidalApi.originOf("t:unknown-protocol-test-id"))
+    }
+
     // ---- Covers ----
 
     @Test
