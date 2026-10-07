@@ -681,6 +681,38 @@ private fun BitChordApp(
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
+    // Flow: unlock gate + temp playlist + tuner.
+    var showFlow by remember { mutableStateOf(false) }
+    val flowStatus by viewModel.flowStatus.collectAsStateWithLifecycle()
+    val flowQueueState by viewModel.flowQueue.collectAsStateWithLifecycle()
+    val flowLoading by viewModel.flowLoading.collectAsStateWithLifecycle()
+    val flowSaved by viewModel.flowSaved.collectAsStateWithLifecycle()
+    val flowSaveNotice by viewModel.flowSaveNotice.collectAsStateWithLifecycle()
+    val flowMood by com.music.bitchord.data.flow.FlowStore.mood.collectAsStateWithLifecycle()
+    val flowTuner by com.music.bitchord.data.flow.FlowStore.tuner.collectAsStateWithLifecycle()
+    val flowBanned by com.music.bitchord.data.flow.FlowStore.bannedIds.collectAsStateWithLifecycle()
+    val flowListState = rememberLazyListState()
+    // Home Flow entry: synthetic shelf on top once unlocked.
+    val homeWithFlow by remember(homeState, flowStatus) {
+        derivedStateOf {
+            val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
+            if (!flowStatus.unlocked) return@derivedStateOf homeState
+            val flowShelf = HomeShelf(
+                title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
+                items = listOf(
+                    ShelfItem(
+                        title = "Flow",
+                        subtitle = "Your personal soundtrack · endless",
+                        thumbnailUrl = null,
+                        videoId = null,
+                        browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+                    ),
+                ),
+            )
+            if (base.any { it.title == flowShelf.title }) homeState
+            else UiState.Success(listOf(flowShelf) + base)
+        }
+    }
 
     // The top bar's icon is the quiet, always-there nudge; this is the
     // once-per-launch popup version of the same news. `updateDialogShown`
@@ -701,6 +733,12 @@ private fun BitChordApp(
         if (updateNotice != null && !updateDialogShown) {
             updateDialogShown = true
             showUpdateDialog = true
+        }
+    }
+    LaunchedEffect(flowSaveNotice) {
+        flowSaveNotice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.consumeFlowSaveNotice()
         }
     }
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -732,6 +770,7 @@ private fun BitChordApp(
         showSources = false
         showEqualizer = false
         showHistory = false
+        showFlow = false
         showDiscord = false
         showSpotify = false
         libraryShowAll = null
@@ -1483,6 +1522,46 @@ private fun BitChordApp(
                 Toast.makeText(
                     context,
                     context.getString(R.string.radio_started, song.title),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+    /**
+     * Starts Deezer-style Flow: endless personalized mix from favorites,
+     * history, skips/bans and fresh recommendations.
+     * Same replace-queue pattern as [startRadio]: load first, then swap.
+     */
+    val startFlow: () -> Unit = {
+        val originalController = controller
+        if (originalController != null && !refusedByHost()) {
+            val request = ++playRequestGeneration
+            val originalManualQueue = (0 until originalController.mediaItemCount)
+                .map { originalController.getMediaItemAt(it) }
+                .filterNot { it.fromAutoplay }
+                .map { it.mediaId }
+            scope.launch {
+                val tracks = viewModel.buildFlowQueue()
+                if (tracks.isEmpty()) {
+                    if (request == playRequestGeneration) {
+                        Toast.makeText(context, R.string.couldnt_load_tracks, Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                val activeController = controller
+                val activeManualQueue = (0 until activeController.mediaItemCount)
+                    .map { activeController.getMediaItemAt(it) }
+                    .filterNot { it.fromAutoplay }
+                    .map { it.mediaId }
+                if (request != playRequestGeneration || activeManualQueue != originalManualQueue) {
+                    return@launch
+                }
+                activeController.beginRadioQueue()
+                activeController.playSongs(tracks, 0)
+                activeController.commitRadioQueue()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.flow_started),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -2366,6 +2445,7 @@ private fun BitChordApp(
                 showReplay = false
                 settingsSubScreen = null
                 showHistory = false
+                showFlow = false
                 showDiscord = false
                 showSpotify = false
                 libraryShowAll = null
@@ -2389,7 +2469,11 @@ private fun BitChordApp(
                         replayLandingPage = ReplayStoryPage.INTRO
                         showReplay = true
                     }
-                    PlaybackSourceType.EXPLORE -> selectedTab = TAB_EXPLORE
+                    PlaybackSourceType.EXPLORE -> if (sourceId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID) {
+                        showFlow = true
+                    } else {
+                        selectedTab = TAB_EXPLORE
+                    }
                     PlaybackSourceType.SHARED_LINK -> {
                         val id = sourceId ?: return@openSource
                         context.startActivity(
@@ -2501,6 +2585,7 @@ private fun BitChordApp(
         BackHandler(enabled = editingSource != null) { editingSource = null }
         BackHandler(enabled = editingPartyServer) { editingPartyServer = false }
         BackHandler(enabled = showHistory) { showHistory = false }
+        BackHandler(enabled = showFlow) { showFlow = false }
         // Disabled while a detail page is open over the grid: that one's own
         // BackHandler below has to close first, or back would skip past it
         // straight to Library. See [onLibraryItemClick].
@@ -2519,6 +2604,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> "spotify"
                         showDiscord -> "discord"
                         showHistory -> "history"
+                        showFlow -> "flow"
                         // `&& detail == null`: a card opened from the grid
                         // stacks a detail page over it exactly as one opened
                         // from the Library tab does — see
@@ -2607,7 +2693,7 @@ private fun BitChordApp(
                     // the identical copy fading in behind it.
                     val live = detailStack.lastOrNull()?.takeIf {
                         it.browseId == key && key != "settings" && key != "account_scrobbling" &&
-                            key != "discord" && key != "replay" && key != "history" &&
+                            key != "discord" && key != "replay" && key != "history" && key != "flow" &&
                             key != "library_show_all"
                     }
                     // Held for the same reason, one step further on: a popped
@@ -2637,6 +2723,62 @@ private fun BitChordApp(
                             onSongSwipe = onSongSwipe,
                             onRetry = viewModel::loadHistory,
                             contentPadding = listPadding,
+                        )
+                    } else if (key == "flow") {
+                        com.music.bitchord.ui.screens.FlowScreen(
+                            tracksState = flowQueueState,
+                            mood = flowMood,
+                            tuner = flowTuner,
+                            status = flowStatus,
+                            bannedIds = flowBanned,
+                            isSaved = flowSaved,
+                            isGrowing = !flowSaved,
+                            rebuilding = flowLoading,
+                            listState = flowListState,
+                            onPlay = { startFlow() },
+                            onSave = { viewModel.saveFlow() },
+                            onMood = {
+                                viewModel.setFlowMood(it)
+                                viewModel.refreshFlow()
+                            },
+                            onDiscovery = {
+                                viewModel.setFlowDiscovery(it)
+                                viewModel.refreshFlow()
+                            },
+                            onFavoritesBias = {
+                                viewModel.setFlowFavoritesBias(it)
+                                viewModel.refreshFlow()
+                            },
+                            onToggleGenre = { genre, enabled ->
+                                viewModel.toggleFlowGenre(genre, enabled)
+                                viewModel.refreshFlow()
+                            },
+                            onUnban = { viewModel.unbanFromFlow(it) },
+                            onBan = { song ->
+                                viewModel.banFromFlow(song.videoId)
+                                viewModel.refreshFlow()
+                            },
+                            onSongClick = { songs, index ->
+                                // Skipped-over Flow tracks train the mix.
+                                val cur = player.song
+                                if (cur != null && songs.any { it.videoId == cur.videoId }) {
+                                    val curIdx = songs.indexOfFirst { it.videoId == cur.videoId }
+                                    if (curIdx in 0 until index) {
+                                        viewModel.recordFlowSkip(
+                                            cur.videoId,
+                                            player.position.positionMs,
+                                            player.durationMs,
+                                        )
+                                    }
+                                }
+                                playFrom(songs, index, QueueSource("Flow", PlaybackSourceType.EXPLORE))
+                                if (index >= songs.size - 5) viewModel.growFlow()
+                            },
+                            onSongLongPress = openSongMenu,
+                            onRetry = { viewModel.refreshFlow() },
+                            contentPadding = listPadding,
+                            currentSong = player.song,
+                            isPlaying = player.isPlaying,
                         )
                     } else if (key == "library_show_all") {
                         libraryShowAll?.let { shelf ->
@@ -2982,7 +3124,7 @@ private fun BitChordApp(
                         )
                     } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
                         TAB_HOME -> HomeScreen(
-                            state = homeState,
+                            state = homeWithFlow,
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -2996,6 +3138,12 @@ private fun BitChordApp(
                                 // property declared in another module.
                                 val browseId = item.browseId
                                 when {
+                                    browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
+                                        // Flow tap: open temp playlist + auto-start endless mix.
+                                        showFlow = true
+                                        viewModel.startFlowSession()
+                                        startFlow()
+                                    }
                                     song != null -> playRadio(
                                         song,
                                         QueueSource(shelfTitle, PlaybackSourceType.HOME),
@@ -3383,7 +3531,7 @@ private fun BitChordApp(
                     (detail.type == BrowseType.ALBUM ||
                         detail.type == BrowseType.PLAYLIST ||
                         detail.type == BrowseType.ARTIST) &&
-                    !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
+                    !isLocalDetail && !showDiscord && !showHistory && !showFlow && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer && !showReplay
                 val chromePageColor = if (isDetailVisible) {
                     detailPalette.background
@@ -3425,6 +3573,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
                         showHistory -> stringResource(R.string.history)
+                        showFlow -> stringResource(R.string.flow)
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
                         showSources -> stringResource(R.string.sources)
@@ -3450,7 +3599,7 @@ private fun BitChordApp(
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
-                            showDiscord || showHistory ||
+                            showDiscord || showHistory || showFlow ||
                             (libraryShowAll != null && detail == null) ||
                             (detail != null && detailActiveShelf != null) ||
                             selectedMoodGenre != null -> true
@@ -3466,6 +3615,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> ({ showSpotify = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
+                        showFlow -> ({ showFlow = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
                         showAccountScrobbling -> ({ showAccountScrobbling = false })
                         showSources -> ({ showSources = false })
@@ -3485,7 +3635,7 @@ private fun BitChordApp(
                         selectedTab == TAB_SEARCH && detail == null && selectedMoodGenre == null &&
                         libraryShowAll == null && !showSettings && !showAccountScrobbling &&
                         !showSources && !showListenTogether && !showEqualizer && !showDiscord &&
-                        !showHistory && !showReplay
+                        !showHistory && !showFlow && !showReplay
                     ) {
                         {
                             // The search field lives up here in the bar, beside the
@@ -3739,6 +3889,7 @@ private fun BitChordApp(
                     showReplay = false
                     settingsSubScreen = null
                     showHistory = false
+                    showFlow = false
                     libraryShowAll = null
                     selectedTab = index
 

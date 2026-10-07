@@ -1125,4 +1125,29 @@
     <string name="local_playlist_subtitle">%1$d songs · On this device</string>
     <string name="spotify_import_empty_playlist">No songs in this playlist</string>
     <string name="spotify_library_subtitle">Your Spotify playlists</string>
+
+    <!-- Flow (Deezer-inspired endless personal mix) -->
+    <string name="flow">Flow</string>
+    <string name="flow_subtitle">Your personal soundtrack</string>
+    <string name="flow_started">Flow started</string>
+    <string name="flow_locked_title">Flow unlocks at 16 favorites</string>
+    <string name="flow_locked_subtitle">Like %1$d more to start your endless mix</string>
+    <string name="flow_temp_playlist">Flow · temporary</string>
+    <string name="flow_growing">Growing as you listen</string>
+    <string name="flow_save">Save Flow</string>
+    <string name="flow_saved">Flow saved to playlists</string>
+    <string name="flow_save_failed">Couldn\'t save Flow</string>
+    <string name="flow_moods">Moods</string>
+    <string name="flow_tuner">Flow Tuner</string>
+    <string name="flow_discovery">Discovery</string>
+    <string name="flow_discovery_subtitle">More fresh finds vs favorites</string>
+    <string name="flow_favorites">Favorites</string>
+    <string name="flow_favorites_subtitle">Weight of liked tracks in the mix</string>
+    <string name="flow_genres">Genres in my Flow</string>
+    <string name="flow_banned">Banned from Flow</string>
+    <string name="flow_empty_banned">Nothing banned — hold a track to ban it from Flow</string>
+    <string name="flow_apply">Apply &amp; rebuild</string>
+    <string name="flow_rebuilding">Rebuilding Flow…</string>
+    <string name="flow_personal">Personal</string>
+    <string name="flow_adventurous">Adventurous</string>
 </resources>
