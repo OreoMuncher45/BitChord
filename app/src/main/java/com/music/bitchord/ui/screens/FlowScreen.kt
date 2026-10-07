@@ -115,6 +115,7 @@ fun FlowScreen(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onSave: () -> Unit,
+    onNewMix: () -> Unit,
     onApply: (FlowMood, Float, Float, Set<String>) -> Unit,
     onUnban: (String) -> Unit,
     onBan: (Song) -> Unit,
@@ -193,13 +194,23 @@ fun FlowScreen(
         }
         if (songs.isNotEmpty()) {
             item(key = "flow:tracks-header") {
-                Text(
-                    text = stringResource(R.string.flow_mix_title, songs.size),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.flow_mix_title, songs.size),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.onBackground,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onNewMix) {
+                        Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.flow_new_mix))
+                    }
+                }
             }
         }
         when (tracksState) {

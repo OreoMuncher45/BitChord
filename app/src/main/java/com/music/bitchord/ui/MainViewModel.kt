@@ -3333,6 +3333,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val flowSaveNotice: StateFlow<String?> = _flowSaveNotice.asStateFlow()
     fun consumeFlowSaveNotice() { _flowSaveNotice.value = null }
 
+    /**
+     * The session's mix, building it only once. The screen and the player
+     * both read this same list — building twice (once to show, once to
+     * play) is how two different "flows" used to disagree with each other.
+     * BACK never rebuilds: reopening resumes this list until New mix.
+     */
+    suspend fun ensureFlowTracks(limit: Int = FlowEngine.INITIAL_TRACKS): List<Song> {
+        ((_flowQueue.value as? UiState.Success)?.data?.takeIf { it.isNotEmpty() })?.let { return it }
+        val built = buildFlowQueue(limit)
+        _flowQueue.value = UiState.Success(built)
+        _flowSaved.value = false
+        return built
+    }
+
+    /** Explicit new mix: the only path that throws the session away. */
+    fun newFlowMix(limit: Int = FlowEngine.INITIAL_TRACKS) {
+        if (_flowLoading.value) return
+        viewModelScope.launch {
+            _flowLoading.value = true
+            _flowQueue.value = UiState.Loading
+            runCatching { buildFlowQueue(limit) }.fold(
+                onSuccess = {
+                    _flowQueue.value = UiState.Success(it)
+                    _flowSaved.value = false
+                },
+                onFailure = { _flowQueue.value = UiState.Error(it.friendly()) },
+            )
+            _flowLoading.value = false
+        }
+    }
+
     /** Start a new Flow session: fresh temp playlist, then build + play handled by caller. */
     fun startFlowSession() {
         _flowSaved.value = false

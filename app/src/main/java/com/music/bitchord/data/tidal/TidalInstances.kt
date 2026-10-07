@@ -62,7 +62,10 @@ object TidalInstances {
     private const val KEY_AUTO_UPDATE = "tidal_auto_update"
 
     private const val FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000L
-    private const val HEALTH_TTL_MS = 10 * 60 * 1000L
+    // Half an hour: probes are network, and a pool that was alive minutes
+    // ago is alive now. Every search/stream would otherwise pay the slow
+    // volunteer's timeout on each new track.
+    private const val HEALTH_TTL_MS = 30 * 60 * 1000L
 
     private lateinit var prefs: SharedPreferences
 

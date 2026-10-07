@@ -1552,7 +1552,9 @@ private fun BitChordApp(
                 .filterNot { it.fromAutoplay }
                 .map { it.mediaId }
             scope.launch {
-                val built = viewModel.buildFlowQueue()
+                // One build per session: the screen shows this same list,
+                // so what plays is never a different mix.
+                val built = viewModel.ensureFlowTracks()
                 val tracks = if (shuffled) built.shuffled() else built
                 if (tracks.isEmpty()) {
                     if (request == playRequestGeneration) {
@@ -2750,6 +2752,7 @@ private fun BitChordApp(
                             artwork = flowArtwork,
                             onPlay = { startFlow(false) },
                             onShuffle = { startFlow(true) },
+                            onNewMix = { viewModel.newFlowMix() },
                             onSave = {
                                 flowSaveName = if (flowMood == com.music.bitchord.data.flow.FlowMood.FLOW) {
                                     "My Flow"
@@ -3147,9 +3150,11 @@ private fun BitChordApp(
                                 val browseId = item.browseId
                                 when {
                                     browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
-                                        // Flow tap: open temp playlist + auto-start endless mix.
+                                        // Flow tap: open the session mix and play it —
+                                        // resuming, never rebuilding. BACK + tap
+                                        // returns to this same mix; New mix
+                                        // (on the Flow page) is the only reset.
                                         showFlow = true
-                                        viewModel.startFlowSession()
                                         startFlow(false)
                                     }
                                     song != null -> playRadio(

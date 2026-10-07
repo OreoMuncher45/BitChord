@@ -163,8 +163,11 @@ class TidalApiTest {
 
     @Test
     fun `origin memo round-trips`() {
-        TidalApi.memoizeOrigin("t:abc", "https://x.example")
-        assertEquals("https://x.example", TidalApi.originOf("t:abc"))
+        TidalApi.memoizeOrigin("t:abc", "https://x.example", 200)
+        assertEquals(
+            TidalApi.Origin("https://x.example", 200),
+            TidalApi.originOf("t:abc"),
+        )
         assertNull(TidalApi.originOf("t:unknown-protocol-test-id"))
     }
 

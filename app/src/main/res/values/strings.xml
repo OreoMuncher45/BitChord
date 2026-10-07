@@ -1152,6 +1152,7 @@
     <string name="flow_mix_title">In this mix · %1$d</string>
     <string name="flow_temp_count">%1$d tracks · %2$s mood · temporary</string>
     <string name="flow_temp_meta">%1$d tracks · temporary</string>
+    <string name="flow_new_mix">New mix</string>
     <string name="flow_rebuilding">Rebuilding Flow…</string>
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>

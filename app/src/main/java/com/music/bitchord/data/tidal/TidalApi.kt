@@ -54,6 +54,31 @@ object TidalApi {
             .build()
     }
 
+    /** Health probes only: a dead volunteer must fail in seconds, not timeouts. */
+    private val probeClient by lazy {
+        Http.client.newBuilder()
+            .callTimeout(6, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** Last-known protocol per instance: skips the doomed first attempt. */
+    private val protocolMemo = mutableMapOf<String, Protocol>()
+
+    @Synchronized
+    fun noteProtocol(base: String, protocol: Protocol) {
+        protocolMemo[base] = protocol
+    }
+
+    @Synchronized
+    fun knownProtocol(base: String): Protocol? = protocolMemo[base]
+
+    /** Drops a stale memo so the next search redetects (instances drift). */
+    @Synchronized
+    fun forgetProtocol(base: String) {
+        protocolMemo.remove(base)
+    }
+
     private val streamClient by lazy {
         Http.client.newBuilder()
             .callTimeout(20, TimeUnit.SECONDS)
@@ -87,21 +112,44 @@ object TidalApi {
         else Protocol.HIFI to packed
 
     /**
-     * Which endpoint minted a track id. Tracks ids resolve on the instance
-     * that served them; the memo keeps stream() on that same instance
-     * instead of hoping ids are global.
+     * Which endpoint minted a track id, and how long the row said it is.
+     * Tracks ids resolve on the instance that served them; the memo keeps
+     * stream() on that same instance instead of hoping ids are global, and
+     * the duration powers the fake-guard below.
      */
-    private val originMemo = object : LinkedHashMap<String, String>(0, 0.75f, true) {
-        override fun removeEldestEntry(eldest: Map.Entry<String, String>) = size > 500
+    data class Origin(val base: String, val durationSec: Int?)
+
+    private val originMemo = object : LinkedHashMap<String, Origin>(0, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, Origin>) = size > 500
     }
 
     @Synchronized
-    fun memoizeOrigin(packedId: String, base: String) {
-        originMemo[packedId] = base
+    fun memoizeOrigin(packedId: String, base: String, durationSec: Int? = null) {
+        originMemo[packedId] = Origin(base, durationSec)
     }
 
     @Synchronized
-    fun originOf(packedId: String): String? = originMemo[packedId]
+    fun originOf(packedId: String): Origin? = originMemo[packedId]
+
+    /**
+     * Total bytes behind a URL via a one-byte range probe, or null on any
+     * failure. Never stalls playback: tight client, and a miss just skips
+     * the check rather than the track.
+     */
+    suspend fun contentLength(url: String): Long? = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder().url(url)
+                .header("Range", "bytes=0-0")
+                .header("User-Agent", "BitChord/v${BuildConfig.VERSION_NAME}")
+                .build()
+            probeClient.newCall(request).execute().use { response ->
+                val total = response.header("Content-Range")
+                    ?.substringAfterLast('/')?.toLongOrNull()
+                    ?: response.header("Content-Length")?.toLongOrNull()
+                total?.takeIf { it > 0 }
+            }
+        }.getOrNull()
+    }
 
     data class TidalStream(
         val url: String,
@@ -141,7 +189,7 @@ object TidalApi {
 
     /** One GET against the instance root; the version string or null. Throws on transport failure. */
     suspend fun probe(base: String): String? = withContext(Dispatchers.IO) {
-        val body = get("$base/", quickClient)
+        val body = get("$base/", probeClient)
         parseVersion(body)
     }
 
@@ -255,12 +303,22 @@ object TidalApi {
     fun tracksStreamUrl(base: String, id: String): String = "$base/track/$id"
 
     /**
-     * Either protocol's version stamp, or null. Tracks instances answer
-     * search probes; hifi ones answer the root document.
+     * Either protocol counts: tracks instances have no version document, so
+     * liveness is a shape-checked `limit=1` search on the probe client —
+     * cheap enough to run across the whole pool.
      */
     suspend fun isLive(base: String): Boolean = withContext(Dispatchers.IO) {
-        if (runCatching { searchTracks(base, "a", 1) }.getOrNull() != null) return@withContext true
-        runCatching { probe(base) != null }.getOrDefault(false)
+        val tracks = runCatching {
+            val url = "$base/search/tracks?q=a&limit=1"
+            parseTracksSearch(get(url, probeClient))
+        }.getOrNull()
+        if (tracks != null) {
+            noteProtocol(base, Protocol.TRACKS)
+            return@withContext true
+        }
+        runCatching {
+            probe(base)?.also { noteProtocol(base, Protocol.HIFI) } != null
+        }.getOrDefault(false)
     }
 
     suspend fun search(base: String, query: String, limit: Int = 25): List<TidalTrack> =

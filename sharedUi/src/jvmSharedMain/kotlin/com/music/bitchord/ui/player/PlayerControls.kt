@@ -1715,11 +1715,15 @@ private fun ShimmerText(
  */
 @Composable
 private fun NerdStats.Snapshot.describe(): String? {
+    // Lossless prints the PCM decode rate (1411 for 16/44.1), never the
+    // container's momentary compressed figure — a quiet passage's 142kbps
+    // says how compressible that second was, not what is playing.
+    val rate = if (isLossless) pcmDataRateKbps ?: bitrateKbps else bitrateKbps
     val parts = buildList {
         codecLabel(mimeType)?.let(::add)
         bitDepth?.let { add(stringResource(Res.string.bit_depth, it)) }
         sampleRateHz?.let { add(NerdStats.megahertzLabel(it) ?: "%.1f kHz".format(Locale.ROOT, it / 1000f)) }
-        bitrateKbps?.let { add("$it kbps") }
+        rate?.let { add("$it kbps") }
         channels?.let {
             add(
                 when (it) {
