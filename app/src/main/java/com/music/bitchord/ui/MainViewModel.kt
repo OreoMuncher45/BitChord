@@ -3265,6 +3265,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setFlowDiscovery(value: Float) = FlowStore.setDiscovery(value)
     fun setFlowFavoritesBias(value: Float) = FlowStore.setFavoritesBias(value)
     fun toggleFlowGenre(genre: String, enabled: Boolean) = FlowStore.toggleGenre(genre, enabled)
+    fun setFlowExcludedGenres(genres: Set<String>) = FlowStore.setExcludedGenres(genres)
+
+    /** Commits a batched tuner edit (mood + sliders + genres) and rebuilds once. */
+    fun applyFlowConfig(mood: FlowMood, discovery: Float, favoritesBias: Float, excludedGenres: Set<String>) {
+        FlowStore.setMood(mood)
+        FlowStore.setDiscovery(discovery)
+        FlowStore.setFavoritesBias(favoritesBias)
+        FlowStore.setExcludedGenres(excludedGenres)
+        refreshFlow()
+    }
     fun banFromFlow(videoId: String) = FlowStore.ban(videoId)
     fun unbanFromFlow(videoId: String) = FlowStore.unban(videoId)
 

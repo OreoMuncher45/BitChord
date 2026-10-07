@@ -21,7 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -37,6 +39,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,13 +68,11 @@ import com.music.bitchord.ui.components.songListSkeleton
 
 /**
  * Flow temporary playlist: auto-created on tap, keeps growing via AutoPlay
- * until saved. Mood chips + discovery/personalization + genre tuner all
- * rebuild the mix live.
+ * until saved.
  *
- * Reference art (Deezer Flow, Google):
- * - https://www.deezer.com/explore/en-us/features/flow (official page)
- * - https://support.deezer.com/hc/en-gb/articles/115004367189 (moods wheel)
- * - https://mozaika.design/inspiration/deezer-mobile-deezer-moods-flow-based-selection-wheel
+ * Tuner edits are drafts until Apply: mood, sliders and genre switches only
+ * touch local state, and one tap commits everything with a single rebuild —
+ * dragging a slider never replays the whole mix under your thumb.
  */
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -83,10 +88,7 @@ fun FlowScreen(
     listState: LazyListState,
     onPlay: () -> Unit,
     onSave: () -> Unit,
-    onMood: (FlowMood) -> Unit,
-    onDiscovery: (Float) -> Unit,
-    onFavoritesBias: (Float) -> Unit,
-    onToggleGenre: (String, Boolean) -> Unit,
+    onApply: (FlowMood, Float, Float, Set<String>) -> Unit,
     onUnban: (String) -> Unit,
     onBan: (Song) -> Unit,
     onSongClick: (List<Song>, Int) -> Unit,
@@ -97,6 +99,15 @@ fun FlowScreen(
     isPlaying: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    // Drafts reset whenever the committed config changes (i.e. after Apply).
+    var draftMood by remember(mood) { mutableStateOf(mood) }
+    var draftDiscovery by remember(tuner.discovery) { mutableFloatStateOf(tuner.discovery) }
+    var draftFavBias by remember(tuner.favoritesBias) { mutableFloatStateOf(tuner.favoritesBias) }
+    var draftExcluded by remember(tuner.excludedGenres) { mutableStateOf(tuner.excludedGenres) }
+    val dirty = draftMood != mood || draftDiscovery != tuner.discovery ||
+        draftFavBias != tuner.favoritesBias || draftExcluded != tuner.excludedGenres
+    val trackCount = (tracksState as? UiState.Success)?.data?.size ?: 0
+
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
@@ -106,22 +117,32 @@ fun FlowScreen(
         item(key = "flow:header") {
             FlowHeader(
                 status = status,
+                mood = mood,
+                trackCount = trackCount,
                 isSaved = isSaved,
                 isGrowing = isGrowing,
                 rebuilding = rebuilding,
+                dirty = dirty,
                 onPlay = onPlay,
                 onSave = onSave,
+                onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
             )
         }
         item(key = "flow:moods") {
-            FlowMoods(mood = mood, onMood = onMood)
+            FlowMoods(mood = draftMood, onMood = { draftMood = it })
         }
         item(key = "flow:tuner") {
             FlowTunerCard(
-                tuner = tuner,
-                onDiscovery = onDiscovery,
-                onFavoritesBias = onFavoritesBias,
-                onToggleGenre = onToggleGenre,
+                tuner = tuner.copy(discovery = draftDiscovery, favoritesBias = draftFavBias, excludedGenres = draftExcluded),
+                onDiscovery = { draftDiscovery = it },
+                onFavoritesBias = { draftFavBias = it },
+                onToggleGenre = { genre, enabled ->
+                    draftExcluded = if (enabled) draftExcluded - genre.lowercase()
+                    else draftExcluded + genre.lowercase()
+                },
+                dirty = dirty,
+                rebuilding = rebuilding,
+                onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
             )
         }
         if (bannedIds.isNotEmpty()) {
@@ -149,6 +170,12 @@ fun FlowScreen(
                         )
                     }
                 } else {
+                    item(key = "flow:tracks-header") {
+                        SectionTitle(
+                            text = stringResource(R.string.flow_mix_title, songs.size),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
                     items(
                         count = songs.size,
                         key = { "flow:${songs[it].videoId}:$it" },
@@ -180,13 +207,27 @@ fun FlowScreen(
 }
 
 @Composable
+private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun FlowHeader(
     status: FlowStatus,
+    mood: FlowMood,
+    trackCount: Int,
     isSaved: Boolean,
     isGrowing: Boolean,
     rebuilding: Boolean,
+    dirty: Boolean,
     onPlay: () -> Unit,
     onSave: () -> Unit,
+    onApply: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -213,7 +254,11 @@ private fun FlowHeader(
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.flow), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        if (isSaved) stringResource(R.string.saved) else stringResource(R.string.flow_temp_playlist),
+                        when {
+                            isSaved -> stringResource(R.string.saved)
+                            trackCount > 0 -> stringResource(R.string.flow_temp_count, trackCount, mood.label)
+                            else -> stringResource(R.string.flow_temp_playlist)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -240,6 +285,14 @@ private fun FlowHeader(
                     Text(stringResource(if (isSaved) R.string.saved else R.string.flow_save))
                 }
             }
+            if (dirty) {
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onApply, modifier = Modifier.fillMaxWidth(), enabled = !rebuilding) {
+                    Icon(Icons.Rounded.Refresh, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.flow_apply))
+                }
+            }
             if (!status.unlocked) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -254,14 +307,8 @@ private fun FlowHeader(
 @Composable
 private fun FlowMoods(mood: FlowMood, onMood: (FlowMood) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(stringResource(R.string.flow_moods), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        SectionTitle(stringResource(R.string.flow_moods))
         Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // First row: wheel center + 3 moods; second row handled by wrap below via Column
-        }
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -283,12 +330,29 @@ private fun FlowTunerCard(
     onDiscovery: (Float) -> Unit,
     onFavoritesBias: (Float) -> Unit,
     onToggleGenre: (String, Boolean) -> Unit,
+    dirty: Boolean,
+    rebuilding: Boolean,
+    onApply: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(stringResource(R.string.flow_tuner), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.flow_tuner),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.flow_draft_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.flow_personal), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(80.dp))
@@ -312,6 +376,14 @@ private fun FlowTunerCard(
                 ) {
                     Text(genre, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = enabled, onCheckedChange = { onToggleGenre(genre, it) })
+                }
+            }
+            if (dirty) {
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onApply, modifier = Modifier.fillMaxWidth(), enabled = !rebuilding) {
+                    Icon(Icons.Rounded.Refresh, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.flow_apply))
                 }
             }
         }

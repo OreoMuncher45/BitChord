@@ -2746,21 +2746,8 @@ private fun BitChordApp(
                             listState = flowListState,
                             onPlay = { startFlow() },
                             onSave = { viewModel.saveFlow() },
-                            onMood = {
-                                viewModel.setFlowMood(it)
-                                viewModel.refreshFlow()
-                            },
-                            onDiscovery = {
-                                viewModel.setFlowDiscovery(it)
-                                viewModel.refreshFlow()
-                            },
-                            onFavoritesBias = {
-                                viewModel.setFlowFavoritesBias(it)
-                                viewModel.refreshFlow()
-                            },
-                            onToggleGenre = { genre, enabled ->
-                                viewModel.toggleFlowGenre(genre, enabled)
-                                viewModel.refreshFlow()
+                            onApply = { mood, discovery, favBias, excluded ->
+                                viewModel.applyFlowConfig(mood, discovery, favBias, excluded)
                             },
                             onUnban = { viewModel.unbanFromFlow(it) },
                             onBan = { song ->
@@ -4431,6 +4418,27 @@ private fun BitChordApp(
                 // drops it for a local file via `isOffline`, this catches
                 // the rest.
                 onShare = share.takeIf { song.videoId.isNotBlank() },
+                onSaveArtwork = {
+                    songActions = null
+                    scope.launch {
+                        com.music.bitchord.data.artwork.ArtworkDownload.save(context, song).fold(
+                            onSuccess = { name ->
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.cover_saved, name),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                            onFailure = {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.cover_save_failed),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    }
+                },
                 onCopyLog = if (fromPlayer) {
                     {
                         songActions = null

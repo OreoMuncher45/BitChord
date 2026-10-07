@@ -87,6 +87,14 @@ object FlowStore {
         }
     }
 
+    /** Replaces the exclusion set wholesale — used by batched Apply. */
+    fun setExcludedGenres(genres: Set<String>) {
+        _tuner.value = _tuner.value.copy(excludedGenres = genres.map { it.lowercase() }.toSet())
+        if (this::prefs.isInitialized) {
+            prefs.edit().putStringSet(KEY_EXCLUDED_GENRES, _tuner.value.excludedGenres).apply()
+        }
+    }
+
     fun ban(videoId: String) {
         if (videoId.isBlank()) return
         val next = (_bannedIds.value + videoId).toList().takeLast(MAX_BANNED).toSet()

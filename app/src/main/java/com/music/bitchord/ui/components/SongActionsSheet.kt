@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.PlaylistRemove
@@ -171,6 +172,12 @@ fun SongActionsSheet(
     /** Which cut is playing now, so the row can offer the other one. */
     isAudioVersion: Boolean = false,
     onShare: (() -> Unit)? = null,
+    /**
+     * Saves this track's cover at full quality to the gallery. Offered
+     * wherever there is art to save — rows and player alike — unlike the
+     * account rows above it.
+     */
+    onSaveArtwork: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
      * except the player, where "this track" means something.
@@ -357,6 +364,14 @@ fun SongActionsSheet(
         if (!isOffline) {
             onShare?.let {
                 ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
+            }
+        }
+        // Beside share: the row's own art is a thumbnail, so this fetches
+        // the largest rendition first — see ArtworkDownload. Hidden only
+        // when there is no art to save.
+        if (song.thumbnailUrl != null) {
+            onSaveArtwork?.let {
+                ActionRow(Icons.Rounded.Image, stringResource(R.string.save_cover_art), accent = palette.accent, onClick = it)
             }
         }
         // Last, and only from the player: it is about the track playing right

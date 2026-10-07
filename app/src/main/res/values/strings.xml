@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">BitChord</string>
+    <string name="app_name">BitChord Next</string>
     <string name="playback_channel_name">Now playing</string>
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_description">Songs being saved to your Music folder</string>
@@ -1147,6 +1147,9 @@
     <string name="flow_banned">Banned from Flow</string>
     <string name="flow_empty_banned">Nothing banned — hold a track to ban it from Flow</string>
     <string name="flow_apply">Apply &amp; rebuild</string>
+    <string name="flow_draft_hint">Edits stay local until you apply them</string>
+    <string name="flow_mix_title">In this mix · %1$d</string>
+    <string name="flow_temp_count">%1$d tracks · %2$s mood · temporary</string>
     <string name="flow_rebuilding">Rebuilding Flow…</string>
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>
@@ -1156,4 +1159,9 @@
     <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. BitChord tries it first, then healthy community instances.</string>
     <string name="tidal_auto_update">Auto-update instance list</string>
     <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
+
+    <!-- Cover art -->
+    <string name="save_cover_art">Save cover art</string>
+    <string name="cover_saved">Saved %1$s</string>
+    <string name="cover_save_failed">Couldn\'t save cover art</string>
 </resources>
