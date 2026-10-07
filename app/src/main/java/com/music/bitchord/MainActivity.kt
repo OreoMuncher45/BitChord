@@ -692,6 +692,8 @@ private fun BitChordApp(
     val flowTuner by com.music.bitchord.data.flow.FlowStore.tuner.collectAsStateWithLifecycle()
     val flowBanned by com.music.bitchord.data.flow.FlowStore.bannedIds.collectAsStateWithLifecycle()
     val flowListState = rememberLazyListState()
+    var showFlowSave by remember { mutableStateOf(false) }
+    var flowSaveName by remember { mutableStateOf("") }
     // Home Flow entry: synthetic shelf on top once unlocked (homeWithFlow is
     // derived below, once history/library state exist to borrow artwork
     // from — the shelf carries no cover of its own).
@@ -1541,7 +1543,7 @@ private fun BitChordApp(
      * history, skips/bans and fresh recommendations.
      * Same replace-queue pattern as [startRadio]: load first, then swap.
      */
-    val startFlow: () -> Unit = {
+    val startFlow: (shuffled: Boolean) -> Unit = { shuffled ->
         val originalController = controller
         if (originalController != null && !refusedByHost()) {
             val request = ++playRequestGeneration
@@ -1550,7 +1552,8 @@ private fun BitChordApp(
                 .filterNot { it.fromAutoplay }
                 .map { it.mediaId }
             scope.launch {
-                val tracks = viewModel.buildFlowQueue()
+                val built = viewModel.buildFlowQueue()
+                val tracks = if (shuffled) built.shuffled() else built
                 if (tracks.isEmpty()) {
                     if (request == playRequestGeneration) {
                         Toast.makeText(context, R.string.couldnt_load_tracks, Toast.LENGTH_SHORT).show()
@@ -2744,8 +2747,17 @@ private fun BitChordApp(
                             isGrowing = !flowSaved,
                             rebuilding = flowLoading,
                             listState = flowListState,
-                            onPlay = { startFlow() },
-                            onSave = { viewModel.saveFlow() },
+                            artwork = flowArtwork,
+                            onPlay = { startFlow(false) },
+                            onShuffle = { startFlow(true) },
+                            onSave = {
+                                flowSaveName = if (flowMood == com.music.bitchord.data.flow.FlowMood.FLOW) {
+                                    "My Flow"
+                                } else {
+                                    "Flow · ${flowMood.label}"
+                                }
+                                showFlowSave = true
+                            },
                             onApply = { mood, discovery, favBias, excluded ->
                                 viewModel.applyFlowConfig(mood, discovery, favBias, excluded)
                             },
@@ -3138,7 +3150,7 @@ private fun BitChordApp(
                                         // Flow tap: open temp playlist + auto-start endless mix.
                                         showFlow = true
                                         viewModel.startFlowSession()
-                                        startFlow()
+                                        startFlow(false)
                                     }
                                     song != null -> playRadio(
                                         song,
@@ -4505,6 +4517,17 @@ private fun BitChordApp(
         // — the ⋮, the player — starts from the sheet.
         LaunchedEffect(songActions == null) {
             if (songActions == null) songMenuOrigin = null
+        }
+        // Flow save asks for a name instead of stamping "Flow — Flow".
+        if (showFlowSave) {
+            com.music.bitchord.ui.screens.FlowSaveDialog(
+                initial = flowSaveName,
+                onDismiss = { showFlowSave = false },
+                onConfirm = { name ->
+                    showFlowSave = false
+                    viewModel.saveFlow(name)
+                },
+            )
         }
 
         // ---- Download manager ----

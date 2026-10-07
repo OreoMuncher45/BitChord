@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,34 +12,43 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -47,34 +58,48 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+import coil3.compose.AsyncImage
 import com.music.bitchord.R
 import com.music.bitchord.data.flow.FLOW_TUNER_GENRES
 import com.music.bitchord.data.flow.FlowMood
 import com.music.bitchord.data.flow.FlowStatus
 import com.music.bitchord.data.flow.FlowTuner
+import com.music.bitchord.data.model.HEADER_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
+import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.isSameTrackAs
 import com.music.bitchord.ui.components.MessageState
-import com.music.bitchord.ui.components.PlayingAccent
-import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
+import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.songListSkeleton
+import com.music.bitchord.ui.theme.ArtworkPalette
+import com.music.bitchord.ui.theme.rememberArtworkPalette
 
 /**
- * Flow temporary playlist: auto-created on tap, keeps growing via AutoPlay
- * until saved.
+ * Flow, dressed like an Apple Music page: full-bleed artwork hero washing
+ * into the page tint, centered title, and the Play • Shuffle • Save • Tune
+ * circle row — the same furniture as [DetailScreen]'s release pages.
  *
  * Tuner edits are drafts until Apply: mood, sliders and genre switches only
  * touch local state, and one tap commits everything with a single rebuild —
- * dragging a slider never replays the whole mix under your thumb.
+ * dragging a slider never replays the whole mix under your thumb. The tuner
+ * itself lives behind the Tune circle so the page opens clean.
  */
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FlowScreen(
     tracksState: UiState<List<Song>>,
@@ -86,7 +111,9 @@ fun FlowScreen(
     isGrowing: Boolean,
     rebuilding: Boolean,
     listState: LazyListState,
+    artwork: String?,
     onPlay: () -> Unit,
+    onShuffle: () -> Unit,
     onSave: () -> Unit,
     onApply: (FlowMood, Float, Float, Set<String>) -> Unit,
     onUnban: (String) -> Unit,
@@ -104,50 +131,75 @@ fun FlowScreen(
     var draftDiscovery by remember(tuner.discovery) { mutableFloatStateOf(tuner.discovery) }
     var draftFavBias by remember(tuner.favoritesBias) { mutableFloatStateOf(tuner.favoritesBias) }
     var draftExcluded by remember(tuner.excludedGenres) { mutableStateOf(tuner.excludedGenres) }
+    var showTuner by remember { mutableStateOf(false) }
     val dirty = draftMood != mood || draftDiscovery != tuner.discovery ||
         draftFavBias != tuner.favoritesBias || draftExcluded != tuner.excludedGenres
-    val trackCount = (tracksState as? UiState.Success)?.data?.size ?: 0
+    val songs = (tracksState as? UiState.Success)?.data.orEmpty()
+    val art = artwork ?: songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl
+    val palette = rememberArtworkPalette(art, artPx = HEADER_ART_PX)
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background),
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        item(key = "flow:header") {
-            FlowHeader(
-                status = status,
-                mood = mood,
-                trackCount = trackCount,
+        item(key = "flow:hero") {
+            FlowHero(
+                art = art?.artworkAt(HEADER_ART_PX),
+                palette = palette,
+                listState = listState,
+                mood = draftMood,
+                trackCount = songs.size,
                 isSaved = isSaved,
                 isGrowing = isGrowing,
                 rebuilding = rebuilding,
-                dirty = dirty,
+                tunerDirty = dirty,
+                tunerOpen = showTuner,
                 onPlay = onPlay,
+                onShuffle = onShuffle,
                 onSave = onSave,
-                onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
+                onTune = { showTuner = !showTuner },
             )
         }
         item(key = "flow:moods") {
-            FlowMoods(mood = draftMood, onMood = { draftMood = it })
-        }
-        item(key = "flow:tuner") {
-            FlowTunerCard(
-                tuner = tuner.copy(discovery = draftDiscovery, favoritesBias = draftFavBias, excludedGenres = draftExcluded),
-                onDiscovery = { draftDiscovery = it },
-                onFavoritesBias = { draftFavBias = it },
-                onToggleGenre = { genre, enabled ->
-                    draftExcluded = if (enabled) draftExcluded - genre.lowercase()
-                    else draftExcluded + genre.lowercase()
-                },
-                dirty = dirty,
-                rebuilding = rebuilding,
-                onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
+            FlowMoodStrip(
+                mood = draftMood,
+                palette = palette,
+                onMood = { draftMood = it },
             )
         }
-        if (bannedIds.isNotEmpty()) {
-            item(key = "flow:banned") {
-                FlowBans(bannedIds = bannedIds, onUnban = onUnban)
+        if (showTuner) {
+            item(key = "flow:tuner") {
+                FlowTunerCard(
+                    tuner = tuner.copy(
+                        discovery = draftDiscovery,
+                        favoritesBias = draftFavBias,
+                        excludedGenres = draftExcluded,
+                    ),
+                    palette = palette,
+                    onDiscovery = { draftDiscovery = it },
+                    onFavoritesBias = { draftFavBias = it },
+                    onToggleGenre = { genre, enabled ->
+                        draftExcluded = if (enabled) draftExcluded - genre.lowercase()
+                        else draftExcluded + genre.lowercase()
+                    },
+                    dirty = dirty,
+                    rebuilding = rebuilding,
+                    onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
+                )
+            }
+        }
+        if (songs.isNotEmpty()) {
+            item(key = "flow:tracks-header") {
+                Text(
+                    text = stringResource(R.string.flow_mix_title, songs.size),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.onBackground,
+                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                )
             }
         }
         when (tracksState) {
@@ -160,22 +212,11 @@ fun FlowScreen(
                 )
             }
             is UiState.Success -> {
-                val songs = tracksState.data
                 if (songs.isEmpty()) {
                     item(key = "flow:empty") {
-                        MessageState(
-                            message = stringResource(R.string.flow_locked_title),
-                            actionLabel = null,
-                            onAction = {},
-                        )
+                        FlowLockedCard(status = status, palette = palette)
                     }
                 } else {
-                    item(key = "flow:tracks-header") {
-                        SectionTitle(
-                            text = stringResource(R.string.flow_mix_title, songs.size),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        )
-                    }
                     items(
                         count = songs.size,
                         key = { "flow:${songs[it].videoId}:$it" },
@@ -186,138 +227,298 @@ fun FlowScreen(
                             onClick = { onSongClick(songs, index) },
                             onLongPress = { onSongLongPress(song) },
                             onSwipeToQueue = { onBan(song) },
+                            rowBackground = Color.Transparent,
+                            subtitleColor = palette.onBackgroundVariant,
                             isCurrent = song.isSameTrackAs(currentSong),
                             isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
                             searchPlayingStyle = true,
-                            activeTint = PlayingAccent,
+                            activeTint = palette.accent,
                         )
                         if (index < songs.lastIndex) {
                             HorizontalDivider(
-                                modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                                modifier = Modifier.padding(start = PAGE_GUTTER + 56.dp),
                                 thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                color = palette.divider,
                             )
                         }
                     }
                 }
             }
         }
+        if (bannedIds.isNotEmpty()) {
+            item(key = "flow:banned") {
+                FlowBans(bannedIds = bannedIds, palette = palette, onUnban = onUnban)
+            }
+        }
         item(key = "flow:spacer") { Spacer(Modifier.height(24.dp)) }
     }
 }
 
-@Composable
-private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        modifier = modifier,
-    )
-}
+private val FLOW_ART_HEIGHT = 340.dp
+private val FLOW_HEADER_DROP = 44.dp
 
+/**
+ * Full-bleed artwork washing into the page tint, centered title, accent
+ * mood line, small-caps meta, and the Apple action row: Save • Shuffle •
+ * Play • Tune. Mirrors the release header's construction (parallax art,
+ * eased scrim, controls pinned under the art with zero gap to the rows).
+ */
 @Composable
-private fun FlowHeader(
-    status: FlowStatus,
+private fun FlowHero(
+    art: String?,
+    palette: ArtworkPalette,
+    listState: LazyListState,
     mood: FlowMood,
     trackCount: Int,
     isSaved: Boolean,
     isGrowing: Boolean,
     rebuilding: Boolean,
-    dirty: Boolean,
+    tunerDirty: Boolean,
+    tunerOpen: Boolean,
     onPlay: () -> Unit,
+    onShuffle: () -> Unit,
     onSave: () -> Unit,
-    onApply: () -> Unit,
+    onTune: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.fillMaxWidth().clipToBounds()) {
+        // Parallax art, parked far up once scrolled past.
+        val artPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+            FLOW_ART_HEIGHT.toPx()
+        }
+        val top = if (listState.firstVisibleItemIndex == 0) {
+            -listState.firstVisibleItemScrollOffset.toFloat()
+        } else {
+            -artPx * 2f
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(FLOW_ART_HEIGHT)
+                .offset { IntOffset(0, top.roundToInt()) },
+        ) {
+            if (art != null) {
+                AsyncImage(
+                    model = art,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(palette.elevated),
+                )
+            } else {
                 Box(
-                    modifier = Modifier.size(64.dp).clip(CircleShape)
-                        .background(
-                            Brush.sweepGradient(
-                                listOf(
-                                    Color(0xFF7C4DFF), Color(0xFF00BCD4),
-                                    Color(0xFF69F0AE), Color(0xFFFFD54F),
-                                    Color(0xFFFF6E40), Color(0xFF7C4DFF),
-                                ),
+                    Modifier.matchParentSize().background(
+                        Brush.sweepGradient(
+                            listOf(
+                                Color(0xFF7C4DFF), Color(0xFF00BCD4),
+                                Color(0xFF69F0AE), Color(0xFFFFD54F),
+                                Color(0xFFFF6E40), Color(0xFF7C4DFF),
                             ),
                         ),
-                    contentAlignment = Alignment.Center,
+                    ),
                 ) {
-                    Icon(Icons.Rounded.AllInclusive, null, tint = Color.White, modifier = Modifier.size(32.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.flow), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        when {
-                            isSaved -> stringResource(R.string.saved)
-                            trackCount > 0 -> stringResource(R.string.flow_temp_count, trackCount, mood.label)
-                            else -> stringResource(R.string.flow_temp_playlist)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icon(
+                        Icons.Rounded.AllInclusive, null, tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.size(72.dp).align(Alignment.Center),
                     )
-                    if (isGrowing && !isSaved) {
-                        Text(
-                            stringResource(R.string.flow_growing),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = PlayingAccent,
+                }
+            }
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.verticalGradient(
+                        0.45f to Color.Transparent,
+                        0.65f to palette.wash.copy(alpha = 0.30f),
+                        0.82f to palette.wash.copy(alpha = 0.72f),
+                        0.94f to palette.wash.copy(alpha = 0.95f),
+                        1.00f to palette.wash,
+                    ),
+                ),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.fillMaxWidth().height(FLOW_ART_HEIGHT - 148.dp + FLOW_HEADER_DROP))
+            Text(
+                text = stringResource(R.string.flow),
+                style = MaterialTheme.typography.headlineMedium,
+                color = palette.onBackground,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = if (mood == FlowMood.FLOW) {
+                    stringResource(R.string.flow_subtitle)
+                } else {
+                    mood.label
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.accent,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+            )
+            Spacer(Modifier.height(5.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            ) {
+                Text(
+                    text = when {
+                        isSaved -> stringResource(R.string.saved)
+                        trackCount > 0 -> stringResource(R.string.flow_temp_meta, trackCount)
+                        else -> stringResource(R.string.flow_temp_playlist)
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.7.sp),
+                    color = palette.onBackgroundVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (isGrowing && !isSaved && trackCount > 0) {
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(palette.accent))
+                    Text(
+                        text = stringResource(R.string.flow_growing),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.7.sp),
+                        color = palette.accent,
+                    )
+                }
+                if (rebuilding) {
+                    CircularProgressIndicator(
+                        Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = palette.onBackgroundVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FlowCircle(
+                    icon = if (isSaved) Icons.Rounded.AllInclusive else Icons.Rounded.Save,
+                    description = stringResource(if (isSaved) R.string.saved else R.string.flow_save),
+                    palette = palette,
+                    enabled = !isSaved,
+                    onClick = onSave,
+                )
+                FlowCircle(
+                    icon = Icons.Rounded.Shuffle,
+                    description = stringResource(R.string.shuffle),
+                    palette = palette,
+                    onClick = onShuffle,
+                )
+                // The Play pill: the one filled control, twice the presence.
+                Button(
+                    onClick = onPlay,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.accent,
+                        contentColor = Color.White,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(R.string.play),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Box(contentAlignment = Alignment.TopEnd) {
+                    FlowCircle(
+                        icon = Icons.Rounded.Tune,
+                        description = stringResource(R.string.flow_tuner),
+                        palette = palette,
+                        selected = tunerOpen,
+                        onClick = onTune,
+                    )
+                    if (tunerDirty) {
+                        Box(
+                            Modifier
+                                .padding(top = 2.dp, end = 2.dp)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(palette.accent)
+                                .border(1.5.dp, palette.wash, CircleShape),
                         )
                     }
                 }
-                if (rebuilding) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.PlayArrow, null)
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.play))
-                }
-                OutlinedButton(onClick = onSave, enabled = !isSaved, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.Save, null)
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(if (isSaved) R.string.saved else R.string.flow_save))
-                }
-            }
-            if (dirty) {
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = onApply, modifier = Modifier.fillMaxWidth(), enabled = !rebuilding) {
-                    Icon(Icons.Rounded.Refresh, null)
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.flow_apply))
-                }
-            }
-            if (!status.unlocked) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.flow_locked_subtitle, status.neededMore),
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
     }
 }
 
 @Composable
-private fun FlowMoods(mood: FlowMood, onMood: (FlowMood) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        SectionTitle(stringResource(R.string.flow_moods))
+private fun FlowCircle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    palette: ArtworkPalette,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    selected: Boolean = false,
+    size: Dp = 50.dp,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(if (selected) palette.accent.copy(alpha = 0.25f) else palette.elevated.copy(alpha = 0.6f))
+            .border(0.5.dp, palette.divider, CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .let { if (!enabled) it else it },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, description,
+            tint = if (selected) palette.accent else palette.onBackground.copy(alpha = if (enabled) 1f else 0.4f),
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/** Moods as a horizontal pill strip — one swipe, no page taken. */
+@Composable
+private fun FlowMoodStrip(
+    mood: FlowMood,
+    palette: ArtworkPalette,
+    onMood: (FlowMood) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp)) {
+        Text(
+            text = stringResource(R.string.flow_moods),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.onBackground,
+            modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+        )
         Spacer(Modifier.height(8.dp))
-        androidx.compose.foundation.layout.FlowRow(
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
         ) {
-            FlowMood.entries.forEach { m ->
+            items(FlowMood.entries.toList()) { m ->
                 FilterChip(
                     selected = m == mood,
                     onClick = { onMood(m) },
                     label = { Text(m.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = palette.elevated.copy(alpha = 0.6f),
+                        labelColor = palette.onBackgroundVariant,
+                        selectedContainerColor = palette.accent,
+                        selectedLabelColor = Color.White,
+                    ),
                 )
             }
         }
@@ -327,6 +528,7 @@ private fun FlowMoods(mood: FlowMood, onMood: (FlowMood) -> Unit) {
 @Composable
 private fun FlowTunerCard(
     tuner: FlowTuner,
+    palette: ArtworkPalette,
     onDiscovery: (Float) -> Unit,
     onFavoritesBias: (Float) -> Unit,
     onToggleGenre: (String, Boolean) -> Unit,
@@ -335,38 +537,78 @@ private fun FlowTunerCard(
     onApply: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.elevated.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.Tune, null, tint = palette.accent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     stringResource(R.string.flow_tuner),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    color = palette.onBackground,
                 )
             }
             Spacer(Modifier.height(4.dp))
             Text(
                 stringResource(R.string.flow_draft_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.onBackgroundVariant,
             )
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.flow_personal), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(80.dp))
-                Slider(value = tuner.discovery, onValueChange = onDiscovery, modifier = Modifier.weight(1f))
-                Text(stringResource(R.string.flow_adventurous), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(90.dp))
+                Text(
+                    stringResource(R.string.flow_personal),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onBackgroundVariant,
+                    modifier = Modifier.width(80.dp),
+                )
+                Slider(
+                    value = tuner.discovery,
+                    onValueChange = onDiscovery,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = palette.accent,
+                        activeTrackColor = palette.accent,
+                    ),
+                )
+                Text(
+                    stringResource(R.string.flow_adventurous),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onBackgroundVariant,
+                )
             }
-            Text(stringResource(R.string.flow_discovery_subtitle), style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(R.string.flow_discovery_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.onBackgroundVariant,
+            )
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.flow_favorites), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(80.dp))
-                Slider(value = tuner.favoritesBias, onValueChange = onFavoritesBias, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.flow_favorites),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onBackgroundVariant,
+                    modifier = Modifier.width(80.dp),
+                )
+                Slider(
+                    value = tuner.favoritesBias,
+                    onValueChange = onFavoritesBias,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = palette.accent,
+                        activeTrackColor = palette.accent,
+                    ),
+                )
             }
             Spacer(Modifier.height(8.dp))
-            Text(stringResource(R.string.flow_genres), style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(R.string.flow_genres),
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.onBackground,
+            )
             Spacer(Modifier.height(4.dp))
             FLOW_TUNER_GENRES.forEach { genre ->
                 val enabled = tuner.isGenreEnabled(genre)
@@ -374,13 +616,26 @@ private fun FlowTunerCard(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(genre, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        genre,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.onBackground,
+                    )
                     Switch(checked = enabled, onCheckedChange = { onToggleGenre(genre, it) })
                 }
             }
             if (dirty) {
                 Spacer(Modifier.height(12.dp))
-                Button(onClick = onApply, modifier = Modifier.fillMaxWidth(), enabled = !rebuilding) {
+                Button(
+                    onClick = onApply,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !rebuilding,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.accent,
+                        contentColor = Color.White,
+                    ),
+                ) {
                     Icon(Icons.Rounded.Refresh, null)
                     Spacer(Modifier.width(4.dp))
                     Text(stringResource(R.string.flow_apply))
@@ -391,31 +646,99 @@ private fun FlowTunerCard(
 }
 
 @Composable
-private fun FlowBans(bannedIds: Set<String>, onUnban: (String) -> Unit) {
+private fun FlowLockedCard(status: FlowStatus, palette: ArtworkPalette) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.elevated.copy(alpha = 0.55f)),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Rounded.AllInclusive, null, tint = palette.accent, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.flow_locked_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.onBackground,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.flow_locked_subtitle, status.neededMore),
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FlowBans(
+    bannedIds: Set<String>,
+    palette: ArtworkPalette,
+    onUnban: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.elevated.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Block, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.Block, null, tint = palette.onBackgroundVariant, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     stringResource(R.string.flow_banned),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    color = palette.onBackground,
                 )
             }
             Spacer(Modifier.height(8.dp))
-            if (bannedIds.isEmpty()) {
-                Text(stringResource(R.string.flow_empty_banned), style = MaterialTheme.typography.bodySmall)
-            } else {
-                bannedIds.take(20).forEach { id ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(id.take(11), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        AssistChip(onClick = { onUnban(id) }, label = { Text(stringResource(R.string.remove)) })
-                    }
+            bannedIds.take(20).forEach { id ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        id.take(11),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.onBackgroundVariant,
+                    )
+                    AssistChip(onClick = { onUnban(id) }, label = { Text(stringResource(R.string.remove)) })
                 }
             }
         }
     }
+}
+
+/** Name prompt for saving the temp mix — no more "Flow — Flow". */
+@Composable
+fun FlowSaveDialog(
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember(initial) { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.flow_save_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.playlist_name)) },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name.trim()) },
+                enabled = name.isNotBlank(),
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }

@@ -3379,7 +3379,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Persist the temp playlist to YouTube Music; freezes growing. */
-    fun saveFlow(title: String = "Flow — ${FlowStore.mood.value.label}") {
+    fun saveFlow(title: String = "My Flow") {
         val tracks = (_flowQueue.value as? UiState.Success)?.data.orEmpty()
         if (tracks.isEmpty() || _flowSaved.value) return
         viewModelScope.launch {

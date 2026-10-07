@@ -1147,9 +1147,11 @@
     <string name="flow_banned">Banned from Flow</string>
     <string name="flow_empty_banned">Nothing banned — hold a track to ban it from Flow</string>
     <string name="flow_apply">Apply &amp; rebuild</string>
+    <string name="flow_save_title">Save Flow</string>
     <string name="flow_draft_hint">Edits stay local until you apply them</string>
     <string name="flow_mix_title">In this mix · %1$d</string>
     <string name="flow_temp_count">%1$d tracks · %2$s mood · temporary</string>
+    <string name="flow_temp_meta">%1$d tracks · temporary</string>
     <string name="flow_rebuilding">Rebuilding Flow…</string>
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>
