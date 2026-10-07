@@ -1144,4 +1144,8 @@
 
     <string name="card_songs_format">%1$s songs</string>
 
+    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics_footer">Recent source errors, newest last. Nothing leaves the device unless you copy it.</string>
+    <string name="diagnostics_empty">No errors recorded yet. Play something first — failures land here.</string>
+    <string name="diagnostics_refresh">Refresh</string>
 </resources>

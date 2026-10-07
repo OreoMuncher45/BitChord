@@ -36,13 +36,26 @@ data class SourceConfig(
     val baseUrl: String = "",
     /** JioSaavn is opt-in because catalogue matches can select the wrong recording. */
     val enabled: Boolean = kind != SourceKind.JIOSAAVN,
+    /**
+     * Values the user entered for this addon's own settings, by setting key.
+     *
+     * Only credentials are editable — see the source editor — so in practice
+     * this holds keys, not preferences. Blank means unset and is not stored:
+     * the editor drops blank entries on save and the client falls back to the
+     * manifest default. Absent for every config written before this existed,
+     * which decode as empty and behave exactly as before.
+     */
+    val settings: Map<String, String> = emptyMap(),
 ) {
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
-        get() = label.ifBlank {
-            baseUrl.takeIf { it.isNotBlank() }
-                ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                ?: kind.label
+        get() {
+            if (ProprietarySources.isProprietary(baseUrl, label)) return ProprietarySources.DISPLAY_NAME
+            return label.ifBlank {
+                baseUrl.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                    ?: kind.label
+            }
         }
 
     /** Whether this has enough filled in to be worth contacting at all. */
@@ -327,7 +340,7 @@ object SourceRegistry {
                 (existing ?: SourceConfig(kind = SourceKind.ADDON)).copy(
                     kind = SourceKind.ADDON,
                     baseUrl = detected.baseUrl,
-                    label = detected.manifest.displayName,
+                    label = ProprietarySources.maskLabel(detected.baseUrl, detected.manifest.displayName),
                 ),
             )
             is DetectedFormat.ModuleIndex -> Result.success(

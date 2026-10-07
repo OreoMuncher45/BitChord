@@ -37,7 +37,7 @@ class AddonSource(
     override val kind: SourceKind get() = config.kind
     override val displayName: String get() = config.displayName
 
-    private val client = AddonClient(config.baseUrl)
+    private val client = AddonClient(config.baseUrl, config.settings)
 
     /**
      * Rows this addon has recently handed over, by their own track id.
@@ -79,10 +79,11 @@ class AddonSource(
         client.manifest().fold(
             onSuccess = { manifest ->
                 SourceHealth.Ok(
-                    listOfNotNull(
-                        manifest.displayName.takeIf { it.isNotBlank() },
-                        manifest.version.takeIf { it.isNotBlank() }?.let { "v$it" },
-                    ).joinToString(" ").ifBlank { null },
+                    ProprietarySources.maskHealthDetail(
+                        config.baseUrl,
+                        manifest.displayName,
+                        manifest.version,
+                    ),
                 )
             },
             onFailure = { failure ->
@@ -119,8 +120,11 @@ class AddonSource(
      * Free after [health] — the manifest is shared and cached by the client, so
      * this reads what the probe already fetched.
      */
-    suspend fun manifestName(): String? =
-        client.manifest().getOrNull()?.displayName?.ifBlank { null }
+    suspend fun manifestName(): String? {
+        if (ProprietarySources.isProprietaryUrl(config.baseUrl)) return ProprietarySources.DISPLAY_NAME
+        val name = client.manifest().getOrNull()?.displayName?.ifBlank { null } ?: return null
+        return if (ProprietarySources.isProprietaryUrl(name)) ProprietarySources.DISPLAY_NAME else name
+    }
 
     // ── Search ────────────────────────────────────────────────────────────
 

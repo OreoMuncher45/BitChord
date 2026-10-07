@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Dns
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,13 +51,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.R
+import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.smb.SmbRepository
 import com.music.bitchord.data.webdav.WebDavRepository
@@ -64,7 +72,10 @@ import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.addon.AddonClient
+import com.music.bitchord.data.sources.addon.AddonSetting
 import com.music.bitchord.ui.components.AddonEditorAlert
+import com.music.bitchord.ui.components.EditorField
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -345,9 +356,78 @@ fun SourcesScreen(
             )
         }
 
+        DiagnosticsSection()
+
         Spacer(Modifier.height(32.dp))
     }
 
+}
+
+
+/**
+ * Recent source errors, readable without adb.
+ *
+ * The failures that matter most are the silent ones: a source that misses
+ * every track simply yields to the next one, and playback continues from
+ * somewhere worse with nothing on screen saying why. A rejected Octave key
+ * or a blocked Octave server reads exactly like that — an empty catalogue —
+ * unless somebody looks. This card is that look: the warnings and errors
+ * [TrackLog] recorded, newest last, with a copy button whose paste tells the
+ * whole story. Nothing here leaves the device until that button is pressed.
+ */
+@Composable
+private fun DiagnosticsSection() {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var errors by remember { mutableStateOf(emptyList<String>()) }
+    fun load() {
+        errors = TrackLog.recentErrors()
+    }
+    LaunchedEffect(Unit) { load() }
+    SettingsGroup(
+        header = stringResource(R.string.diagnostics),
+        footer = stringResource(R.string.diagnostics_footer),
+    ) {
+        if (errors.isEmpty()) {
+            Text(
+                text = stringResource(R.string.diagnostics_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            )
+        } else {
+            errors.forEachIndexed { index, line ->
+                if (index > 0) RowDivider()
+                Text(
+                    text = line,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.ContentCopy,
+                title = stringResource(R.string.copy_log),
+                onClick = {
+                    val text = errors.joinToString("\n")
+                    clipboard.setText(AnnotatedString(text))
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.log_copied, errors.size),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                },
+            )
+            RowDivider()
+        }
+        SettingsRow(
+            icon = Icons.Rounded.Refresh,
+            title = stringResource(R.string.diagnostics_refresh),
+            onClick = { load() },
+        )
+    }
 }
 
 
@@ -810,6 +890,42 @@ internal fun SourceEditorAlert(
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsGood by remember { mutableStateOf(false) }
 
+    /**
+     * Credential settings this addon declares (today: the Octave account key),
+     * and the values typed for them.
+     *
+     * The schema comes from the manifest, so an addon declaring nothing secret
+     * shows no extra field and behaves exactly as before. Values are stored in
+     * the config and travel as query parameters — see
+     * [AddonClient.settingsFor] — and are cleared the moment the address is
+     * edited, so a key is never sent to a server it was not entered for.
+     */
+    var secretSettings by remember { mutableStateOf(emptyList<AddonSetting>()) }
+    val secretValues = remember {
+        mutableStateMapOf<String, String>().apply { putAll(config.settings) }
+    }
+
+    /**
+     * The secret settings of the server at [base], or empty when it says
+     * nothing usable — a server without a manifest is still a working addon,
+     * just one with nothing to fill in.
+     */
+    suspend fun loadSecrets(base: String): List<AddonSetting> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                AddonClient(base.trim()).manifest().getOrNull()
+                    ?.settings.orEmpty()
+                    .filter { it.secret && it.key.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+
+    // Seed the fields when editing a source that already holds values, so a
+    // stored key is not hidden until Test is pressed.
+    LaunchedEffect(config.id) {
+        if (baseUrl.isBlank()) return@LaunchedEffect
+        secretSettings = loadSecrets(baseUrl)
+    }
+
     val connected = stringResource(R.string.connected)
     val unreadable = stringResource(R.string.source_unrecognised)
     val alreadyAdded = stringResource(R.string.source_already_added)
@@ -860,6 +976,9 @@ internal fun SourceEditorAlert(
                 runCatching { SourceRegistry.probeCandidate(found) }
                     .getOrElse { SourceHealth.Unreachable(it.message ?: "Failed") }
             }
+            // The secret schema belongs to the server just identified, not to
+            // whatever address was there before it.
+            secretSettings = loadSecrets(found.baseUrl)
             statusIsGood = health.isOk
             status = when (health) {
                 is SourceHealth.Ok -> listOfNotNull(
@@ -877,7 +996,10 @@ internal fun SourceEditorAlert(
             // that was true before and is why Test was never mandatory — while
             // a URL nothing can be made of is not.
             if (thenSave) {
-                if (isNew) SourceRegistry.add(found) else SourceRegistry.update(found)
+                // A blank entry means "not set" and falls back to the
+                // manifest default rather than sending an empty parameter.
+                val toStore = found.copy(settings = secretValues.filterValues { it.isNotBlank() })
+                if (isNew) SourceRegistry.add(toStore) else SourceRegistry.update(toStore)
                 onSaved()
             }
         }
@@ -895,8 +1017,18 @@ internal fun SourceEditorAlert(
         // A result describes the address it was run against, so the moment that
         // address is edited it stops being true and is cleared. Left up, it
         // would report "Connected" over a URL nobody has tried.
-        onUrlChange = { baseUrl = it; status = null },
+        onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
         urlPlaceholder = "https://my-addon.example.com",
+        extraFields = secretSettings.map { setting ->
+            EditorField(
+                value = secretValues[setting.key].orEmpty(),
+                onChange = { secretValues[setting.key] = it },
+                placeholder = setting.label.ifBlank { setting.key },
+                keyboardType = KeyboardType.Password,
+                isPassword = true,
+                help = setting.help,
+            )
+        },
         status = status,
         statusIsGood = statusIsGood,
         testing = busy,
