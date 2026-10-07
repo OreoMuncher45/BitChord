@@ -3364,12 +3364,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Start a new Flow session: fresh temp playlist, then build + play handled by caller. */
-    fun startFlowSession() {
-        _flowSaved.value = false
-        refreshFlow()
-    }
-
     /**
      * Grow the temp playlist while it stays unsaved: fetch radio on the tail
      * and append fresh tracks. Called when the list nears its end and by the

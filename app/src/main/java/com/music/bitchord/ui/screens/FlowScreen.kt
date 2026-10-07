@@ -1,5 +1,10 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Block
@@ -59,9 +63,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,16 +76,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
-import coil3.compose.AsyncImage
 import com.music.bitchord.R
 import com.music.bitchord.data.flow.FLOW_TUNER_GENRES
 import com.music.bitchord.data.flow.FlowMood
 import com.music.bitchord.data.flow.FlowStatus
 import com.music.bitchord.data.flow.FlowTuner
-import com.music.bitchord.data.model.HEADER_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
-import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.isSameTrackAs
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
@@ -111,7 +113,6 @@ fun FlowScreen(
     isGrowing: Boolean,
     rebuilding: Boolean,
     listState: LazyListState,
-    artwork: String?,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onSave: () -> Unit,
@@ -136,8 +137,10 @@ fun FlowScreen(
     val dirty = draftMood != mood || draftDiscovery != tuner.discovery ||
         draftFavBias != tuner.favoritesBias || draftExcluded != tuner.excludedGenres
     val songs = (tracksState as? UiState.Success)?.data.orEmpty()
-    val art = artwork ?: songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl
-    val palette = rememberArtworkPalette(art, artPx = HEADER_ART_PX)
+    // No borrowed art, no decode: the hero is a pure GPU gradient, so the
+    // page opens instantly even with an empty mix. Palette falls back to
+    // theme colors without artwork to read.
+    val palette = rememberArtworkPalette(null)
 
     LazyColumn(
         state = listState,
@@ -148,7 +151,6 @@ fun FlowScreen(
     ) {
         item(key = "flow:hero") {
             FlowHero(
-                art = art?.artworkAt(HEADER_ART_PX),
                 palette = palette,
                 listState = listState,
                 mood = draftMood,
@@ -274,9 +276,64 @@ private val FLOW_HEADER_DROP = 44.dp
  * Play • Tune. Mirrors the release header's construction (parallax art,
  * eased scrim, controls pinned under the art with zero gap to the rows).
  */
+/**
+ * The hero backdrop: two color blobs drifting on a deep base, drawn on
+ * canvas with radial falloff — no blur pass, no image decode, no network.
+ * The animation values are read only inside this composable's own
+ * drawBehind, so each frame redraws this box and nothing else.
+ */
+@Composable
+private fun FlowGradientBackdrop(modifier: Modifier = Modifier) {
+    val drift = rememberInfiniteTransition(label = "flowDrift")
+    val t1 by drift.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(14000), RepeatMode.Reverse),
+        label = "flowDriftA",
+    )
+    val t2 by drift.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(19000), RepeatMode.Reverse),
+        label = "flowDriftB",
+    )
+    Box(
+        modifier.fillMaxSize().drawBehind {
+            drawRect(Color(0xFF14101F))
+            val r = size.maxDimension * 0.75f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    0f to Color(0xFF7C4DFF).copy(alpha = 0.85f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * (0.15f + 0.35f * t1), size.height * (0.25f + 0.2f * t2)),
+                    radius = r,
+                ),
+                radius = r,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    0f to Color(0xFF00BCD4).copy(alpha = 0.55f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * (0.85f - 0.3f * t2), size.height * (0.7f - 0.25f * t1)),
+                    radius = r,
+                ),
+                radius = r,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    0f to Color(0xFFFF6E40).copy(alpha = 0.35f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * (0.5f + 0.25f * (t1 - t2)), size.height * 0.55f),
+                    radius = r * 0.7f,
+                ),
+                radius = r * 0.7f,
+            )
+        },
+    )
+}
+
 @Composable
 private fun FlowHero(
-    art: String?,
     palette: ArtworkPalette,
     listState: LazyListState,
     mood: FlowMood,
@@ -307,43 +364,27 @@ private fun FlowHero(
                 .height(FLOW_ART_HEIGHT)
                 .offset { IntOffset(0, top.roundToInt()) },
         ) {
-            if (art != null) {
-                AsyncImage(
-                    model = art,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(palette.elevated),
-                )
-            } else {
-                Box(
-                    Modifier.matchParentSize().background(
-                        Brush.sweepGradient(
-                            listOf(
-                                Color(0xFF7C4DFF), Color(0xFF00BCD4),
-                                Color(0xFF69F0AE), Color(0xFFFFD54F),
-                                Color(0xFFFF6E40), Color(0xFF7C4DFF),
-                            ),
-                        ),
-                    ),
-                ) {
-                    Icon(
-                        Icons.Rounded.AllInclusive, null, tint = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.size(72.dp).align(Alignment.Center),
-                    )
-                }
-            }
+            FlowGradientBackdrop()
+            // The ∞ mark, then the page wash taking over at the foot.
+            Icon(
+                Icons.Rounded.AllInclusive, null, tint = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.size(64.dp).align(Alignment.Center),
+            )
             Box(
                 Modifier.matchParentSize().background(
                     Brush.verticalGradient(
-                        0.45f to Color.Transparent,
-                        0.65f to palette.wash.copy(alpha = 0.30f),
-                        0.82f to palette.wash.copy(alpha = 0.72f),
-                        0.94f to palette.wash.copy(alpha = 0.95f),
+                        0.55f to Color.Transparent,
+                        0.80f to palette.wash.copy(alpha = 0.72f),
                         1.00f to palette.wash,
                     ),
                 ),
+            )
+            // FLOW, top left, small caps — the page's own masthead.
+            Text(
+                text = stringResource(R.string.flow).uppercase(),
+                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 3.sp),
+                color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.align(Alignment.TopStart).padding(start = PAGE_GUTTER, top = 12.dp),
             )
         }
 

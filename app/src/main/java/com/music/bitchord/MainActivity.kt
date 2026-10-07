@@ -2749,7 +2749,6 @@ private fun BitChordApp(
                             isGrowing = !flowSaved,
                             rebuilding = flowLoading,
                             listState = flowListState,
-                            artwork = flowArtwork,
                             onPlay = { startFlow(false) },
                             onShuffle = { startFlow(true) },
                             onNewMix = { viewModel.newFlowMix() },
