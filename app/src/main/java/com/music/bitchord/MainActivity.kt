@@ -692,27 +692,9 @@ private fun BitChordApp(
     val flowTuner by com.music.bitchord.data.flow.FlowStore.tuner.collectAsStateWithLifecycle()
     val flowBanned by com.music.bitchord.data.flow.FlowStore.bannedIds.collectAsStateWithLifecycle()
     val flowListState = rememberLazyListState()
-    // Home Flow entry: synthetic shelf on top once unlocked.
-    val homeWithFlow by remember(homeState, flowStatus) {
-        derivedStateOf {
-            val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
-            if (!flowStatus.unlocked) return@derivedStateOf homeState
-            val flowShelf = HomeShelf(
-                title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
-                items = listOf(
-                    ShelfItem(
-                        title = "Flow",
-                        subtitle = "Your personal soundtrack · endless",
-                        thumbnailUrl = null,
-                        videoId = null,
-                        browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
-                    ),
-                ),
-            )
-            if (base.any { it.title == flowShelf.title }) homeState
-            else UiState.Success(listOf(flowShelf) + base)
-        }
-    }
+    // Home Flow entry: synthetic shelf on top once unlocked (homeWithFlow is
+    // derived below, once history/library state exist to borrow artwork
+    // from — the shelf carries no cover of its own).
 
     // The top bar's icon is the quiet, always-there nudge; this is the
     // once-per-launch popup version of the same news. `updateDialogShown`
@@ -792,6 +774,33 @@ private fun BitChordApp(
     val activeAccountId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     val historyState by viewModel.history.collectAsStateWithLifecycle()
+    // Flow card artwork, borrowed so it never paints blank: Flow mix art,
+    // then recents, then liked — the synthetic shelf owns no cover itself.
+    val flowArtwork = remember(flowQueueState, historyState, libraryState) {
+        ((flowQueueState as? UiState.Success)?.data?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
+            ?: ((historyState as? UiState.Success)?.data?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
+            ?: (((libraryState as? UiState.Success)?.data?.likedSongs)?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
+    }
+    val homeWithFlow by remember(homeState, flowStatus, flowArtwork) {
+        derivedStateOf {
+            val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
+            if (!flowStatus.unlocked) return@derivedStateOf homeState
+            val flowShelf = HomeShelf(
+                title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
+                items = listOf(
+                    ShelfItem(
+                        title = "Flow",
+                        subtitle = "Your personal soundtrack · endless",
+                        thumbnailUrl = flowArtwork,
+                        videoId = null,
+                        browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+                    ),
+                ),
+            )
+            if (base.any { it.title == flowShelf.title }) homeState
+            else UiState.Success(listOf(flowShelf) + base)
+        }
+    }
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
     val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()

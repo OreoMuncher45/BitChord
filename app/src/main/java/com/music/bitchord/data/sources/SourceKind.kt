@@ -138,6 +138,27 @@ enum class SourceKind(
     ),
 
     /**
+     * Tidal Hi-Fi through a hifi-api-compatible instance: genuine lossless
+     * FLAC (up to 24-bit/192kHz) streamed straight from Tidal's CDN, no
+     * account or keys on this device — the instance holds its own tokens.
+     *
+     * On by default with community instances and silent failover between
+     * them; a custom instance URL can replace the primary. Instances are
+     * volunteers' servers and die regularly (Tidal bans aggressively), so
+     * the address is infrastructure that rots rather than a promise — see
+     * [TidalInstances][com.music.bitchord.data.tidal.TidalInstances].
+     */
+    TIDAL(
+        label = "Tidal Hi-Fi",
+        detail = "Genuine lossless FLAC via community instances with automatic failover. Instances break often; disable anytime.",
+        labels = listOf("FLAC", "Lossless", "Hi-Res"),
+        needsServer = true,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 1,
+    ),
+
+    /**
      * The source the app was built on, listed here so it always has a fixed
      * place: second, behind the module source. It cannot be removed — see
      * [SourceRegistry]. Nothing else in the app can supply a home feed, a

@@ -11,6 +11,8 @@ import com.music.bitchord.data.settings.permits
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.data.sources.addon.AddonException
 import com.music.bitchord.data.sources.addon.DetectedFormat
+import com.music.bitchord.data.tidal.TidalApi
+import com.music.bitchord.data.tidal.TidalInstances
 import com.music.bitchord.data.sources.addon.SourceFormats
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.playback.audio.LosslessOutput
@@ -139,10 +141,21 @@ object SourceRegistry {
     ): List<SourceConfig> {
         // Seeded rather than persisted-on-first-write, so a build adding a new
         // built-in kind picks it up for existing installs too. SourceConfig's
-        // default is the policy: JioSaavn off, YouTube on.
+        // default is the policy: JioSaavn off, everything else on. Tidal
+        // arrives with the first bundled instance as its primary so it works
+        // with zero setup — the toggle is the off switch.
         val seeded = stored + BUILT_IN_KINDS
             .filter { kind -> stored.none { it.kind == kind } }
-            .map { SourceConfig(kind = it) }
+            .map { kind ->
+                SourceConfig(
+                    kind = kind,
+                    baseUrl = if (kind == SourceKind.TIDAL) {
+                        TidalInstances.BUNDLED.first().url
+                    } else {
+                        ""
+                    },
+                )
+            }
 
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
@@ -378,6 +391,22 @@ object SourceRegistry {
      * its on/off state; a new source gets a fresh config.
      */
     suspend fun identify(url: String, existing: SourceConfig? = null): Result<SourceConfig> {
+        // Tidal first: its root answers a version document no other format
+        // shapes, and the probe is one cheap GET. Anything else falls through
+        // to the addon/module detection untouched.
+        TidalApi.probeBestEffort(url)?.let { version ->
+            val base = TidalApi.normalize(url) ?: url.trim().trimEnd('/')
+            val host = runCatching { android.net.Uri.parse(base).host }.getOrNull()
+            return Result.success(
+                (existing ?: SourceConfig(kind = SourceKind.TIDAL)).copy(
+                    kind = SourceKind.TIDAL,
+                    baseUrl = base,
+                    label = existing?.label.orEmpty().ifBlank {
+                        host?.takeIf { it.isNotBlank() } ?: SourceKind.TIDAL.label
+                    },
+                ),
+            )
+        }
         val detected = SourceFormats.identify(url).getOrElse { return Result.failure(it) }
         return when (detected) {
             is DetectedFormat.Addon -> Result.success(
@@ -457,6 +486,7 @@ object SourceRegistry {
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
+        SourceKind.TIDAL -> TidalSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
 
@@ -501,7 +531,7 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
+    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.YOUTUBE)
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

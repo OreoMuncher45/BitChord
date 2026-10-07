@@ -1150,4 +1150,10 @@
     <string name="flow_rebuilding">Rebuilding Flow…</string>
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>
+
+    <!-- Tidal Hi-Fi (community instances, auto-failover) -->
+    <string name="tidal_community_warning">Community instances · may break · Hi-Res FLAC when live</string>
+    <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. BitChord tries it first, then healthy community instances.</string>
+    <string name="tidal_auto_update">Auto-update instance list</string>
+    <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 </resources>
