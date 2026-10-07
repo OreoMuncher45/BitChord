@@ -776,14 +776,10 @@ private fun BitChordApp(
     val activeAccountId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     val historyState by viewModel.history.collectAsStateWithLifecycle()
-    // Flow card artwork, borrowed so it never paints blank: Flow mix art,
-    // then recents, then liked — the synthetic shelf owns no cover itself.
-    val flowArtwork = remember(flowQueueState, historyState, libraryState) {
-        ((flowQueueState as? UiState.Success)?.data?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
-            ?: ((historyState as? UiState.Success)?.data?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
-            ?: (((libraryState as? UiState.Success)?.data?.likedSongs)?.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl)
-    }
-    val homeWithFlow by remember(homeState, flowStatus, flowArtwork) {
+    // The Flow card carries no artwork on purpose: borrowed covers made it
+    // look like a random album. Null art renders the hero card as a clean
+    // captioned tile instead.
+    val homeWithFlow by remember(homeState, flowStatus) {
         derivedStateOf {
             val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
             if (!flowStatus.unlocked) return@derivedStateOf homeState
@@ -793,7 +789,7 @@ private fun BitChordApp(
                     ShelfItem(
                         title = "Flow",
                         subtitle = "Your personal soundtrack · endless",
-                        thumbnailUrl = flowArtwork,
+                        thumbnailUrl = null,
                         videoId = null,
                         browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
                     ),

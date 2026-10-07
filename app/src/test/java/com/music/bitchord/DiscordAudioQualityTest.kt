@@ -69,6 +69,23 @@ class DiscordAudioQualityTest {
     }
 
     @Test
+    fun `lossless prefers pcm rate over momentary container figure`() {
+        val stats = NerdStats.Snapshot(
+            mimeType = "audio/flac",
+            bitrateKbps = 142,
+            sampleRateHz = 44100,
+            channels = 2,
+            bitDepth = 16,
+            pcmDataRateKbps = 1411,
+        )
+
+        assertEquals(
+            "Lossless · FLAC · 1411 kbps · 16-bit · 44.1 kHz · Stereo",
+            discordAudioQualityLine(stats),
+        )
+    }
+
+    @Test
     fun `dsd line names the dsd rate in megahertz`() {
         val stats = NerdStats.Snapshot(
             mimeType = "audio/dsd64",

@@ -51,6 +51,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,6 +68,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -277,6 +279,14 @@ private val FLOW_HEADER_DROP = 44.dp
  * eased scrim, controls pinned under the art with zero gap to the rows).
  */
 /**
+ * Text color that survives on top of [accent]: the theme's primary is white
+ * in dark mode, so hardcoding white content went white-on-white. Luminance
+ * decides, per surface, every time.
+ */
+private fun contentOn(accent: Color): Color =
+    if (accent.luminance() > 0.5f) Color.Black else Color.White
+
+/**
  * The hero backdrop: two color blobs drifting on a deep base, drawn on
  * canvas with radial falloff — no blur pass, no image decode, no network.
  * The animation values are read only inside this composable's own
@@ -476,7 +486,7 @@ private fun FlowHero(
                     onClick = onPlay,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = palette.accent,
-                        contentColor = Color.White,
+                        contentColor = contentOn(palette.accent),
                     ),
                     contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp),
                 ) {
@@ -569,7 +579,7 @@ private fun FlowMoodStrip(
                         containerColor = palette.elevated.copy(alpha = 0.6f),
                         labelColor = palette.onBackgroundVariant,
                         selectedContainerColor = palette.accent,
-                        selectedLabelColor = Color.White,
+                        selectedLabelColor = contentOn(palette.accent),
                     ),
                 )
             }
@@ -674,7 +684,15 @@ private fun FlowTunerCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = palette.onBackground,
                     )
-                    Switch(checked = enabled, onCheckedChange = { onToggleGenre(genre, it) })
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { onToggleGenre(genre, it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = contentOn(palette.accent),
+                            checkedTrackColor = palette.accent,
+                            checkedBorderColor = palette.accent,
+                        ),
+                    )
                 }
             }
             if (dirty) {
@@ -685,7 +703,7 @@ private fun FlowTunerCard(
                     enabled = !rebuilding,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = palette.accent,
-                        contentColor = Color.White,
+                        contentColor = contentOn(palette.accent),
                     ),
                 ) {
                     Icon(Icons.Rounded.Refresh, null)
