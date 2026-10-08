@@ -4,6 +4,7 @@ import com.music.bitchord.BuildConfig
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.TrackLog
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -107,11 +108,6 @@ object OctaveApi {
     /** In-flight searches by base|query|limit — concurrent twins share one. */
     private val inFlightSearch = mutableMapOf<String, CompletableDeferred<List<OctaveTrack>>>()
     private val searchLock = Mutex()
-
-    /** Content lengths by stream URL: file sizes do not change between plays. */
-    private val sizeCache = object : LinkedHashMap<String, Long>(0, 0.75f, true) {
-        override fun removeEldestEntry(eldest: Map.Entry<String, Long>) = size > 500
-    }
 
     /**
      * Title/artist/duration per track id, remembered from search rows.
@@ -237,18 +233,34 @@ object OctaveApi {
      */
     suspend fun ensureToken(base: String, key: String): String {
         val cacheKey = "$base\n$key"
-        tokenLock.withLock {
-            tokens[cacheKey]?.let { if (it.expMs - 60_000 > System.currentTimeMillis()) return it.token }
+        // Singleflight: the lock spans check, fetch and store, so ten
+        // concurrent resolves mint once instead of ten times.
+        return tokenLock.withLock {
+            val now = System.currentTimeMillis()
+            tokens[cacheKey]?.let { if (it.expMs - 60_000 > now) return it.token }
+            tokenCooldownUntil[cacheKey]?.let { until ->
+                if (now < until) throw IOException("playback token cooling down after refusal")
+            }
+            try {
+                val code = get("$base/api/playback-token", key)
+                if (!code.ok) throw IOException("playback token refused (HTTP ${code.code})")
+                val (token, ttlSec) = parseToken(code.body)
+                if (token.isBlank()) throw IOException("empty playback token")
+                val ttlMs = ((ttlSec ?: 3600).coerceAtLeast(60)) * 1000L
+                tokens[cacheKey] = CachedToken(token, System.currentTimeMillis() + ttlMs)
+                token
+            } catch (e: Refused) {
+                // A refused key stays refused: hammering it is exactly the
+                // automated behavior that gets accounts banned.
+                tokenCooldownUntil[cacheKey] = now + TOKEN_COOLDOWN_MS
+                throw e
+            } catch (e: IOException) {
+                if (e.message?.contains("refused") == true) {
+                    tokenCooldownUntil[cacheKey] = now + TOKEN_COOLDOWN_MS
+                }
+                throw e
+            }
         }
-        val code = get("$base/api/playback-token", key)
-        if (!code.ok) throw IOException("playback token refused (HTTP ${code.code})")
-        val (token, ttlSec) = parseToken(code.body)
-        if (token.isBlank()) throw IOException("empty playback token")
-        val ttlMs = ((ttlSec ?: 3600).coerceAtLeast(60)) * 1000L
-        tokenLock.withLock {
-            tokens[cacheKey] = CachedToken(token, System.currentTimeMillis() + ttlMs)
-        }
-        return token
     }
 
     /**
@@ -273,13 +285,41 @@ object OctaveApi {
         return token to (o["expiresIn"] as? JsonPrimitive)?.content?.toLongOrNull()
     }
 
-    suspend fun search(base: String, key: String?, query: String, limit: Int = 25): List<OctaveTrack> =
-        withContext(Dispatchers.IO) {
-            val url = "$base/api/search/tracks?query=${encode(query)}&limit=${limit.coerceIn(1, 50)}"
-            val code = if (key.isNullOrBlank()) getAnon(url) else get(url, key)
-            if (!code.ok) throw IOException("search refused (HTTP ${code.code})")
-            parseSearch(code.body)
+    suspend fun search(base: String, key: String?, query: String, limit: Int = 25): List<OctaveTrack> {
+        // Read-ahead and the UI routinely fire the same query at once; the
+        // second one rides the first instead of doubling the volume.
+        val cacheKey = "$base|${query.lowercase()}|$limit"
+        val deferred: CompletableDeferred<List<OctaveTrack>>
+        var owner = false
+        searchLock.withLock {
+            val existing = inFlightSearch[cacheKey]
+            if (existing != null) {
+                deferred = existing
+            } else {
+                deferred = CompletableDeferred()
+                inFlightSearch[cacheKey] = deferred
+                owner = true
+            }
         }
+        if (!owner) return deferred.await()
+        try {
+            val result = withContext(Dispatchers.IO) {
+                val url = "$base/api/search/tracks?query=${encode(query)}&limit=${limit.coerceIn(1, 50)}"
+                val code = if (key.isNullOrBlank()) getAnon(url) else get(url, key)
+                if (!code.ok) throw IOException("search refused (HTTP ${code.code})")
+                parseSearch(code.body)
+            }
+            deferred.complete(result)
+            return result
+        } catch (e: Throwable) {
+            deferred.completeExceptionally(e)
+            throw e
+        } finally {
+            searchLock.withLock {
+                if (inFlightSearch[cacheKey] === deferred) inFlightSearch.remove(cacheKey)
+            }
+        }
+    }
 
     private data class Body(val ok: Boolean, val code: Int, val body: String)
 
