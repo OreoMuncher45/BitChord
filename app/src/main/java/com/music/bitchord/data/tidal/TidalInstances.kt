@@ -159,7 +159,7 @@ object TidalInstances {
                 _health.value = _health.value + results.toMap()
                 healthAt = now
             }
-            TrackLog.d(TAG, "tidal health: " + results.joinToString { (u, ok) -> "${u.substringAfter("://").substringBefore('/')}=$ok" })
+            TrackLog.d(TAG, "tidal health: ${results.count { it.second }} of ${results.size} instances live")
             results
         }
 

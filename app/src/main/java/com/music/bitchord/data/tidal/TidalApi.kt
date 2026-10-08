@@ -403,5 +403,10 @@ object TidalApi {
     private fun encode(raw: String): String =
         runCatching { java.net.URLEncoder.encode(raw, "UTF-8") }.getOrDefault(raw)
 
-    private fun redact(url: String): String = url.replace(Regex("([?&])(token|secret)=[^&]*"), "$1$2=…")
+    // Logs carry the path only — never the host, never secrets. The pool is
+    // a sealed appliance; its addresses must not surface in diagnostics.
+    private fun redact(url: String): String {
+        val noSecrets = url.replace(Regex("([?&])(token|secret)=[^&]*"), "$1$2=…")
+        return noSecrets.replace(Regex("^https?://[^/]+"), "")
+    }
 }

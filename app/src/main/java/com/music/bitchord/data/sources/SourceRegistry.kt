@@ -77,6 +77,9 @@ data class SourceConfig(
     val displayName: String
         get() {
             if (ProprietarySources.isProprietary(baseUrl, label)) return ProprietarySources.DISPLAY_NAME
+            // The bundled lossless source is a sealed appliance: one brand,
+            // no address anywhere in the UI. Toggle on/off is the only control.
+            if (kind == SourceKind.TIDAL) return SourceRegistry.TIDAL_DISPLAY_NAME
             return label.ifBlank {
                 baseUrl.takeIf { it.isNotBlank() }
                     ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
@@ -565,6 +568,9 @@ object SourceRegistry {
             .toString()
 
     private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.OCTAVE, SourceKind.YOUTUBE)
+
+    /** The branded name of the sealed lossless source. */
+    const val TIDAL_DISPLAY_NAME = "BitChord NEXT Addon"
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

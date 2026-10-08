@@ -48,8 +48,8 @@ class TidalSource(
         val base = TidalApi.normalize(config.baseUrl)
             ?: return SourceHealth.Rejected("That is not a usable instance address")
         return try {
-            if (TidalApi.isLive(base)) SourceHealth.Ok("FLAC") else {
-                SourceHealth.Rejected("That server is not a Tidal Hi-Fi API")
+            if (TidalApi.isLive(base)) SourceHealth.Ok(null) else {
+                SourceHealth.Rejected("Lossless source unreachable")
             }
         } catch (e: Exception) {
             SourceHealth.Unreachable(e.message ?: "No answer")
@@ -70,13 +70,13 @@ class TidalSource(
                 val tracks = try {
                     TidalApi.searchTracks(endpoint, query, limit)
                 } catch (e: Exception) {
-                    TrackLog.d(TAG, "  ✗ tidal tracks search via $endpoint failed: ${e.message}")
+                    TrackLog.d(TAG, "  ✗ tidal tracks search failed: ${e.message}")
                     null
                 }
                 if (tracks != null) {
                     TidalApi.noteProtocol(endpoint, TidalApi.Protocol.TRACKS)
                     if (tracks.isEmpty()) continue
-                    TrackLog.d(TAG, "  ✓ tidal ${tracks.size} rows via $endpoint (tracks)")
+                    TrackLog.d(TAG, "  ✓ tidal ${tracks.size} rows (tracks)")
                     return tracks.take(limit).map { it.toSong(endpoint) }
                 }
             }
@@ -84,13 +84,13 @@ class TidalSource(
                 val hifi = try {
                     TidalApi.search(endpoint, query, limit)
                 } catch (e: Exception) {
-                    TrackLog.d(TAG, "  ✗ tidal hifi search via $endpoint failed: ${e.message}")
+                    TrackLog.d(TAG, "  ✗ tidal hifi search failed: ${e.message}")
                     TidalApi.forgetProtocol(endpoint)
                     continue
                 }
                 if (hifi.isEmpty()) continue
                 TidalApi.noteProtocol(endpoint, TidalApi.Protocol.HIFI)
-                TrackLog.d(TAG, "  ✓ tidal ${hifi.size} rows via $endpoint (hifi)")
+                TrackLog.d(TAG, "  ✓ tidal ${hifi.size} rows (hifi)")
                 return hifi.take(limit).map { it.toSong(endpoint) }
             }
         }
@@ -162,7 +162,7 @@ class TidalSource(
             val answer = try {
                 TidalApi.streamUrl(endpoint, id, tiers)
             } catch (e: Exception) {
-                TrackLog.d(TAG, "  ✗ tidal stream via $endpoint failed: ${e.message}")
+                TrackLog.d(TAG, "  ✗ tidal stream failed: ${e.message}")
                 continue
             } ?: continue
             val codec = answer.mimeType?.substringAfter('/')?.lowercase(Locale.ROOT)

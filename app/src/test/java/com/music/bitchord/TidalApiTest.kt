@@ -201,19 +201,17 @@ class TidalApiTest {
     }
 
     @Test
-    fun `no dead octave seed is planted`() {
+    fun `octave seed points at the official base and masks cleanly`() {
         val sources = com.music.bitchord.data.sources.SourceRegistry.sourcesForInit(
             emptyList(),
             forceJioSaavnOff = true,
         )
-        assertTrue(
-            sources.none {
-                com.music.bitchord.data.sources.ProprietarySources.isProprietaryUrl(it.baseUrl)
-            },
-        )
+        val octave = sources.single { it.kind == com.music.bitchord.data.sources.SourceKind.OCTAVE }
+        assertEquals("https://api.octavestreaming.com", octave.baseUrl)
+        assertFalse(octave.enabled)
         assertEquals(
             "Octave",
-            com.music.bitchord.data.sources.ProprietarySources.maskLabel("https://octave.example.com/", ""),
+            com.music.bitchord.data.sources.ProprietarySources.maskLabel(octave.baseUrl, ""),
         )
     }
 

@@ -270,7 +270,13 @@ fun SourcesScreen(
                         // Anything the user configured is theirs to edit or
                         // delete. JioSaavn and YouTube have no address to
                         // change, so a tap on them would open an empty editor.
-                        onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
+                        // The lossless source is sealed: branded row, toggle
+                        // only, no editor and no address anywhere.
+                        onClick = if (config.kind.needsServer && config.kind != SourceKind.TIDAL) {
+                            ({ onEditSource(config) })
+                        } else {
+                            null
+                        },
                         // YouTube gets no switch at all — see
                         // [SourceRegistry.setEnabled] for why one would be a lie.
                         onToggle = if (config.kind == SourceKind.YOUTUBE) {
@@ -961,7 +967,6 @@ private fun AudioQuality.localizedLabel(): String = stringResource(
 private fun SourceConfig.statusLine(health: SourceHealth?): String = when {
     !isComplete -> stringResource(R.string.source_setup_required)
     kind == SourceKind.JIOSAAVN -> stringResource(R.string.jiosaavn_mismatch_warning)
-    kind == SourceKind.TIDAL -> stringResource(R.string.tidal_community_warning)
     health is SourceHealth.Ok -> listOfNotNull(
         health.detail,
         kind.labels.take(3).joinToString(" · "),
@@ -1143,7 +1148,7 @@ internal fun SourceEditorAlert(
         // would report "Connected" over a URL nobody has tried.
         onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
         urlPlaceholder = when (config.kind) {
-            SourceKind.TIDAL -> "https://api.monochrome.tf"
+            SourceKind.TIDAL -> "https://lossless.example.com"
             SourceKind.OCTAVE -> "https://api.octavestreaming.com"
             else -> "https://my-addon.example.com"
         },
