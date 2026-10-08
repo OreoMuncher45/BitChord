@@ -133,11 +133,11 @@ fun FlowScreen(
     // Drafts reset whenever the committed config changes (i.e. after Apply).
     var draftMood by remember(mood) { mutableStateOf(mood) }
     var draftDiscovery by remember(tuner.discovery) { mutableFloatStateOf(tuner.discovery) }
-    var draftFavBias by remember(tuner.favoritesBias) { mutableFloatStateOf(tuner.favoritesBias) }
+    var draftMemory by remember(tuner.memory) { mutableFloatStateOf(tuner.memory) }
     var draftExcluded by remember(tuner.excludedGenres) { mutableStateOf(tuner.excludedGenres) }
     var showTuner by remember { mutableStateOf(false) }
     val dirty = draftMood != mood || draftDiscovery != tuner.discovery ||
-        draftFavBias != tuner.favoritesBias || draftExcluded != tuner.excludedGenres
+        draftMemory != tuner.memory || draftExcluded != tuner.excludedGenres
     val songs = (tracksState as? UiState.Success)?.data.orEmpty()
     // No borrowed art, no decode: the hero is a pure GPU gradient, so the
     // page opens instantly even with an empty mix. Palette falls back to
@@ -180,19 +180,19 @@ fun FlowScreen(
                 FlowTunerCard(
                     tuner = tuner.copy(
                         discovery = draftDiscovery,
-                        favoritesBias = draftFavBias,
+                        memory = draftMemory,
                         excludedGenres = draftExcluded,
                     ),
                     palette = palette,
                     onDiscovery = { draftDiscovery = it },
-                    onFavoritesBias = { draftFavBias = it },
+                    onMemory = { draftMemory = it },
                     onToggleGenre = { genre, enabled ->
                         draftExcluded = if (enabled) draftExcluded - genre.lowercase()
                         else draftExcluded + genre.lowercase()
                     },
                     dirty = dirty,
                     rebuilding = rebuilding,
-                    onApply = { onApply(draftMood, draftDiscovery, draftFavBias, draftExcluded) },
+                    onApply = { onApply(draftMood, draftDiscovery, draftMemory, draftExcluded) },
                 )
             }
         }
@@ -592,7 +592,7 @@ private fun FlowTunerCard(
     tuner: FlowTuner,
     palette: ArtworkPalette,
     onDiscovery: (Float) -> Unit,
-    onFavoritesBias: (Float) -> Unit,
+    onMemory: (Float) -> Unit,
     onToggleGenre: (String, Boolean) -> Unit,
     dirty: Boolean,
     rebuilding: Boolean,
@@ -650,21 +650,31 @@ private fun FlowTunerCard(
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.flow_favorites),
+                    stringResource(R.string.flow_alltime),
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.onBackgroundVariant,
                     modifier = Modifier.width(80.dp),
                 )
                 Slider(
-                    value = tuner.favoritesBias,
-                    onValueChange = onFavoritesBias,
+                    value = tuner.memory,
+                    onValueChange = onMemory,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
                         thumbColor = palette.accent,
                         activeTrackColor = palette.accent,
                     ),
                 )
+                Text(
+                    stringResource(R.string.flow_recent),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onBackgroundVariant,
+                )
             }
+            Text(
+                stringResource(R.string.flow_memory_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.onBackgroundVariant,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(R.string.flow_genres),

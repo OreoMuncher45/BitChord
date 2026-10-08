@@ -99,19 +99,31 @@ data class AddonManifest(
 }
 
 /**
- * One declared setting, reduced to the two things this app does with it.
+ * One declared setting, reduced to the things this app does with it.
  *
  * [default] is what gets sent, and [options] is what a `quality` request is
- * matched against — see [AddonClient.settingsFor]. The rest of the schema is a
- * form description: a type, a label, a help line, bounds. The reference host
- * renders a form from those; this app does not, and carrying fields nothing
- * reads would make the class look like it presents a UI it has no part in.
+ * matched against — see [AddonClient.settingsFor]. [label] names the setting
+ * in the one place it is shown, the source editor, falling back to [key].
+ * [secret] marks a credential: secret settings render as password fields in
+ * the editor and are the only settings the editor offers to fill in. The rest
+ * of the schema is a form description the reference host renders; this app
+ * does not, and carrying fields nothing reads would make the class look like
+ * it presents a UI it has no part in.
  */
 @Serializable
 data class AddonSetting(
     @SerialName("key") val key: String = "",
     @SerialName("default") val default: JsonElement? = null,
     @SerialName("options") val options: List<AddonSettingOption> = emptyList(),
+    @SerialName("label") val label: String = "",
+    @SerialName("secret") val secret: Boolean = false,
+    /**
+     * How to fill this in, in the addon's own words — shown under the field
+     * in the source editor. Where the key comes from and what to tap there
+     * belongs here rather than in the app, because only the addon knows which
+     * service it is asking about.
+     */
+    @SerialName("help") val help: String = "",
 ) {
     /** [default] as the string that would go in a query parameter, or null. */
     val defaultValue: String? get() = default?.asQueryValue()

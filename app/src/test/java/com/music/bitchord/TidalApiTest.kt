@@ -201,6 +201,31 @@ class TidalApiTest {
     }
 
     @Test
+    fun `octave arrives pre-added but keyless`() {
+        val sources = com.music.bitchord.data.sources.SourceRegistry.sourcesForInit(
+            emptyList(),
+            forceJioSaavnOff = true,
+        )
+        val octave = sources.single {
+            com.music.bitchord.data.sources.ProprietarySources.isProprietaryUrl(it.baseUrl)
+        }
+        assertEquals(com.music.bitchord.data.sources.SourceKind.ADDON, octave.kind)
+        assertTrue(octave.enabled)
+        assertEquals(
+            "Octave",
+            com.music.bitchord.data.sources.ProprietarySources.maskLabel(octave.baseUrl, ""),
+        )
+    }
+
+    @Test
+    fun `proprietary detection needs no android`() {
+        assertTrue(com.music.bitchord.data.sources.ProprietarySources.isProprietaryUrl("https://unified-addon.netlify.app/manifest.json"))
+        assertTrue(com.music.bitchord.data.sources.ProprietarySources.isProprietary("https://x.octave.example/", ""))
+        assertFalse(com.music.bitchord.data.sources.ProprietarySources.isProprietary("https://example.com/", "My Addon"))
+        assertFalse(com.music.bitchord.data.sources.ProprietarySources.isProprietary("not a url", ""))
+    }
+
+    @Test
     fun `existing installs gain tidal without touching other sources`() {
         val youtube = com.music.bitchord.data.sources.SourceConfig(
             kind = com.music.bitchord.data.sources.SourceKind.YOUTUBE,

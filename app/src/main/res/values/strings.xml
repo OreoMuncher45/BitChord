@@ -1153,6 +1153,10 @@
     <string name="flow_temp_count">%1$d tracks · %2$s mood · temporary</string>
     <string name="flow_temp_meta">%1$d tracks · temporary</string>
     <string name="flow_new_mix">New mix</string>
+    <string name="flow_memory">Memory</string>
+    <string name="flow_memory_subtitle">All-time likes vs what you have been playing lately</string>
+    <string name="flow_alltime">All-time</string>
+    <string name="flow_recent">Recent</string>
     <string name="flow_rebuilding">Rebuilding Flow…</string>
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>

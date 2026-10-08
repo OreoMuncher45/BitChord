@@ -27,7 +27,7 @@ import kotlin.random.Random
  */
 object FlowEngine {
 
-    const val INITIAL_TRACKS = 24
+    const val INITIAL_TRACKS = 50
     const val TOPUP_TRACKS = 10
     private const val SKIP_EXCLUDE_AFTER = 3
     private const val SKIP_DEMOTE_AFTER = 2
@@ -52,10 +52,15 @@ object FlowEngine {
         genreOf: (String) -> List<String> = { emptyList() },
     ): Double {
         var s = 1.0
-        if (candidate.videoId in favIds) s += 3.0 * tuner.favoritesBias.coerceIn(0f, 1f) + 1.0
+        // Likes are always the backbone — unless the pool gate below removed
+        // them, in which case they never reach this function at all.
+        if (candidate.videoId in favIds) s += 4.0
         historyRank[candidate.videoId]?.let { rank ->
-            // Newest history (rank 0) scores highest, decays over ~20 plays.
-            s += (1.0 - min(rank, 20) / 22.0) * 2.0
+            // Newest history (rank 0) scores highest, decays over ~20 plays,
+            // scaled by the Memory slider: all-time mode barely listens to
+            // recent plays, recent mode lets them dominate.
+            val memory = tuner.memory.coerceIn(0f, 1f)
+            s += (1.0 - min(rank, 20) / 22.0) * (0.4 + 2.4 * memory)
         }
         val skips = skipCounts[candidate.videoId] ?: 0
         if (skips >= SKIP_DEMOTE_AFTER) s -= 2.0
@@ -110,8 +115,18 @@ object FlowEngine {
     ): List<Song> {
         val historyRank = history.mapIndexed { i, s -> s.videoId to i }.toMap()
         val hints = mood.genreHints()
-        return pool
-            .distinctBy { it.videoId }
+        // Hard pool gates at the slider extremes, so full Adventurous means
+        // zero familiar tracks and full Personal means zero fresh ones —
+        // scoring alone could never promise that.
+        val discovery = tuner.discovery.coerceIn(0f, 1f)
+        val gated = pool.distinctBy { it.videoId }.let { distinct ->
+            when {
+                discovery >= 0.85f -> distinct.filter { it.videoId !in favIds && it.videoId !in historyRank }
+                discovery <= 0.15f -> distinct.filter { it.videoId in favIds || it.videoId in historyRank }
+                else -> distinct
+            }
+        }
+        return gated
             .filterNot { isExcluded(it, emptySet(), emptyMap(), skipCounts, tuner, genreOf) }
             .map { it to score(it, favIds, historyRank, skipCounts, tuner, hints, genreOf) }
             .sortedByDescending { it.second }
@@ -162,6 +177,8 @@ object FlowEngine {
             val related = runCatching { YtMusicRepository.radio(seed.videoId).getOrNull() }
                 .getOrNull().orEmpty()
                 .filterNot { isExcluded(it, bannedIds, likeStatuses, skipCounts, config.tuner, genreOf) }
+                // Full Adventurous keeps liked tracks out of the expansion too.
+                .filterNot { config.tuner.discovery >= 0.85f && it.videoId in favIds }
             val extra = QueueBuilder.extend(expanded, related, min(6, limit - expanded.size))
             // Re-score radio tracks so favorites-weighting + mood still apply.
             val historyRank = seeds.history.mapIndexed { i, s -> s.videoId to i }.toMap()

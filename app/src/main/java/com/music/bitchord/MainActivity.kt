@@ -2756,8 +2756,8 @@ private fun BitChordApp(
                                 }
                                 showFlowSave = true
                             },
-                            onApply = { mood, discovery, favBias, excluded ->
-                                viewModel.applyFlowConfig(mood, discovery, favBias, excluded)
+                            onApply = { mood, discovery, memory, excluded ->
+                                viewModel.applyFlowConfig(mood, discovery, memory, excluded)
                             },
                             onUnban = { viewModel.unbanFromFlow(it) },
                             onBan = { song ->

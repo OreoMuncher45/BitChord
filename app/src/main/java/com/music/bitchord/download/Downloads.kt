@@ -297,6 +297,14 @@ object Downloads {
         return null
     }
 
+    /**
+     * The quality badge recorded when [videoId] was saved ("FLAC",
+     * "AAC · 320 kbps", …), or null when unknown. Synchronous for
+     * [Song.toMediaItem][com.music.bitchord.playback.toMediaItem], which
+     * decides file-vs-stream on the calling thread.
+     */
+    fun savedFormat(videoId: String): String? = _savedMetadata.value[videoId]?.downloadFormat
+
     /** Delete the file saved for [videoId] and forget it. */
     suspend fun delete(context: Context, videoId: String): Boolean = withContext(Dispatchers.IO) {
         val uri = _saved.value[videoId]?.toUri() ?: return@withContext false
@@ -1360,6 +1368,19 @@ internal fun resolvedDownloadDates(
     val modifiedSeconds = fileModifiedMillis?.takeIf { it > 0 }?.div(1_000)
     return (persistedAddedSeconds ?: modifiedSeconds) to modifiedSeconds
 }
+
+/**
+ * Whether a recorded download badge names a lossless file. Dolby is premium
+ * but not bit-exact, so it stays on disk: substituting stereo FLAC for an
+ * Atmos mix would change the music, not just the quality. Null (unknown)
+ * also keeps the file — "I could not tell" is not "it is lossy".
+ */
+internal fun isLosslessDownload(badge: String?): Boolean =
+    badge?.let { b ->
+        !b.contains("dolby", ignoreCase = true) &&
+            listOf("flac", "alac", "wav", "aiff", "ape", "wv", "dsf", "dff", "lossless")
+                .any { b.contains(it, ignoreCase = true) }
+    } == true
 
 /** Premium source labels used in BitChord's Downloads list. */
 private fun StreamFormat.downloadBadge(): String? = when {

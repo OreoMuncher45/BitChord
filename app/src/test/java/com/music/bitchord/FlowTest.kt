@@ -161,4 +161,53 @@ class FlowTest {
     fun `config defaults to unfiltered flow`() {
         assertEquals(FlowMood.FLOW, FlowConfig().mood)
     }
+
+    // ---- Discovery gates: extremes are promises, not boosts ----
+
+    @Test
+    fun `full adventurous plays zero liked tracks`() {
+        val pool = listOf(song("fav", "Loved"), song("new", "New"))
+        val ordered = FlowEngine.orderLocalPool(
+            pool = pool,
+            favIds = setOf("fav"),
+            history = emptyList(),
+            skipCounts = emptyMap(),
+            tuner = FlowTuner().withDiscovery(1f),
+            mood = FlowMood.FLOW,
+            limit = 10,
+            random = Random(0),
+        )
+        assertEquals(listOf("new"), ordered.map { it.videoId })
+    }
+
+    @Test
+    fun `full personal plays zero fresh tracks`() {
+        val pool = listOf(song("fav", "Loved"), song("new", "New"))
+        val ordered = FlowEngine.orderLocalPool(
+            pool = pool,
+            favIds = setOf("fav"),
+            history = emptyList(),
+            skipCounts = emptyMap(),
+            tuner = FlowTuner().withDiscovery(0f),
+            mood = FlowMood.FLOW,
+            limit = 10,
+            random = Random(0),
+        )
+        assertEquals(listOf("fav"), ordered.map { it.videoId })
+    }
+
+    @Test
+    fun `memory scales recent history weight`() {
+        val h = song("h", "Recent Hit")
+        val history = listOf(h)
+        val rank = mapOf("h" to 0)
+        val low = FlowEngine.score(h, emptySet(), rank, emptyMap(), FlowTuner().withMemory(0f), emptyList())
+        val high = FlowEngine.score(h, emptySet(), rank, emptyMap(), FlowTuner().withMemory(1f), emptyList())
+        assertTrue(high > low)
+    }
+
+    @Test
+    fun `opening mix is fifty tracks`() {
+        assertEquals(50, FlowEngine.INITIAL_TRACKS)
+    }
 }

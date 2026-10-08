@@ -23,7 +23,7 @@ object FlowStore {
     private const val FILE = "bitchord_flow"
     private const val KEY_MOOD = "flow_mood"
     private const val KEY_DISCOVERY = "flow_discovery"
-    private const val KEY_FAV_BIAS = "flow_fav_bias"
+    private const val KEY_MEMORY = "flow_memory"
     private const val KEY_EXCLUDED_GENRES = "flow_excluded_genres"
     private const val KEY_BANNED = "flow_banned"
     private const val KEY_SKIPS = "flow_skips"
@@ -57,7 +57,7 @@ object FlowStore {
             .getOrDefault(FlowMood.FLOW)
         _tuner.value = FlowTuner(
             discovery = prefs.getFloat(KEY_DISCOVERY, 0.35f),
-            favoritesBias = prefs.getFloat(KEY_FAV_BIAS, 0.65f),
+            memory = prefs.getFloat(KEY_MEMORY, 0.5f),
             excludedGenres = prefs.getStringSet(KEY_EXCLUDED_GENRES, emptySet()).orEmpty(),
         )
         _bannedIds.value = prefs.getStringSet(KEY_BANNED, emptySet()).orEmpty().take(MAX_BANNED).toSet()
@@ -75,9 +75,9 @@ object FlowStore {
         if (this::prefs.isInitialized) prefs.edit().putFloat(KEY_DISCOVERY, _tuner.value.discovery).apply()
     }
 
-    fun setFavoritesBias(value: Float) {
-        _tuner.value = _tuner.value.withFavoritesBias(value)
-        if (this::prefs.isInitialized) prefs.edit().putFloat(KEY_FAV_BIAS, _tuner.value.favoritesBias).apply()
+    fun setMemory(value: Float) {
+        _tuner.value = _tuner.value.withMemory(value)
+        if (this::prefs.isInitialized) prefs.edit().putFloat(KEY_MEMORY, _tuner.value.memory).apply()
     }
 
     fun toggleGenre(genre: String, enabled: Boolean) {

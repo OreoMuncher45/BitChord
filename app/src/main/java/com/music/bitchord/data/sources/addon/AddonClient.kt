@@ -12,9 +12,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,7 +36,19 @@ import java.util.concurrent.TimeUnit
  * request abandoned after it has already reached somebody's server is work
  * their server did for nobody.
  */
-class AddonClient(rawBaseUrl: String) {
+class AddonClient(
+    rawBaseUrl: String,
+    /**
+     * Values the user entered for this addon's own settings, by setting key.
+     *
+     * Overlaid on the manifest defaults in [settingsFor] — a non-blank entry
+     * wins, a blank or absent one falls back to the default. Kept out of the
+     * log lines by construction: [redact] strips every URL to its host, and
+     * the shared-call descriptions carry the tier and the query, never the
+     * parameters.
+     */
+    private val userSettings: Map<String, String> = emptyMap(),
+) {
 
     /** Where this addon lives, with `/manifest.json` and trailing slashes off. */
     val baseUrl: String = normalizeBase(rawBaseUrl)
@@ -203,6 +218,14 @@ class AddonClient(rawBaseUrl: String) {
             val key = setting.key.takeIf { it.isNotBlank() } ?: return@forEach
             setting.defaultValue?.let { params[key] = it }
         }
+        // The user's own entries win over the declared defaults. Blank means
+        // unset and falls back rather than sending an empty parameter the
+        // addon would have to guess at. The tier below still wins for
+        // `quality`: what is asked for comes from the request in hand, not
+        // from anything stored.
+        userSettings.forEach { (key, value) ->
+            if (key.isNotBlank() && value.isNotBlank()) params[key] = value
+        }
         if (tier.isNotBlank()) {
             val options = declared.firstOrNull { it.key == QUALITY_KEY }
                 ?.options.orEmpty()
@@ -332,8 +355,8 @@ class AddonClient(rawBaseUrl: String) {
                     // The sources screen renders the two differently, and
                     // painting a transient outage as a configuration error
                     // sends people to re-paste a URL that was always correct.
-                    response.code >= 500 -> throw AddonUnavailable("HTTP ${response.code}")
-                    response.code != 429 -> throw AddonException("HTTP ${response.code}")
+                    response.code >= 500 -> throw AddonUnavailable("HTTP ${response.code}${serverSaid(response)}")
+                    response.code != 429 -> throw AddonException("HTTP ${response.code}${serverSaid(response)}")
                     attempt >= MAX_RETRIES -> throw AddonUnavailable("This addon is rate limiting BitChord")
                     else -> retryAfterMs(response.header("Retry-After"), attempt)
                 }
@@ -350,6 +373,29 @@ class AddonClient(rawBaseUrl: String) {
     private fun retryAfterMs(header: String?, attempt: Int): Long {
         val stated = header?.trim()?.toDoubleOrNull()?.times(1000)?.toLong()
         return (stated ?: (BACKOFF_BASE_MS shl attempt)).coerceIn(BACKOFF_BASE_MS, BACKOFF_CAP_MS)
+    }
+
+    /**
+     * What the server said about a refusal, appended to the status.
+     *
+     * The reference addon reports configuration problems as JSON — a rejected
+     * account key, an upstream that needs attention — and a bare status throws
+     * that away, leaving the sources screen and the diagnostics log with a
+     * number where the reason was. The body is capped and any of this
+     * source's own secret values are blanked first, so a server echoing a
+     * query parameter cannot turn a pasted log into a leaked key.
+     */
+    private fun serverSaid(response: Response): String {
+        val body = runCatching { response.body?.string() }
+            .getOrNull()?.takeIf { it.isNotBlank() }?.take(MAX_ERROR_BODY_CHARS)
+            ?: return ""
+        val message = runCatching {
+            json.parseToJsonElement(body).jsonObject["message"]?.jsonPrimitive?.content
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: body
+        val scrubbed = userSettings.values
+            .filter { it.isNotBlank() }
+            .fold(message) { text, secret -> text.replace(secret, "***") }
+        return scrubbed.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -474,7 +520,15 @@ class AddonClient(rawBaseUrl: String) {
         private const val BACKOFF_BASE_MS = 500L
         private const val BACKOFF_CAP_MS = 8_000L
 
-        private val USER_AGENT = "BitChord/v${com.music.bitchord.BuildConfig.VERSION_NAME}"
+        /**
+         * How much of a refusal body is worth keeping. Enough for the JSON
+         * error the reference addon answers with, far short of an HTML error
+         * page — which is capped rather than parsed, since it is never the
+         * message.
+         */
+        private const val MAX_ERROR_BODY_CHARS = 300
+
+        private const val USER_AGENT = "BitChord"
 
         /**
          * What [probeSearch] asks for. Deliberately an ordinary word rather

@@ -1,7 +1,5 @@
 package com.music.bitchord.data.sources
 
-import android.net.Uri
-
 /**
  * Handles sources that are proprietary/services with special handling.
  *
@@ -19,6 +17,9 @@ object ProprietarySources {
     /** The display name used everywhere this service appears. */
     const val DISPLAY_NAME = "Octave"
 
+    /** The reference deployment new installs arrive pointed at. */
+    const val OCTAVE_URL = "https://unified-addon.netlify.app"
+
     /** Known base URLs (and their variations) that identify the Octave service. */
     private val OCTAVE_BASES = listOf(
         "octave",               // e.g. https://octave.example.com
@@ -26,7 +27,12 @@ object ProprietarySources {
     )
 
     fun isProprietaryUrl(url: String): Boolean {
-        val host = Uri.parse(url.trim()).host ?: return false
+        // Hand-rolled, not android.net.Uri: this runs in plain-JVM unit
+        // tests too, where android stubs return null for everything.
+        val host = url.trim().substringAfter("://", "")
+            .substringBefore('/').substringBefore('?').substringBefore('#')
+            .substringAfter('@').substringBefore(':')
+            .takeIf { it.isNotBlank() } ?: return false
         return OCTAVE_BASES.any { host.contains(it, ignoreCase = true) }
     }
 

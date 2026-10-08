@@ -1002,6 +1002,42 @@ internal fun SourceEditorAlert(
     val alreadyAdded = stringResource(R.string.source_already_added)
 
     /**
+     * Credential settings this addon declares (today: the Octave account key),
+     * and the values typed for them.
+     *
+     * The schema comes from the manifest, so an addon declaring nothing secret
+     * shows no extra field and behaves exactly as before. Values are stored in
+     * the config and travel as query parameters — see
+     * [AddonClient.settingsFor] — and are cleared the moment the address is
+     * edited, so a key is never sent to a server it was not entered for.
+     */
+    var secretSettings by remember { mutableStateOf(emptyList<AddonSetting>()) }
+    val secretValues = remember {
+        mutableStateMapOf<String, String>().apply { putAll(config.settings) }
+    }
+
+    /**
+     * The secret settings of the server at [base], or empty when it says
+     * nothing usable — a server without a manifest is still a working addon,
+     * just one with nothing to fill in.
+     */
+    suspend fun loadSecrets(base: String): List<AddonSetting> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                AddonClient(base.trim()).manifest().getOrNull()
+                    ?.settings.orEmpty()
+                    .filter { it.secret && it.key.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+
+    // Seed the fields when editing a source that already holds values, so a
+    // stored key is not hidden until Test is pressed.
+    LaunchedEffect(config.id) {
+        if (baseUrl.isBlank()) return@LaunchedEffect
+        secretSettings = loadSecrets(baseUrl)
+    }
+
+    /**
      * Identify what is at the URL, then say so.
      *
      * Both buttons run this — the only difference is whether a success is then
@@ -1058,13 +1094,19 @@ internal fun SourceEditorAlert(
                 is SourceHealth.Unreachable -> health.reason
             }
             busy = false
+            // The secret schema belongs to the server just identified, not to
+            // whatever address was there before it.
+            secretSettings = loadSecrets(found.baseUrl)
 
             // Saved even when the probe came back unhappy, but only once the
             // format is known: a server that is asleep is still worth storing —
             // that was true before and is why Test was never mandatory — while
             // a URL nothing can be made of is not.
             if (thenSave) {
-                if (isNew) SourceRegistry.add(found) else SourceRegistry.update(found)
+                // A blank entry means "not set" and falls back to the
+                // manifest default rather than sending an empty parameter.
+                val toStore = found.copy(settings = secretValues.filterValues { it.isNotBlank() })
+                if (isNew) SourceRegistry.add(toStore) else SourceRegistry.update(toStore)
                 onSaved()
             }
         }
@@ -1085,7 +1127,7 @@ internal fun SourceEditorAlert(
         // A result describes the address it was run against, so the moment that
         // address is edited it stops being true and is cleared. Left up, it
         // would report "Connected" over a URL nobody has tried.
-        onUrlChange = { baseUrl = it; status = null },
+        onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
         urlPlaceholder = if (config.kind == SourceKind.TIDAL) "https://api.monochrome.tf"
         else "https://my-addon.example.com",
         status = status,
@@ -1096,5 +1138,15 @@ internal fun SourceEditorAlert(
         onSave = { run(thenSave = true) },
         onRemove = if (isNew) null else onDelete,
         onDismiss = onDismiss,
+        extraFields = secretSettings.map { setting ->
+            EditorField(
+                value = secretValues[setting.key].orEmpty(),
+                onChange = { secretValues[setting.key] = it },
+                placeholder = setting.label.ifBlank { setting.key },
+                keyboardType = KeyboardType.Password,
+                isPassword = true,
+                help = setting.help,
+            )
+        },
     )
 }

@@ -41,6 +41,16 @@ data class SourceConfig(
     /** JioSaavn is opt-in because catalogue matches can select the wrong recording. */
     val enabled: Boolean = kind != SourceKind.JIOSAAVN,
     /**
+     * Values the user entered for this addon's own settings, by setting key.
+     *
+     * Only credentials are editable — see the source editor — so in practice
+     * this holds keys, not preferences. Blank means unset and is not stored:
+     * the editor drops blank entries on save and the client falls back to the
+     * manifest default. Absent for every config written before this existed,
+     * which decode as empty and behave exactly as before.
+     */
+    val settings: Map<String, String> = emptyMap(),
+    /**
      * The addon's `allowDownloads`, as its manifest last said. Stored rather
      * than asked each time so the answer is there without a request — see
      * [checkValidLossless] for why that matters.
@@ -64,10 +74,13 @@ data class SourceConfig(
 
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
-        get() = label.ifBlank {
-            baseUrl.takeIf { it.isNotBlank() }
-                ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                ?: kind.label
+        get() {
+            if (ProprietarySources.isProprietary(baseUrl, label)) return ProprietarySources.DISPLAY_NAME
+            return label.ifBlank {
+                baseUrl.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                    ?: kind.label
+            }
         }
 
     /** Whether this has enough filled in to be worth contacting at all. */
@@ -157,9 +170,19 @@ object SourceRegistry {
                 )
             }
 
+        // Octave arrives pre-added (but keyless) so FLAC is one key away
+        // instead of one URL away — the toggle is the off switch, and the
+        // editor's key field is what turns it on. Never duplicated: a stored
+        // entry pointing at the service wins over the seed.
+        val withOctave = if (seeded.none { ProprietarySources.isProprietaryUrl(it.baseUrl) }) {
+            seeded + SourceConfig(kind = SourceKind.ADDON, baseUrl = ProprietarySources.OCTAVE_URL)
+        } else {
+            seeded
+        }
+
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
-        return seeded
+        return withOctave
             .filterNot { it.kind == SourceKind.MODULE }
             .map { config ->
                 when {
@@ -413,7 +436,7 @@ object SourceRegistry {
                 (existing ?: SourceConfig(kind = SourceKind.ADDON)).copy(
                     kind = SourceKind.ADDON,
                     baseUrl = detected.baseUrl,
-                    label = detected.manifest.displayName,
+                    label = ProprietarySources.maskLabel(detected.baseUrl, detected.manifest.displayName),
                     allowDownloads = detected.manifest.downloadsAllowed,
                     checkValidLossless = detected.manifest.requiresLosslessOutput,
                 ),

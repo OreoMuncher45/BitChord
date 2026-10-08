@@ -32,6 +32,7 @@ import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.download.Downloads
+import com.music.bitchord.download.isLosslessDownload
 import com.music.bitchord.ui.rememberIsForeground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -576,7 +577,22 @@ fun Song.toMediaItem(): MediaItem {
     // leaves that path unguarded.
     val offlineUri = localUri?.takeUnless(Downloads::isMissingLocalFile)
         ?: Downloads.verifiedSavedUri(videoId)
-    val uriString = offlineUri ?: when {
+    // A downloaded lossy file must not shadow a lossless stream the ceiling
+    // asks for: online, lossless wanted, a lossless source enabled, and the
+    // file itself lossy → route to the resolver instead of the file. Device
+    // files (localUri set) always play local — they carry no catalogue
+    // identity to resolve — and offline always plays the file. Unknown badges
+    // also keep the file: "I could not tell" is not "it is lossy".
+    val fromDownload = localUri == null && offlineUri != null
+    val downloadedBadge = downloadFormat ?: offlineUri?.let { Downloads.savedFormat(videoId) }
+    val streamInstead = fromDownload && downloadedBadge != null &&
+        !isLosslessDownload(downloadedBadge) &&
+        com.music.bitchord.data.settings.AppSettings.meteredConnection.value != null &&
+        com.music.bitchord.data.settings.AppSettings.effectiveAudioQuality ==
+        com.music.bitchord.data.settings.AudioQuality.LOSSLESS &&
+        SourceRegistry.active().any { it.kind.canServeLossless }
+    val effectiveOfflineUri = offlineUri.takeUnless { streamInstead }
+    val uriString = effectiveOfflineUri ?: when {
         videoId.startsWith("content://") || videoId.startsWith("file://") -> videoId
         // Title, artist and runtime ride along in the URI because they are what
         // a cross-source match is made on, and the resolver runs on ExoPlayer's
@@ -644,7 +660,7 @@ fun Song.toMediaItem(): MediaItem {
             // depends on.
             .apply {
                 if (queueTier != QueueTier.CONTEXT || queueEntryId != null || fromAutoplay ||
-                    offlineUri != null || durationText != null ||
+                    effectiveOfflineUri != null || durationText != null ||
                     artistId != null || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
                     playbackSource != null || playbackSourceType != null || playbackSourceId != null
@@ -658,7 +674,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_PLAYBACK_SOURCE to playbackSource,
                             EXTRA_PLAYBACK_SOURCE_TYPE to playbackSourceType?.name,
                             EXTRA_PLAYBACK_SOURCE_ID to playbackSourceId,
-                            EXTRA_LOCAL_URI to offlineUri,
+                            EXTRA_LOCAL_URI to effectiveOfflineUri,
                             EXTRA_LOCAL_PATH to localPath,
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,

@@ -40,18 +40,21 @@ enum class FlowMood(val label: String) {
 /**
  * Flow Tuner (Deezer 2026-style): actively steer the algorithm.
  *
- * @param discovery 0 = only favorites, 1 = maximum fresh recommendations.
- * @param favoritesBias weight given to liked tracks when picking seeds.
+ * Two independent axes:
+ * @param discovery fresh-vs-familiar ratio. 0 = only likes, 1 = only fresh
+ *   finds (past ~0.85 likes and history are dropped from the pool entirely).
+ * @param memory recent-vs-all-time weight. 0 leans the mix on all-time
+ *   likes; 1 leans it on what has actually been playing lately.
  * @param excludedGenres genre names toggled OFF in the tuner — never seeded,
  *   and filtered when [genreOf] can resolve a candidate's genres.
  */
 data class FlowTuner(
     val discovery: Float = 0.35f,
-    val favoritesBias: Float = 0.65f,
+    val memory: Float = 0.5f,
     val excludedGenres: Set<String> = emptySet(),
 ) {
     fun withDiscovery(value: Float) = copy(discovery = value.coerceIn(0f, 1f))
-    fun withFavoritesBias(value: Float) = copy(favoritesBias = value.coerceIn(0f, 1f))
+    fun withMemory(value: Float) = copy(memory = value.coerceIn(0f, 1f))
     fun toggleGenre(genre: String, enabled: Boolean): FlowTuner =
         if (enabled) copy(excludedGenres = excludedGenres - genre.lowercase())
         else copy(excludedGenres = excludedGenres + genre.lowercase())

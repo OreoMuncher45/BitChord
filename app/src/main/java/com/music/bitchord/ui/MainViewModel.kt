@@ -3263,15 +3263,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setFlowMood(mood: FlowMood) = FlowStore.setMood(mood)
     fun setFlowDiscovery(value: Float) = FlowStore.setDiscovery(value)
-    fun setFlowFavoritesBias(value: Float) = FlowStore.setFavoritesBias(value)
+    fun setFlowMemory(value: Float) = FlowStore.setMemory(value)
     fun toggleFlowGenre(genre: String, enabled: Boolean) = FlowStore.toggleGenre(genre, enabled)
     fun setFlowExcludedGenres(genres: Set<String>) = FlowStore.setExcludedGenres(genres)
 
     /** Commits a batched tuner edit (mood + sliders + genres) and rebuilds once. */
-    fun applyFlowConfig(mood: FlowMood, discovery: Float, favoritesBias: Float, excludedGenres: Set<String>) {
+    fun applyFlowConfig(mood: FlowMood, discovery: Float, memory: Float, excludedGenres: Set<String>) {
         FlowStore.setMood(mood)
         FlowStore.setDiscovery(discovery)
-        FlowStore.setFavoritesBias(favoritesBias)
+        FlowStore.setMemory(memory)
         FlowStore.setExcludedGenres(excludedGenres)
         refreshFlow()
     }
