@@ -201,19 +201,19 @@ class TidalApiTest {
     }
 
     @Test
-    fun `octave arrives pre-added but keyless`() {
+    fun `no dead octave seed is planted`() {
         val sources = com.music.bitchord.data.sources.SourceRegistry.sourcesForInit(
             emptyList(),
             forceJioSaavnOff = true,
         )
-        val octave = sources.single {
-            com.music.bitchord.data.sources.ProprietarySources.isProprietaryUrl(it.baseUrl)
-        }
-        assertEquals(com.music.bitchord.data.sources.SourceKind.ADDON, octave.kind)
-        assertTrue(octave.enabled)
+        assertTrue(
+            sources.none {
+                com.music.bitchord.data.sources.ProprietarySources.isProprietaryUrl(it.baseUrl)
+            },
+        )
         assertEquals(
             "Octave",
-            com.music.bitchord.data.sources.ProprietarySources.maskLabel(octave.baseUrl, ""),
+            com.music.bitchord.data.sources.ProprietarySources.maskLabel("https://octave.example.com/", ""),
         )
     }
 

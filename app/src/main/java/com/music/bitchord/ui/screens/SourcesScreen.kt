@@ -1031,10 +1031,18 @@ internal fun SourceEditorAlert(
         }
 
     // Seed the fields when editing a source that already holds values, so a
-    // stored key is not hidden until Test is pressed.
+    // stored key is not hidden until Test is pressed. When the manifest is
+    // unreachable the schema is unknown — fall back to one row per stored
+    // key, named by the key itself, so there is always a way to see, edit,
+    // or clear what is saved.
     LaunchedEffect(config.id) {
-        if (baseUrl.isBlank()) return@LaunchedEffect
-        secretSettings = loadSecrets(baseUrl)
+        if (baseUrl.isBlank() && config.settings.isEmpty()) return@LaunchedEffect
+        val fromManifest = if (baseUrl.isBlank()) emptyList() else loadSecrets(baseUrl)
+        secretSettings = fromManifest.ifEmpty {
+            config.settings.keys.filter { it.isNotBlank() }.map { key ->
+                AddonSetting(key = key, label = key, secret = true)
+            }
+        }
     }
 
     /**

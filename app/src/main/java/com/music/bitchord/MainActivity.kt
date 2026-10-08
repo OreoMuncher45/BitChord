@@ -2748,6 +2748,12 @@ private fun BitChordApp(
                             onPlay = { startFlow(false) },
                             onShuffle = { startFlow(true) },
                             onNewMix = { viewModel.newFlowMix() },
+                            onToggleLike = {
+                                player.song?.let { viewModel.toggleLike(it.videoId) }
+                            },
+                            currentLiked = player.song?.let {
+                                likeStatuses[it.videoId] == LikeStatus.LIKE
+                            } == true,
                             onSave = {
                                 flowSaveName = if (flowMood == com.music.bitchord.data.flow.FlowMood.FLOW) {
                                     "My Flow"

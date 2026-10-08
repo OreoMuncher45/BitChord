@@ -17,9 +17,6 @@ object ProprietarySources {
     /** The display name used everywhere this service appears. */
     const val DISPLAY_NAME = "Octave"
 
-    /** The reference deployment new installs arrive pointed at. */
-    const val OCTAVE_URL = "https://unified-addon.netlify.app"
-
     /** Known base URLs (and their variations) that identify the Octave service. */
     private val OCTAVE_BASES = listOf(
         "octave",               // e.g. https://octave.example.com

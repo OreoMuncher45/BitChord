@@ -170,19 +170,13 @@ object SourceRegistry {
                 )
             }
 
-        // Octave arrives pre-added (but keyless) so FLAC is one key away
-        // instead of one URL away — the toggle is the off switch, and the
-        // editor's key field is what turns it on. Never duplicated: a stored
-        // entry pointing at the service wins over the seed.
-        val withOctave = if (seeded.none { ProprietarySources.isProprietaryUrl(it.baseUrl) }) {
-            seeded + SourceConfig(kind = SourceKind.ADDON, baseUrl = ProprietarySources.OCTAVE_URL)
-        } else {
-            seeded
-        }
-
+        // No Octave seed: its reference deployment is gone (404), and a
+        // dead seed only guarantees a "No manifest" dead end. Octave is
+        // added by pasting its URL like any addon; masking plus the key
+        // field below make it first-class from there.
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
-        return withOctave
+        return seeded
             .filterNot { it.kind == SourceKind.MODULE }
             .map { config ->
                 when {
