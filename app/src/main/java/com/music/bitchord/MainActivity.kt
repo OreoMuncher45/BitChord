@@ -2602,6 +2602,24 @@ private fun BitChordApp(
         BackHandler(enabled = libraryShowAll != null && detail == null) { libraryShowAll = null }
         BackHandler(enabled = detailActiveShelf != null) { detailActiveShelf = null }
 
+        // The Classipod shell replaces tabs, bars and player sheets wholesale:
+        // same viewModel, same controller, same stores — only the chrome
+        // differs. Switching back lives in both shells' settings.
+        val appUi by com.music.bitchord.data.settings.AppSettings.appUi.collectAsStateWithLifecycle()
+        if (appUi == com.music.bitchord.data.settings.AppUi.CLASSIPOD) {
+            com.music.bitchord.ui.classipod.ClassipodHost(
+                darkTheme = darkTheme,
+                viewModel = viewModel,
+                player = player,
+                controller = controller,
+                onPlaySongs = { songs, index, source -> playFrom(songs, index, source) },
+                onStartFlow = { startFlow(false) },
+                openSongMenu = openSongMenu,
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@BitChordApp
+        }
+
         // On a tablet the page and the player stand side by side rather than
         // one over the other: everything a phone stacks in a single column —
         // the feed, the frosted bars, the tab row — becomes the left half of

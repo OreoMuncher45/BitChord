@@ -100,6 +100,16 @@ enum class ThemeMode(val label: String) {
 }
 
 /**
+ * Which interface shell the app wears. BitChord is the full modern UI;
+ * Classipod is the iPod Classic re-creation (click wheel + LCD) running on
+ * the same playback, library, Flow and sources underneath. Switchable both
+ * ways, from either shell's settings.
+ */
+enum class AppUi(val label: String) {
+    BITCHORD("BitChord"), CLASSIPOD("Classipod")
+}
+
+/**
  * Which of the equaliser's two tabs is driving the sound.
  *
  * One at a time rather than both at once: they are two ways of describing the
@@ -340,6 +350,9 @@ object AppSettings {
 
     val playbackSpeed = MutableStateFlow(1.0f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
+
+    /** Which shell the app wears — see [AppUi]. Defaults to the modern UI. */
+    val appUi = MutableStateFlow(AppUi.BITCHORD)
 
     /** Keep playing similar music once the queue runs out. */
     val autoplay = MutableStateFlow(true)
@@ -816,6 +829,13 @@ object AppSettings {
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
+        appUi.value = runCatching {
+            AppUi.valueOf(prefs.getString(KEY_APP_UI, null) ?: "BITCHORD")
+        }.getOrDefault(AppUi.BITCHORD)
+        classipodColorway.value = prefs.getString(KEY_CLASSIPOD_COLORWAY, "Silver").orEmpty()
+            .ifBlank { "Silver" }
+        classipodClicks.value = prefs.getBoolean(KEY_CLASSIPOD_CLICKS, true)
+        classipodWheelSteps.value = prefs.getInt(KEY_CLASSIPOD_WHEEL_STEPS, 36).coerceIn(12, 72)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
         shuffleEnabled.value = prefs.getBoolean(KEY_SHUFFLE_ENABLED, false)
         repeatMode.value = prefs.getInt(KEY_REPEAT_MODE, Player.REPEAT_MODE_OFF)
@@ -1175,6 +1195,37 @@ object AppSettings {
     fun setThemeMode(value: ThemeMode) {
         themeMode.value = value
         prefs.edit().putString(KEY_THEME, value.name).apply()
+    }
+
+    fun setAppUi(value: AppUi) {
+        appUi.value = value
+        prefs.edit().putString(KEY_APP_UI, value.name).apply()
+    }
+
+    // ── Classipod ─────────────────────────────────────────────────────────
+
+    /** iPod faceplate colorway, one of ClassipodTheme.COLORWAYS keys. */
+    val classipodColorway = MutableStateFlow("Silver")
+
+    /** Click sounds on wheel actions. */
+    val classipodClicks = MutableStateFlow(true)
+
+    /** Rotary steps per full wheel turn: Calm 24, Normal 36, Twitchy 48. */
+    val classipodWheelSteps = MutableStateFlow(36)
+
+    fun setClassipodColorway(value: String) {
+        classipodColorway.value = value
+        prefs.edit().putString(KEY_CLASSIPOD_COLORWAY, value).apply()
+    }
+
+    fun setClassipodClicks(value: Boolean) {
+        classipodClicks.value = value
+        prefs.edit().putBoolean(KEY_CLASSIPOD_CLICKS, value).apply()
+    }
+
+    fun setClassipodWheelSteps(value: Int) {
+        classipodWheelSteps.value = value.coerceIn(12, 72)
+        prefs.edit().putInt(KEY_CLASSIPOD_WHEEL_STEPS, classipodWheelSteps.value).apply()
     }
 
     fun setReduceAnimation(value: Boolean) {
@@ -1943,6 +1994,10 @@ object AppSettings {
     private const val KEY_EQ_BANDS = "equalizer_bands"
     private const val KEY_SPEED = "playback_speed"
     private const val KEY_THEME = "theme_mode"
+    private const val KEY_APP_UI = "app_ui"
+    private const val KEY_CLASSIPOD_COLORWAY = "classipod_colorway"
+    private const val KEY_CLASSIPOD_CLICKS = "classipod_clicks"
+    private const val KEY_CLASSIPOD_WHEEL_STEPS = "classipod_wheel_steps"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"
     private const val KEY_REPEAT_MODE = "repeat_mode"

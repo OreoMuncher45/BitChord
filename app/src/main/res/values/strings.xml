@@ -1172,6 +1172,10 @@
     <string name="octave_key_label">Account key</string>
     <string name="octave_key_help">Starts with octv_. The key is stored encrypted on this device and sent only to Octave.</string>
 
+    <!-- Interface shell -->
+    <string name="app_ui">Interface</string>
+    <string name="app_ui_subtitle">BitChord modern UI or Classipod click-wheel UI</string>
+
     <!-- Cover art -->
     <string name="save_cover_art">Save cover art</string>
     <string name="cover_saved">Saved %1$s</string>
