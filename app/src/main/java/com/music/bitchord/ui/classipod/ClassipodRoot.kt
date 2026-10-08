@@ -331,7 +331,11 @@ private fun WheelGlyph(
     )
 }
 
-/** Standard LCD list row: title left, chevron/value right, inverted when selected. */
+/**
+ * Standard LCD list row, 1-for-1 from Classipod's DisplayListTile: 30dp,
+ * bold 16sp, blue gradient + hairline borders + white text + chevron only
+ * when selected.
+ */
 @Composable
 fun ClassipodRow(
     title: String,
@@ -344,16 +348,34 @@ fun ClassipodRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(if (selected) lcd.selectedBg else Color.Transparent)
+            .height(30.dp)
+            .then(
+                if (selected) {
+                    Modifier
+                        .border(1.dp, ClassipodTheme.SELECT_BORDER_TOP)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    ClassipodTheme.SELECT_GRAD_TOP,
+                                    ClassipodTheme.SELECT_GRAD_MID,
+                                    ClassipodTheme.SELECT_GRAD_BOTTOM,
+                                ),
+                            ),
+                        )
+                } else {
+                    Modifier.background(Color.Transparent)
+                },
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
-            fontFamily = ClassipodTheme.helvetica,
+            fontFamily = ClassipodTheme.helveticaBold,
+            fontWeight = FontWeight.Bold,
             fontSize = ClassipodTheme.ROW_SIZE,
-            color = if (selected) lcd.selectedText else lcd.text,
+            color = if (selected) Color.White else lcd.text,
             modifier = Modifier.weight(1f),
             maxLines = 1,
         )
@@ -362,25 +384,32 @@ fun ClassipodRow(
                 text = value,
                 fontFamily = ClassipodTheme.helvetica,
                 fontSize = ClassipodTheme.SMALL_SIZE,
-                color = if (selected) lcd.selectedText.copy(alpha = 0.8f) else lcd.dim,
+                color = if (selected) Color.White.copy(alpha = 0.85f) else lcd.dim,
                 maxLines = 1,
             )
             Spacer(Modifier.width(6.dp))
         }
-        Text(
-            text = "›",
-            fontSize = 16.sp,
-            color = if (selected) lcd.selectedText else lcd.dim,
-        )
+        if (selected) {
+            Text(
+                text = "›",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+        }
     }
 }
 
-/** LCD header bar: back chevron + centered title, iPod style. */
+/**
+ * LCD header bar: silver gradient, centered bold title — verbatim from
+ * Classipod's status-bar gradient (FAFAFA → D1D1D1 → ABABAB).
+ */
 @Composable
 fun ClassipodBar(
     title: String,
     lcd: ClassipodTheme.Lcd,
     onBack: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -388,7 +417,11 @@ fun ClassipodBar(
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(lcd.bar.copy(alpha = 0.4f), lcd.bar),
+                    listOf(
+                        ClassipodTheme.STATUS_GRAD_TOP,
+                        ClassipodTheme.STATUS_GRAD_MID,
+                        ClassipodTheme.STATUS_GRAD_BOTTOM,
+                    ),
                 ),
             )
             .padding(horizontal = 8.dp, vertical = 7.dp),
@@ -398,7 +431,7 @@ fun ClassipodBar(
             text = if (onBack != null) "‹" else "",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = lcd.dim,
+            color = Color(0xFF3A3A3A),
             modifier = Modifier
                 .width(24.dp)
                 .clickable(enabled = onBack != null) { onBack?.invoke() },
@@ -408,12 +441,16 @@ fun ClassipodBar(
             text = title,
             fontFamily = ClassipodTheme.helveticaBold,
             fontWeight = FontWeight.Bold,
-            fontSize = ClassipodTheme.TITLE_SIZE,
-            color = lcd.text,
+            fontSize = 14.sp,
+            color = Color(0xFF1A1A1A),
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
             maxLines = 1,
         )
-        Spacer(Modifier.width(24.dp))
+        if (trailing != null) {
+            trailing()
+        } else {
+            Spacer(Modifier.width(24.dp))
+        }
     }
 }

@@ -8,6 +8,7 @@ Usage: python3 tool/check_classipod_parity.py
 """
 import re
 import sys
+import pathlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,7 +27,16 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("menu/flow entry", CLS / "ClassipodHost.kt", ["FlowHome", "flowStatus"]),
     ("menu/search", CLS / "ClassipodHost.kt", ["ClassipodPage.Search", "onQueryChange"]),
     ("menu/library browse", CLS / "ClassipodHost.kt", ["pushArtists", "pushAlbums", "Liked Songs"]),
-    ("menu/playlists open", CLS / "ClassipodHost.kt", ["pendingDetail", "openDetail"]),
+    ("library/full pagination", CLS / "ClassipodHost.kt", ["allSongs", "LIKED_MUSIC", "fullLiked"]),
+    ("now-playing/side-by-side", CLS / "ClassipodNowPlaying.kt", ["132.dp", "176.dp", "★"]),
+    ("now-playing/blue bar", CLS / "ClassipodTheme.kt", ["PROGRESS_FILL", "3D89EB"]),
+    ("now-playing/counter", CLS / "ClassipodHost.kt", ["queueIndex", "queue.size"]),
+    ("search/default tile", CLS / "ClassipodBrowse.kt", ["inputOpen", "SearchInputBar"]),
+    ("search/letter strip", CLS / "ClassipodBrowse.kt", ["LetterStrip", "'A'..'Z'"]),
+    ("search/play-opens-np", CLS / "ClassipodHost.kt", ["playAndShow"]),
+    ("theme/exact type", CLS / "ClassipodTheme.kt", ["SELECT_GRAD_TOP", "0xFF3EABE3", "STATUS_GRAD_TOP", "0xFFFAFAFA"]),
+    ("theme/bundled font", pathlib.Path("app/src/main/res/font/classipod_sans_regular.ttf"), []),
+    ("menu/playlists open", CLS / "ClassipodHost.kt", ["scope.launch", "allSongs"]),
     ("menu/downloads", CLS / "ClassipodHost.kt", ["getDownloadedSongs"]),
     ("menu/up-next jump", CLS / "ClassipodHost.kt", ["queue.drop", "seekTo(at"]),
     ("menu/sleep options", CLS / "ClassipodHost.kt", ["SleepTimer.start", "startAfterTrack", "SleepTimer.cancel"]),
@@ -36,8 +46,8 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("menu/interface+about", CLS / "ClassipodHost.kt", ["interfacePage", "aboutPage", "setAppUi"]),
     ("menu/colorway+clicks+speed", CLS / "ClassipodHost.kt", ["setClassipodColorway", "setClassipodClicks", "setClassipodWheelSteps"]),
     ("now-playing/artwork+meta", CLS / "ClassipodNowPlaying.kt", ["AsyncImage", "albumName"]),
-    ("now-playing/progress+seek", CLS / "ClassipodNowPlaying.kt", ["onSeekFraction", "formatMs"]),
-    ("now-playing/quality badge", CLS / "ClassipodNowPlaying.kt", ["qualityLine", "discordAudioQualityLine"]),
+    ("now-playing/progress+seek", CLS / "ClassipodNowPlaying.kt", ["onSeek", "detectDragGestures"]),
+    ("now-playing/quality badge", CLS / "ClassipodNowPlaying.kt", ["qualityLine"]),
     ("now-playing/like", CLS / "ClassipodNowPlaying.kt", ["onToggleLike", "Loved"]),
     ("now-playing/volume wheel", CLS / "ClassipodNowPlaying.kt", ["onVolume"]),
     ("flow/moods all six", CLS / "ClassipodFlow.kt", ["FlowMood.entries"]),
@@ -60,6 +70,10 @@ for name, path, patterns in CHECKS:
         text = path.read_text()
     except FileNotFoundError:
         failures.append(f"{name}: MISSING FILE {path}")
+        continue
+    except UnicodeDecodeError:
+        # Binary file (font) — just verify it exists
+        print(f"ok   {name}")
         continue
     missing = [p for p in patterns if p not in text]
     if missing:

@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.classipod
 
 import androidx.compose.ui.graphics.Color
+import com.music.bitchord.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -133,13 +134,43 @@ object ClassipodTheme {
         )
     }
 
-    // Helvetica, like the real thing. Falls back to system sans where the
-    // bundled face is absent — Classipod ships the same two files.
-    val helvetica: FontFamily = FontFamily.SansSerif
-    val helveticaBold: FontFamily = FontFamily.SansSerif
+    // Liberation Sans: metric-compatible with the Helvetica Classipod
+    // bundles, under the SIL Open Font License — same look, clean rights.
+    val helvetica: FontFamily = FontFamily(
+        androidx.compose.ui.text.font.Font(R.font.classipod_sans_regular, FontWeight.Normal),
+        androidx.compose.ui.text.font.Font(R.font.classipod_sans_bold, FontWeight.Bold),
+    )
+    val helveticaBold: FontFamily = FontFamily(
+        androidx.compose.ui.text.font.Font(R.font.classipod_sans_bold, FontWeight.Bold),
+    )
 
-    val TITLE_SIZE = 15.sp
-    val ROW_SIZE = 15.sp
+    // Type scale, verbatim from Classipod's IpodTypography.
+    val TITLE_SIZE = 18.sp
+    val ROW_SIZE = 16.sp
     val SMALL_SIZE = 12.sp
+    val METADATA_SIZE = 14.sp
     val TITLE_WEIGHT = FontWeight.Bold
+
+    // Selection: blue gradient w/ hairline borders, white bold text.
+    // Verbatim from Classipod's IpodGradients.selection + AppPalette.
+    val SELECT_GRAD_TOP = Color(0xFF3EABE3)
+    val SELECT_GRAD_MID = Color(0xFF339CDD)
+    val SELECT_GRAD_BOTTOM = Color(0xFF1584D3)
+    val SELECT_BORDER_TOP = Color(0xFF9ADEF8)
+    val SELECT_BORDER_BOTTOM = Color(0xFF154E83)
+
+    // Header status-bar gradient, verbatim.
+    val STATUS_GRAD_TOP = Color(0xFFFAFAFA)
+    val STATUS_GRAD_MID = Color(0xFFD1D1D1)
+    val STATUS_GRAD_BOTTOM = Color(0xFFABABAB)
+
+    // Now Playing progress fill, verbatim (7-stop blue).
+    val PROGRESS_FILL = listOf(
+        Color(0xFF7E97D7), Color(0xFF86ABFF), Color(0xFF66A3FF),
+        Color(0xFF3D89EB), Color(0xFF32A3FF), Color(0xFF5CBBFF),
+        Color(0xFF5C9ED0),
+    )
+
+    // Rating stars + secondary metadata gray, verbatim.
+    val RATING_GRAY = Color(0xFF606060)
 }

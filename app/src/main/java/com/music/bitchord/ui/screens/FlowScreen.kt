@@ -10,8 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Block
@@ -43,6 +42,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -92,9 +93,9 @@ import com.music.bitchord.ui.components.songListSkeleton
 import kotlin.math.roundToInt
 
 /**
- * Flow, per the approved proposal: dark glass page, left-aligned hero
+ * Flow, per the approved proposal: dark gradient hero, left-aligned title
  * ("Flow ∞" + mood subtitle), white Play pill with Shuffle / Like / Tune
- * circles, mood pill strip, tuner card, mix list.
+ * glass circles, mood pill strip, tuner card, mix list.
  *
  * Two rules keep it honest:
  * - On the dark gradient, content is always white — never a theme color
@@ -103,9 +104,10 @@ import kotlin.math.roundToInt
  *   hand-rolled accent fills, which is what went white-on-white before.
  *
  * Tuner edits are drafts until Apply: mood, sliders and genre chips only
- * touch local state, and one tap commits everything with a single rebuild.
+ * touch local state, and one tap commits everything with a single rebuild —
+ * dragging a slider never replays the whole mix under your thumb.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FlowScreen(
     tracksState: UiState<List<Song>>,
@@ -323,9 +325,10 @@ private fun FlowGradientBackdrop(modifier: Modifier = Modifier) {
 }
 
 /**
- * Left-aligned hero over the gradient: FLOW masthead top-left, big title,
- * mood subtitle, white Play pill with Shuffle / Like / Tune glass circles.
- * Everything on the gradient is white — fixed, never themed.
+ * Left-aligned hero over the gradient: FLOW masthead top-left, big title
+ * with ∞, mood subtitle, meta line, white Play pill + Shuffle / Like /
+ * Tune glass circles. Everything on the gradient is white — fixed, never
+ * themed.
  */
 @Composable
 private fun FlowHero(
@@ -361,14 +364,11 @@ private fun FlowHero(
                 .offset { IntOffset(0, top.roundToInt()) },
         ) {
             FlowGradientBackdrop()
-            // FLOW masthead, top left.
-            Text(
-                text = stringResource(R.string.flow).uppercase(),
-                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 3.sp),
-                color = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.align(Alignment.TopStart).padding(start = PAGE_GUTTER, top = 12.dp),
+            // The ∞ mark, then the page wash taking over at the foot.
+            Icon(
+                Icons.Rounded.AllInclusive, null, tint = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.size(64.dp).align(Alignment.Center),
             )
-            // Bottom scrim into the page behind.
             Box(
                 Modifier.matchParentSize().background(
                     Brush.verticalGradient(
@@ -376,6 +376,13 @@ private fun FlowHero(
                         1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
                     ),
                 ),
+            )
+            // FLOW, top left, small caps — the page's own masthead.
+            Text(
+                text = stringResource(R.string.flow).uppercase(),
+                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 3.sp),
+                color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.align(Alignment.TopStart).padding(start = PAGE_GUTTER, top = 12.dp),
             )
         }
 
@@ -501,17 +508,7 @@ private fun FlowHero(
                     }
                 }
             }
-            if (isSaved) {
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = onSave,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER),
-                ) {
-                    Text(stringResource(R.string.saved))
-                }
-            } else {
-                // Save lives on long-press of the pill row's overflow? No —
-                // it gets its own quiet row so it is never hunted for.
+            if (!isSaved) {
                 Spacer(Modifier.height(10.dp))
                 TextButton(onClick = onSave, modifier = Modifier.padding(horizontal = PAGE_GUTTER - 12.dp)) {
                     Text(
@@ -697,14 +694,14 @@ private fun FlowLockedCard(status: FlowStatus) {
                 text = stringResource(R.string.flow_locked_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = stringResource(R.string.flow_locked_subtitle, status.neededMore),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
         }
     }

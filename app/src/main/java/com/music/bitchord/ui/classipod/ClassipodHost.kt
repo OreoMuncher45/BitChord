@@ -96,8 +96,20 @@ fun ClassipodHost(
     val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
 
     val likedSongs = (library as? UiState.Success)?.data?.likedSongs.orEmpty()
+    // The library tab only carries Liked Music's first page (~100 rows).
+    // Liked libraries run past that, so the full list is paged once per
+    // session — otherwise everything past row 100 silently vanishes.
+    var fullLiked by remember { mutableStateOf<List<Song>?>(null) }
+    LaunchedEffect(library) {
+        if (likedSongs.isNotEmpty() && fullLiked == null) {
+            fullLiked = com.music.bitchord.data.YtMusicRepository.allSongs(
+                com.music.bitchord.data.YtMusicRepository.LIKED_MUSIC,
+            ).getOrNull()?.takeIf { it.isNotEmpty() }
+        }
+    }
+    val likedAll = fullLiked ?: likedSongs
     val librarySongs = (library as? UiState.Success)?.data?.librarySongs.orEmpty()
-    val allKnown = (likedSongs + librarySongs).distinctBy { it.videoId }
+    val allKnown = (likedAll + librarySongs).distinctBy { it.videoId }
     val historySongs = (history as? UiState.Success)?.data.orEmpty()
 
     fun openTracks(title: String, songs: List<Song>, source: QueueSource) {
@@ -106,6 +118,12 @@ fun ClassipodHost(
 
     fun playFromList(songs: List<Song>, index: Int, label: String, type: com.music.bitchord.data.model.PlaybackSourceType) {
         onPlaySongs(songs, index, QueueSource(label, type))
+    }
+
+    // Classipod plays a picked track and opens Now Playing, like the real thing.
+    fun playAndShow(songs: List<Song>, index: Int, label: String, type: com.music.bitchord.data.model.PlaybackSourceType) {
+        playFromList(songs, index, label, type)
+        push(ClassipodPage.NowPlaying)
     }
 
 
@@ -218,7 +236,7 @@ fun ClassipodHost(
         listOf(
             MenuItem("BitChord Next"),
             MenuItem("Tracks", allKnown.size.toString()),
-            MenuItem("Liked", likedSongs.size.toString()),
+            MenuItem("Liked", likedAll.size.toString()),
         ),
     )
 
@@ -281,18 +299,13 @@ fun ClassipodHost(
                         } else {
                             val browseId = item.browseId
                             if (browseId == null) return@MenuItem
-                            viewModel.openDetail(
-                                browseId = browseId,
-                                title = item.title,
-                                subtitle = item.subtitle,
-                                thumbnailUrl = item.thumbnailUrl,
-                            )
-                            pendingDetail = browseId to { page: com.music.bitchord.data.model.DetailPage ->
-                                val songs = (page.songs as? UiState.Success)?.data.orEmpty()
+                            scope.launch {
+                                val songs = com.music.bitchord.data.YtMusicRepository.allSongs(browseId)
+                                    .getOrNull().orEmpty()
                                 if (songs.isNotEmpty()) {
                                     openTracks(
-                                        page.title, songs,
-                                        QueueSource(page.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
+                                        item.title, songs,
+                                        QueueSource(item.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                                     )
                                 }
                             }
@@ -345,18 +358,13 @@ fun ClassipodHost(
                 "Playlists",
                 playlists.map { pl ->
                     MenuItem(pl.title, pl.subtitle) {
-                        viewModel.openDetail(
-                            browseId = pl.browseId,
-                            title = pl.title,
-                            subtitle = pl.subtitle,
-                            thumbnailUrl = pl.thumbnailUrl,
-                        )
-                        pendingDetail = pl.browseId to { page ->
-                            val songs = (page.songs as? UiState.Success)?.data.orEmpty()
+                        scope.launch {
+                            val songs = com.music.bitchord.data.YtMusicRepository.allSongs(pl.browseId)
+                                .getOrNull().orEmpty()
                             if (songs.isNotEmpty()) {
                                 openTracks(
-                                    page.title, songs,
-                                    QueueSource(page.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
+                                    pl.title, songs,
+                                    QueueSource(pl.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                                 )
                             }
                         }
@@ -378,7 +386,7 @@ fun ClassipodHost(
 
 
     // Root menu, rebuilt as feeds land.
-    val root = remember(home, likedSongs, librarySongs, playlists, flowStatus, player.song) {
+    val root = remember(home, likedAll, librarySongs, playlists, flowStatus, player.song) {
         ClassipodPage.Menu(
             title = "Music",
             items = listOf(
@@ -405,9 +413,9 @@ fun ClassipodHost(
                         QueueSource("Library", com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                     )
                 },
-                MenuItem("Liked Songs", value = likedSongs.size.takeIf { it > 0 }?.toString()) {
+                MenuItem("Liked Songs", value = likedAll.size.takeIf { it > 0 }?.toString()) {
                     openTracks(
-                        "Liked Songs", likedSongs,
+                        "Liked Songs", likedAll,
                         QueueSource("Liked Songs", com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                     )
                 },
@@ -433,17 +441,6 @@ fun ClassipodHost(
 
 
 
-
-    // A detail page opened for its track list: when its songs land, push them.
-    val detailStack by viewModel.detailStack.collectAsStateWithLifecycle()
-    LaunchedEffect(detailStack) {
-        val (id, consume) = pendingDetail ?: return@LaunchedEffect
-        val page = detailStack.lastOrNull { it.browseId == id } ?: return@LaunchedEffect
-        if ((page.songs as? UiState.Success)?.data?.isNotEmpty() == true) {
-            pendingDetail = null
-            consume(page)
-        }
-    }
 
     var volume by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0.8f) }
 
@@ -478,8 +475,12 @@ fun ClassipodHost(
                 openSongMenu = openSongMenu,
                 openTracks = ::openTracks,
                 playFromList = ::playFromList,
+                playAndShow = ::playAndShow,
                 podSettingsRows = ::podSettingsRows,
                 sleepRows = ::sleepRows,
+                shuffleOn = shuffleOn,
+                repeatMode = repeatMode,
+                scope = scope,
                 onPop = ::pop,
             )
         },
@@ -506,8 +507,12 @@ private fun ClassipodPageContent(
     openSongMenu: (Song) -> Unit,
     openTracks: (String, List<Song>, QueueSource) -> Unit,
     playFromList: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
+    playAndShow: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
     podSettingsRows: () -> List<PodSettingRow>,
     sleepRows: () -> List<PodSettingRow>,
+    shuffleOn: Boolean,
+    repeatMode: Int,
+    scope: kotlinx.coroutines.CoroutineScope,
     onPop: () -> Unit,
 ) {
     when (page) {
@@ -519,7 +524,7 @@ private fun ClassipodPageContent(
                 songs = page.songs,
                 lcd = lcd,
                 wheel = wheel,
-                onPlay = { songs, index -> playFromList(songs, index, page.source.title, page.source.type) },
+                onPlay = { songs, index -> playAndShow(songs, index, page.source.title, page.source.type) },
                 onLongPress = openSongMenu,
                 onBack = onPop,
                 currentSong = player.song,
@@ -532,17 +537,30 @@ private fun ClassipodPageContent(
                     isPlaying = player.isPlaying,
                     positionMs = player.position.positionMs,
                     durationMs = player.durationMs,
+                    queuePosition = (player.queueIndex + 1).coerceAtLeast(1),
+                    queueTotal = player.queue.size,
                     liked = song?.let { likeStatuses[it.videoId] == LikeStatus.LIKE } == true,
                     qualityLine = discordAudioQualityLine(nerdStats),
+                    shuffleOn = shuffleOn,
+                    repeatOne = repeatMode == Player.REPEAT_MODE_ONE,
                     lcd = lcd,
                     wheel = wheel,
                     volume = volume,
                     onVolume = onVolume,
                     onSeek = { controller?.seekTo(it) },
                     onToggleLike = { song?.let { viewModel.toggleLike(it.videoId) } },
+                    onToggleShuffle = { AppSettings.setShuffleEnabled(!shuffleOn) },
+                    onCycleRepeat = {
+                        val next = when (repeatMode) {
+                            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                            else -> Player.REPEAT_MODE_OFF
+                        }
+                        AppSettings.setRepeatMode(next)
+                        controller?.repeatMode = next
+                    },
                     onBack = onPop,
                 )
-                // Rotary seeks here too? No — volume owns the wheel (classic).
             }
             ClassipodPage.FlowHome -> ClassipodFlowHome(
                 mood = flowMood,
@@ -574,24 +592,20 @@ private fun ClassipodPageContent(
                     lcd = lcd,
                     wheel = wheel,
                     onSong = { songs, index ->
-                        playFromList(
+                        playAndShow(
                             songs, index, "Search",
                             com.music.bitchord.data.model.PlaybackSourceType.SEARCH,
                         )
                     },
+                    onSongLongPress = openSongMenu,
                     onBrowse = { item ->
-                        viewModel.openDetail(
-                            browseId = item.browseId,
-                            title = item.title,
-                            subtitle = item.subtitle,
-                            thumbnailUrl = item.thumbnailUrl,
-                        )
-                        pendingDetail = item.browseId to { pg ->
-                            val songs = (pg.songs as? UiState.Success)?.data.orEmpty()
+                        scope.launch {
+                            val songs = com.music.bitchord.data.YtMusicRepository.allSongs(item.browseId)
+                                .getOrNull().orEmpty()
                             if (songs.isNotEmpty()) {
                                 openTracks(
-                                    pg.title, songs,
-                                    QueueSource(pg.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
+                                    item.title, songs,
+                                    QueueSource(item.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                                 )
                             }
                         }
@@ -630,6 +644,3 @@ private fun ClassipodPageContent(
             )
         }
     }
-
-/** Pending detail opener: set before openDetail, consumed when songs land. */
-private var pendingDetail: Pair<String, (com.music.bitchord.data.model.DetailPage) -> Unit>? = null
