@@ -13,6 +13,7 @@ import com.music.bitchord.data.sources.addon.AddonException
 import com.music.bitchord.data.sources.addon.DetectedFormat
 import com.music.bitchord.data.tidal.TidalApi
 import com.music.bitchord.data.tidal.TidalInstances
+import com.music.bitchord.data.octave.OctaveApi
 import com.music.bitchord.data.sources.addon.SourceFormats
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.playback.audio.LosslessOutput
@@ -162,11 +163,14 @@ object SourceRegistry {
             .map { kind ->
                 SourceConfig(
                     kind = kind,
-                    baseUrl = if (kind == SourceKind.TIDAL) {
-                        TidalInstances.BUNDLED.first().url
-                    } else {
-                        ""
+                    baseUrl = when (kind) {
+                        SourceKind.TIDAL -> TidalInstances.BUNDLED.first().url
+                        SourceKind.OCTAVE -> OctaveApi.DEFAULT_BASE
+                        else -> ""
                     },
+                    // Octave without a key answers nothing, so it arrives
+                    // off: pasting the key plus the toggle is the setup.
+                    enabled = kind != SourceKind.JIOSAAVN && kind != SourceKind.OCTAVE,
                 )
             }
 
@@ -408,6 +412,17 @@ object SourceRegistry {
      * its on/off state; a new source gets a fresh config.
      */
     suspend fun identify(url: String, existing: SourceConfig? = null): Result<SourceConfig> {
+        // Octave first: its hostname is the whole identification — no manifest
+        // to fetch, no probe that could leak anything. Anything else falls
+        // through untouched.
+        OctaveApi.baseOf(url)?.let { base ->
+            return Result.success(
+                (existing ?: SourceConfig(kind = SourceKind.OCTAVE)).copy(
+                    kind = SourceKind.OCTAVE,
+                    baseUrl = base,
+                ),
+            )
+        }
         // Tidal first: its root answers a version document no other format
         // shapes, and the probe is one cheap GET. Anything else falls through
         // to the addon/module detection untouched.
@@ -498,6 +513,7 @@ object SourceRegistry {
     suspend fun probeCandidate(config: SourceConfig): SourceHealth = build(config).health()
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
+        SourceKind.OCTAVE -> OctaveSource(config)
         SourceKind.ADDON -> AddonSource(config)
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
@@ -548,7 +564,7 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.YOUTUBE)
+    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.OCTAVE, SourceKind.YOUTUBE)
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

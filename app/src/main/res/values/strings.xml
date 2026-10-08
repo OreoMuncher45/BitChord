@@ -1167,6 +1167,11 @@
     <string name="tidal_auto_update">Auto-update instance list</string>
     <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 
+    <!-- Octave (account key, free lossless) -->
+    <string name="octave_url_description">Octave streams free lossless FLAC with your account key. Paste the key below, Test, save.</string>
+    <string name="octave_key_label">Account key</string>
+    <string name="octave_key_help">Starts with octv_. The key is stored encrypted on this device and sent only to Octave.</string>
+
     <!-- Cover art -->
     <string name="save_cover_art">Save cover art</string>
     <string name="cover_saved">Saved %1$s</string>

@@ -44,11 +44,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
+import com.music.bitchord.data.octave.OctaveApi
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.data.sources.addon.AddonSetting
 import com.music.bitchord.ui.components.EditorField
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -857,6 +859,7 @@ private fun SourceRow(
                 SourceKind.MODULE -> Icons.Rounded.Extension
                 SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq // or some other icon
                 SourceKind.TIDAL -> Icons.Rounded.MusicNote
+                SourceKind.OCTAVE -> Icons.Rounded.Album
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },
             contentDescription = null,
@@ -1128,16 +1131,22 @@ internal fun SourceEditorAlert(
             config.displayName
         },
         description = stringResource(
-            if (config.kind == SourceKind.TIDAL) R.string.tidal_url_description
-            else R.string.addon_url_description,
+            when (config.kind) {
+                SourceKind.TIDAL -> R.string.tidal_url_description
+                SourceKind.OCTAVE -> R.string.octave_url_description
+                else -> R.string.addon_url_description
+            },
         ),
         urlValue = baseUrl,
         // A result describes the address it was run against, so the moment that
         // address is edited it stops being true and is cleared. Left up, it
         // would report "Connected" over a URL nobody has tried.
         onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
-        urlPlaceholder = if (config.kind == SourceKind.TIDAL) "https://api.monochrome.tf"
-        else "https://my-addon.example.com",
+        urlPlaceholder = when (config.kind) {
+            SourceKind.TIDAL -> "https://api.monochrome.tf"
+            SourceKind.OCTAVE -> "https://api.octavestreaming.com"
+            else -> "https://my-addon.example.com"
+        },
         status = status,
         statusIsGood = statusIsGood,
         testing = busy,
@@ -1146,15 +1155,34 @@ internal fun SourceEditorAlert(
         onSave = { run(thenSave = true) },
         onRemove = if (isNew) null else onDelete,
         onDismiss = onDismiss,
-        extraFields = secretSettings.map { setting ->
-            EditorField(
-                value = secretValues[setting.key].orEmpty(),
-                onChange = { secretValues[setting.key] = it },
-                placeholder = setting.label.ifBlank { setting.key },
-                keyboardType = KeyboardType.Password,
-                isPassword = true,
-                help = setting.help,
-            )
+        // Octave always offers its account-key field, manifest or not:
+        // without the key there is nothing to stream, and waiting on a
+        // schema to show the field is how keys became un-enterable.
+        extraFields = buildList {
+            if (config.kind == SourceKind.OCTAVE) {
+                add(
+                    EditorField(
+                        value = secretValues[OctaveApi.ACCOUNT_KEY].orEmpty(),
+                        onChange = { secretValues[OctaveApi.ACCOUNT_KEY] = it },
+                        placeholder = stringResource(R.string.octave_key_label),
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true,
+                        help = stringResource(R.string.octave_key_help),
+                    ),
+                )
+            }
+            secretSettings
+                .filter { it.key != OctaveApi.ACCOUNT_KEY }
+                .mapTo(this) { setting ->
+                    EditorField(
+                        value = secretValues[setting.key].orEmpty(),
+                        onChange = { secretValues[setting.key] = it },
+                        placeholder = setting.label.ifBlank { setting.key },
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true,
+                        help = setting.help,
+                    )
+                }
         },
     )
 }
