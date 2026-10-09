@@ -2626,10 +2626,10 @@ private fun BitChordApp(
                 onOpenReplay = { showReplay = true },
                 onOpenListenTogether = { showListenTogether = true },
                 onOpenDownloads = { showDownloadManager = true },
+                queueNotice = queueNotice,
                 modifier = Modifier.fillMaxSize(),
             )
-            return@BitChordApp
-        }
+        } else {
 
         // On a tablet the page and the player stand side by side rather than
         // one over the other: everything a phone stacks in a single column —
@@ -4199,6 +4199,11 @@ private fun BitChordApp(
                 }
             }
         }
+
+        } // end else: everything above is one shell or the other; everything
+        // below is overlays (menus, pickers, notices, dialogs) shared by both.
+        // The iPod used to return before reaching them, which is why its
+        // three-dot menu set state nothing rendered.
 
         // ---- Album / playlist detail ----
         // ---- Long-press track actions ----

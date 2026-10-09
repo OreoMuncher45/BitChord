@@ -51,6 +51,8 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("menu/center split", CLS / "ClassipodMenu.kt", ["onCenter", "three-dot"]),
     ("playlists/options page", CLS / "ClassipodHost.kt", ["collectionOptionsPage", "Queue all", "notify("]),
     ("addon/neutral UA", APP / "data/sources/addon/AddonClient.kt", ["Mobile Safari", "Cloudflare"]),
+    ("menus/overlays shared", APP / "MainActivity.kt", ["everything above is one shell", "queueNotice = queueNotice"]),
+    ("menus/app notice mirrored", CLS / "ClassipodHost.kt", ["QueueActionNoticeHost", "queueNotice"]),
     ("advanced/all settings", CLS / "ClassipodHost.kt", ["advancedPage", "discordPage", "advAudioPage", "advStoragePage", "onOpenEqualizer", "onQueueSongs"]),
     ("now-playing/blue bar", CLS / "ClassipodTheme.kt", ["PROGRESS_FILL", "3D89EB"]),
     ("now-playing/counter", CLS / "ClassipodHost.kt", ["queueIndex", "queue.size"]),

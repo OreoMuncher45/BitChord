@@ -44,6 +44,8 @@ import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.download.Downloads
 import com.music.bitchord.playback.QueueSource
 import com.music.bitchord.playback.rememberPlayerState
+import com.music.bitchord.ui.components.QueueActionNotice
+import com.music.bitchord.ui.components.QueueActionNoticeHost
 import com.music.bitchord.ui.MainViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,6 +76,7 @@ fun ClassipodHost(
     onOpenReplay: () -> Unit = {},
     onOpenListenTogether: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    queueNotice: QueueActionNotice? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -226,8 +229,10 @@ fun ClassipodHost(
                         val all = com.music.bitchord.data.YtMusicRepository.allSongs(browseId)
                             .getOrNull().orEmpty()
                         if (all.isNotEmpty()) {
+                            // Success answers through the app's own action
+                            // notice (mirrored over the LCD); only failures
+                            // need the iPod pill.
                             onQueueSongs(all)
-                            notify("Queued " + all.size + " songs")
                         } else {
                             notify("Couldn't load " + title)
                         }
@@ -729,7 +734,11 @@ fun ClassipodHost(
                 scope = scope,
                 onPop = ::pop,
                 )
-                if (notice != null) {
+                QueueActionNoticeHost(
+                queueNotice,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp),
+            )
+            if (notice != null) {
                     Text(
                         text = notice.orEmpty(),
                         fontFamily = ClassipodTheme.helveticaBold,
