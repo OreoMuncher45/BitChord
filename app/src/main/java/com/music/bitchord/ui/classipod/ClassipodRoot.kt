@@ -191,6 +191,8 @@ class ClassipodWheelState {
     var onStep: (dir: Int) -> Unit = {}
     var onMenu: () -> Unit = {}
     var onCenter: () -> Unit = {}
+    /** Center long-press: song options on Now Playing. Reset on leave. */
+    var onCenterLongPress: () -> Unit = {}
     var onPrev: () -> Unit = {}
     var onNext: () -> Unit = {}
     var onPlayPause: () -> Unit = {}
@@ -266,25 +268,36 @@ fun ClickWheel(
                     )
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val c = Offset(size.width / 2f, size.height / 2f)
-                        val dx = offset.x - c.x
-                        val dy = offset.y - c.y
-                        val dist = kotlin.math.hypot(dx, dy)
-                        playClick(context)
-                        when {
-                            dist < radiusPx * 0.38f -> state.onCenter()
-                            else -> {
-                                val a = angleOf(offset, c)
-                                when {
-                                    a in 235f..305f -> state.onMenu()
-                                    a in 125f..235f -> state.onPrev()
-                                    a <= 55f || a >= 305f -> state.onNext()
-                                    else -> state.onPlayPause()
+                    detectTapGestures(
+                        onTap = { offset ->
+                            val c = Offset(size.width / 2f, size.height / 2f)
+                            val dx = offset.x - c.x
+                            val dy = offset.y - c.y
+                            val dist = kotlin.math.hypot(dx, dy)
+                            playClick(context)
+                            when {
+                                dist < radiusPx * 0.38f -> state.onCenter()
+                                else -> {
+                                    val a = angleOf(offset, c)
+                                    when {
+                                        a in 235f..305f -> state.onMenu()
+                                        a in 125f..235f -> state.onPrev()
+                                        a <= 55f || a >= 305f -> state.onNext()
+                                        else -> state.onPlayPause()
+                                    }
                                 }
                             }
-                        }
-                    }
+                        },
+                        onLongPress = { offset ->
+                            val c = Offset(size.width / 2f, size.height / 2f)
+                            val dx = offset.x - c.x
+                            val dy = offset.y - c.y
+                            if (kotlin.math.hypot(dx, dy) < radiusPx * 0.38f) {
+                                playClick(context)
+                                state.onCenterLongPress()
+                            }
+                        },
+                    )
                 },
         ) {
             Canvas(Modifier.fillMaxSize()) {

@@ -34,6 +34,7 @@ import com.music.bitchord.download.Downloads
 import com.music.bitchord.playback.QueueSource
 import com.music.bitchord.playback.rememberPlayerState
 import com.music.bitchord.ui.MainViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -335,21 +336,18 @@ fun ClassipodHost(
     }
 
     fun pushAlbums() {
-        val names = allKnown.mapNotNull { it.albumName?.takeIf(String::isNotBlank) }.distinct().sorted()
-        push(
-            ClassipodPage.Menu(
-                "Albums",
-                names.map { name ->
-                    MenuItem(name) {
-                        openTracks(
-                            name,
-                            allKnown.filter { it.albumName == name },
-                            QueueSource(name, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
-                        )
-                    }
-                },
-            ),
-        )
+        val albums = allKnown
+            .groupBy { it.albumName?.takeIf(String::isNotBlank) ?: "Unknown Album" }
+            .map { (name, songs) ->
+                CoverAlbum(
+                    name = name,
+                    artist = songs.firstOrNull()?.artist.orEmpty(),
+                    artUrl = songs.firstOrNull()?.thumbnailUrl,
+                    songs = songs,
+                )
+            }
+            .sortedBy { it.name.lowercase() }
+        push(ClassipodPage.CoverFlow(albums))
     }
 
     fun pushPlaylists() {
@@ -519,6 +517,18 @@ private fun ClassipodPageContent(
             is ClassipodPage.Menu -> ClassipodMenuPage(
                 page = page, lcd = lcd, wheel = wheel, onBack = onPop,
             )
+            is ClassipodPage.CoverFlow -> ClassipodCoverFlow(
+                albums = page.albums,
+                lcd = lcd,
+                wheel = wheel,
+                onSelect = { album ->
+                    openTracks(
+                        album.name, album.songs,
+                        QueueSource(album.name, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
+                    )
+                },
+                onBack = onPop,
+            )
             is ClassipodPage.Tracks -> ClassipodTrackList(
                 title = page.title,
                 songs = page.songs,
@@ -532,6 +542,8 @@ private fun ClassipodPageContent(
             )
             ClassipodPage.NowPlaying -> {
                 val song = player.song
+                val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
+                val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
                 ClassipodNowPlaying(
                     song = song,
                     isPlaying = player.isPlaying,
@@ -540,6 +552,8 @@ private fun ClassipodPageContent(
                     queuePosition = (player.queueIndex + 1).coerceAtLeast(1),
                     queueTotal = player.queue.size,
                     qualityLine = discordAudioQualityLine(nerdStats),
+                    lyrics = lyrics,
+                    lyricsChecked = lyricsChecked,
                     shuffleOn = shuffleOn,
                     repeatMode = repeatMode,
                     lcd = lcd,
@@ -547,6 +561,7 @@ private fun ClassipodPageContent(
                     volume = volume,
                     onVolume = onVolume,
                     onSeek = { controller?.seekTo(it) },
+                    onSongMenu = openSongMenu,
                     onToggleShuffle = { AppSettings.setShuffleEnabled(!shuffleOn) },
                     onCycleRepeat = {
                         val next = when (repeatMode) {
@@ -582,10 +597,19 @@ private fun ClassipodPageContent(
             ClassipodPage.Search -> {
                 val query by viewModel.query.collectAsStateWithLifecycle()
                 val results by viewModel.results.collectAsStateWithLifecycle()
+                val typeahead by viewModel.typeaheadResults.collectAsStateWithLifecycle()
+                LaunchedEffect(query) {
+                    if (query.isNotBlank()) {
+                        delay(700)
+                        viewModel.submitSearch()
+                    }
+                }
+                val shown =
+                    if (typeahead.isNotEmpty()) UiState.Success(typeahead) else results
                 ClassipodSearch(
                     query = query,
                     onQuery = viewModel::onQueryChange,
-                    results = results,
+                    results = shown,
                     lcd = lcd,
                     wheel = wheel,
                     onSong = { songs, index ->

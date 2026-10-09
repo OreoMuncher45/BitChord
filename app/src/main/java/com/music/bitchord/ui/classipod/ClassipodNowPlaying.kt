@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -24,10 +28,15 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,36 +44,35 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
-import coil3.compose.AsyncImage
+import com.music.bitchord.data.lyrics.LyricLine
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Now Playing, 1-for-1 from Classipod's NowPlayingWidget +
- * NowPlayingBottomBar + StatusBar:
+ * NowPlayingBottomBar + StatusBar, with BitChord's extras folded in:
  *
- * - Header: title left, blue play/pause glyph + battery right
- *   (30dp silver gradient + hairline, verbatim).
- * - Art: 150x150 with a 3D tilt (rotateY -0.12, perspective 0.003)
- *   over a 50px mirror reflection washed into the background.
- * - Meta: 18sp title, 14sp artist/album, "N of M" caption. No stars —
- *   the real screen has none.
- * - Bottom bar: elapsed, 20dp bordered track with the 7-stop blue
- *   fill + gloss, stacked "- / m:ss" remaining. Tap or drag to seek.
- * - Shuffle/repeat badges only while engaged, else a 20dp spacer.
- * - Lossless line: [qualityLine] is null unless the stream is
- *   lossless/hi-res/Atmos (see discordAudioQualityLine), so it renders
- *   the badge for premium streams and nothing at all otherwise.
- * - Rotary is volume here, like the real thing.
+ * - Header: title left, blue play/pause glyph + battery right.
+ * - Art: tilted 150px cover over a washed mirror reflection
+ *   ([PodReflectiveArt], edge-to-edge — never letterboxed).
+ * - Meta: 18sp title, 14sp artist/album, "N of M", lossless-only badge
+ *   (renders nothing for lossy streams).
+ * - Bottom bar: 20dp seek track + 7-stop blue fill, stacked remaining.
+ * - Center button toggles the lyrics sheet when the song has synced
+ *   lyrics; rotary scrolls the sheet line-by-line, auto-following the
+ *   vocal until you grab it (5s manual override).
+ * - Rotary is volume otherwise, and the volume bar (diamond knob)
+ *   replaces the seek bar for 2s — like the real thing.
+ * - Center long-press opens the song's full options menu.
  */
 @Composable
 fun ClassipodNowPlaying(
@@ -75,6 +83,8 @@ fun ClassipodNowPlaying(
     queuePosition: Int,
     queueTotal: Int,
     qualityLine: String?,
+    lyrics: List<LyricLine>?,
+    lyricsChecked: Boolean,
     shuffleOn: Boolean,
     repeatMode: Int,
     lcd: ClassipodTheme.Lcd,
@@ -84,12 +94,46 @@ fun ClassipodNowPlaying(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onSongMenu: (Song) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    wheel.onStep = { dir ->
-        onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
+    val scope = rememberCoroutineScope()
+    val hasLyrics = !lyrics.isNullOrEmpty()
+    var showLyrics by remember(song?.videoId) { mutableStateOf(false) }
+    if (!hasLyrics && showLyrics) showLyrics = false
+
+    // Transient volume bar: rotary shows it for 2s, like the real thing.
+    var showVol by remember { mutableStateOf(false) }
+    var volGen by remember { mutableIntStateOf(0) }
+    LaunchedEffect(volGen) {
+        if (volGen == 0) return@LaunchedEffect
+        delay(2000)
+        showVol = false
     }
-    wheel.onCenter = { /* transport lives on the wheel zones */ }
+
+    val lyricList = rememberLazyListState()
+    var followSuspendUntil by remember { mutableLongStateOf(0L) }
+
+    wheel.onStep = { dir ->
+        if (showLyrics) {
+            followSuspendUntil = System.currentTimeMillis() + 5000
+            scope.launch { lyricList.scrollBy(-dir * 90f) }
+        } else {
+            onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
+            showVol = true
+            volGen++
+        }
+    }
+    wheel.onCenter = {
+        if (hasLyrics) showLyrics = !showLyrics
+    }
+    wheel.onCenterLongPress = {
+        song?.let(onSongMenu)
+    }
+    DisposableEffect(song?.videoId) {
+        onDispose { wheel.onCenterLongPress = {} }
+    }
+
     Column(modifier = modifier.fillMaxSize().background(lcd.bg)) {
         NpStatusBar(isPlaying = isPlaying, lcd = lcd)
         if (shuffleOn || repeatMode != Player.REPEAT_MODE_OFF) {
@@ -119,84 +163,160 @@ fun ClassipodNowPlaying(
         } else {
             Spacer(Modifier.height(20.dp))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 10.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            TiltedReflectiveArt(
-                url = song?.thumbnailUrl?.artworkAt(480),
+        if (showLyrics && lyrics != null) {
+            LyricsSheet(
+                lines = lyrics,
+                positionMs = positionMs,
+                followSuspendUntil = followSuspendUntil,
+                listState = lyricList,
                 lcd = lcd,
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = song?.title ?: "Nothing Playing",
-                    fontFamily = ClassipodTheme.helveticaBold,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = lcd.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                PodReflectiveArt(
+                    url = song?.thumbnailUrl?.artworkAt(480),
+                    lcd = lcd,
+                    artSize = 150.dp,
+                    reflectH = 50.dp,
+                    tilt = true,
                 )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    text = song?.artist.orEmpty(),
-                    fontFamily = ClassipodTheme.helveticaBold,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = lcd.dim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    text = song?.albumName.orEmpty(),
-                    fontFamily = ClassipodTheme.helveticaBold,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = lcd.dim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // Rating slot: no ratings in BitChord, keep the 22dp
-                // gap so the counter sits exactly where theirs does.
-                Spacer(Modifier.height(22.dp))
-                if (queueTotal > 0) {
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "$queuePosition of $queueTotal",
+                        text = song?.title ?: "Nothing Playing",
                         fontFamily = ClassipodTheme.helveticaBold,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = 18.sp,
                         color = lcd.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                }
-                // Lossless/hi-res only: qualityLine is null for lossy,
-                // so lossy streams render nothing here.
-                if (qualityLine != null) {
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(5.dp))
                     Text(
-                        text = qualityLine.uppercase(),
+                        text = song?.artist.orEmpty(),
                         fontFamily = ClassipodTheme.helveticaBold,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.sp,
+                        fontSize = 14.sp,
                         color = lcd.dim,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = song?.albumName.orEmpty(),
+                        fontFamily = ClassipodTheme.helveticaBold,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = lcd.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // Rating slot: no ratings in BitChord, keep the 22dp
+                    // gap so the counter sits exactly where theirs does.
+                    Spacer(Modifier.height(22.dp))
+                    if (queueTotal > 0) {
+                        Text(
+                            text = "$queuePosition of $queueTotal",
+                            fontFamily = ClassipodTheme.helveticaBold,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = lcd.text,
+                        )
+                    }
+                    // Lossless/hi-res only: qualityLine is null for lossy,
+                    // so lossy streams render nothing here.
+                    if (qualityLine != null) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = qualityLine.uppercase(),
+                            fontFamily = ClassipodTheme.helveticaBold,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 1.sp,
+                            color = lcd.dim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                 }
-                Spacer(Modifier.weight(1f))
             }
         }
+        Spacer(Modifier.weight(1f))
+        if (showVol && !showLyrics) {
+            NpVolumeBar(volume = volume, lcd = lcd)
+        } else {
+            NpSeekBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                lcd = lcd,
+                onSeek = onSeek,
+            )
+        }
         Spacer(Modifier.height(10.dp))
-        NpSeekBar(
-            positionMs = positionMs,
-            durationMs = durationMs,
-            lcd = lcd,
-            onSeek = onSeek,
+        // Hint row: only what the wheel can actually do from here.
+        Text(
+            text = when {
+                hasLyrics && showLyrics -> "ROTATE SCROLLS · CENTER HIDES LYRICS"
+                hasLyrics -> "CENTER LYRICS · HOLD CENTER OPTIONS"
+                !lyricsChecked -> "FINDING LYRICS… · HOLD CENTER OPTIONS"
+                else -> "HOLD CENTER FOR OPTIONS"
+            },
+            fontFamily = ClassipodTheme.helveticaBold,
+            fontWeight = FontWeight.Bold,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+            color = lcd.dim.copy(alpha = 0.7f),
+            maxLines = 1,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
-        Spacer(Modifier.height(10.dp))
+    }
+}
+
+/**
+ * Synced lyrics sheet: the vocal line burns bright, the rest sits dim,
+ * and the sheet walks itself down line-by-line — until you grab the
+ * wheel, which buys 5s of manual control.
+ */
+@Composable
+private fun LyricsSheet(
+    lines: List<LyricLine>,
+    positionMs: Long,
+    followSuspendUntil: Long,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    lcd: ClassipodTheme.Lcd,
+    modifier: Modifier = Modifier,
+) {
+    val activeIdx = lines.indexOfLast { it.timeMs <= positionMs }.takeIf { it >= 0 }
+    LaunchedEffect(activeIdx) {
+        if (activeIdx != null && System.currentTimeMillis() > followSuspendUntil) {
+            listState.animateScrollToItem((activeIdx - 1).coerceAtLeast(0))
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 14.dp),
+    ) {
+        item(key = "lyr:top") { Spacer(Modifier.height(6.dp)) }
+        itemsIndexed(lines.filter { !it.isGap }, key = { i, l -> "lyr:$i:${l.timeMs}" }) { _, line ->
+            val active = activeIdx != null && lines.indexOf(line) == activeIdx
+            Text(
+                text = line.text,
+                fontFamily = if (active) ClassipodTheme.helveticaBold else ClassipodTheme.helvetica,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                fontSize = if (active) 16.sp else 14.sp,
+                lineHeight = 22.sp,
+                color = if (active) lcd.text else lcd.dim.copy(alpha = 0.75f),
+                modifier = Modifier.padding(vertical = 3.dp),
+            )
+        }
+        item(key = "lyr:bottom") { Spacer(Modifier.height(40.dp)) }
     }
 }
 
@@ -289,51 +409,64 @@ private fun NpBattery(lcd: ClassipodTheme.Lcd) {
 }
 
 /**
- * Album art with the signature tilt + floor reflection, verbatim from
- * Classipod's AlbumReflectiveArt: 150x150 art, rotateY(-0.12) with a
- * 0.003 perspective entry, 50px flipped mirror washed out by a
- * top-to-bottom overlay (white in light, black in dark).
+ * Volume bar with the diamond knob: same 20dp bordered track as the
+ * seek bar, blue diamond at the level. Shown for 2s after the wheel
+ * moves, then the seek bar returns.
  */
 @Composable
-private fun TiltedReflectiveArt(url: Any?, lcd: ClassipodTheme.Lcd) {
-    Column(
-        modifier = Modifier
-            .size(width = 150.dp, height = 200.dp)
-            .graphicsLayer { rotationY = -6.88f },
+private fun NpVolumeBar(volume: Float, lcd: ClassipodTheme.Lcd) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
-            model = url,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            alignment = Alignment.BottomCenter,
-            modifier = Modifier
-                .size(150.dp)
-                .background(if (lcd.dark) lcd.bar else Color.Transparent),
+        Text(
+            text = "${(volume * 100).toInt()}",
+            fontFamily = ClassipodTheme.helveticaBold,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            color = lcd.text,
+            maxLines = 1,
+            modifier = Modifier.width(35.dp),
         )
-        Box(modifier = Modifier.size(width = 150.dp, height = 50.dp)) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { scaleY = -1f },
-            )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(20.dp)
+                .padding(horizontal = 8.dp)
+                .background(
+                    if (lcd.dark) Brush.verticalGradient(ClassipodTheme.TRACK_DARK)
+                    else Brush.verticalGradient(
+                        0f to ClassipodTheme.TRACK_LIGHT[0],
+                        0.6f to ClassipodTheme.TRACK_LIGHT[1],
+                        1f to ClassipodTheme.TRACK_LIGHT[2],
+                    ),
+                )
+                .border(
+                    1.dp,
+                    if (lcd.dark) ClassipodTheme.TRACK_DARK_BORDER
+                    else ClassipodTheme.TRACK_BORDER,
+                ),
+        ) {
+            val density = LocalDensity.current
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .size(12.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = 2.dp)
+                    .graphicsLayer {
+                        val knobPx = with(density) { 12.dp.toPx() }
+                        translationX = volume.coerceIn(0f, 1f) * (size.width - knobPx)
+                        rotationZ = 45f
+                    }
                     .background(
                         Brush.verticalGradient(
-                            listOf(
-                                if (lcd.dark) ClassipodTheme.REFLECT_DARK_TOP
-                                else ClassipodTheme.REFLECT_LIGHT_TOP,
-                                if (lcd.dark) ClassipodTheme.REFLECT_DARK_BOTTOM
-                                else ClassipodTheme.REFLECT_LIGHT_BOTTOM,
-                            ),
+                            0f to ClassipodTheme.PROGRESS_FILL[1],
+                            1f to ClassipodTheme.PROGRESS_FILL[3],
                         ),
                     ),
             )
         }
+        Spacer(Modifier.width(40.dp))
     }
 }
 

@@ -50,6 +50,12 @@ sealed interface ClassipodPage {
         override val title: String get() = "Search"
     }
 
+    data class CoverFlow(
+        val albums: List<CoverAlbum>,
+    ) : ClassipodPage {
+        override val title: String get() = "Albums"
+    }
+
     data object UpNext : ClassipodPage {
         override val title: String get() = "Up Next"
     }
