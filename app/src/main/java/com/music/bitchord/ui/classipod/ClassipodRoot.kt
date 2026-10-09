@@ -9,8 +9,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -193,6 +196,13 @@ class ClassipodWheelState {
     var onCenter: () -> Unit = {}
     /** Center long-press: song options on Now Playing. Reset on leave. */
     var onCenterLongPress: () -> Unit = {}
+    /**
+     * Zone hold: holding PREV/NEXT seeks backward/forward until release
+     * (real iPod behavior). Start fires once past the hold timeout, stop
+     * on lift. Reset on leave.
+     */
+    var onSeekHoldStart: (dir: Int) -> Unit = {}
+    var onSeekHoldStop: () -> Unit = {}
     var onPrev: () -> Unit = {}
     var onNext: () -> Unit = {}
     var onPlayPause: () -> Unit = {}
@@ -268,36 +278,57 @@ fun ClickWheel(
                     )
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { offset ->
+                    // Press state machine: quick lift = tap, 400ms hold =
+                    // long-press. Center hold opens the song menu, PREV/NEXT
+                    // hold seeks until lift (real iPod behavior). A null lift
+                    // means the rotary consumed the gesture — circling never
+                    // taps.
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown()
                             val c = Offset(size.width / 2f, size.height / 2f)
-                            val dx = offset.x - c.x
-                            val dy = offset.y - c.y
-                            val dist = kotlin.math.hypot(dx, dy)
-                            playClick(context)
-                            when {
-                                dist < radiusPx * 0.38f -> state.onCenter()
-                                else -> {
-                                    val a = angleOf(offset, c)
-                                    when {
-                                        a in 235f..305f -> state.onMenu()
-                                        a in 125f..235f -> state.onPrev()
-                                        a <= 55f || a >= 305f -> state.onNext()
-                                        else -> state.onPlayPause()
+                            val dist = kotlin.math.hypot(
+                                down.position.x - c.x, down.position.y - c.y,
+                            )
+                            var timedOut = false
+                            val up = try {
+                                withTimeout(400L) { waitForUpOrCancellation() }
+                            } catch (e: TimeoutCancellationException) {
+                                timedOut = true
+                                null
+                            }
+                            if (!timedOut && up == null) {
+                                Unit // rotary drag took it — not a tap
+                            } else if (!timedOut) {
+                                playClick(context)
+                                if (dist < radiusPx * 0.38f) {
+                                    state.onCenter()
+                                } else {
+                                    when (val a = angleOf(down.position, c)) {
+                                        in 235f..305f -> state.onMenu()
+                                        in 125f..235f -> state.onPrev()
+                                        else -> if (a <= 55f || a >= 305f) state.onNext()
+                                        else state.onPlayPause()
                                     }
                                 }
-                            }
-                        },
-                        onLongPress = { offset ->
-                            val c = Offset(size.width / 2f, size.height / 2f)
-                            val dx = offset.x - c.x
-                            val dy = offset.y - c.y
-                            if (kotlin.math.hypot(dx, dy) < radiusPx * 0.38f) {
+                            } else {
                                 playClick(context)
-                                state.onCenterLongPress()
+                                val seekDir = if (dist < radiusPx * 0.38f) {
+                                    state.onCenterLongPress()
+                                    0
+                                } else {
+                                    when (val a = angleOf(down.position, c)) {
+                                        in 125f..235f -> -1
+                                        in 235f..305f -> 0.also { state.onMenu() }
+                                        else -> if (a <= 55f || a >= 305f) 1 else 0
+                                    }
+                                }
+                                if (seekDir != 0) state.onSeekHoldStart(seekDir)
+                                waitForUpOrCancellation()
+                                if (seekDir != 0) state.onSeekHoldStop()
                             }
-                        },
-                    )
+                        }
+                    }
                 },
         ) {
             Canvas(Modifier.fillMaxSize()) {

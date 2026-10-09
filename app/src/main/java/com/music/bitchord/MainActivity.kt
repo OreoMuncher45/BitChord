@@ -2615,6 +2615,17 @@ private fun BitChordApp(
                 onPlaySongs = { songs, index, source -> playFrom(songs, index, source) },
                 onStartFlow = { startFlow(false) },
                 openSongMenu = openSongMenu,
+                onQueueSongs = addSongsToQueue,
+                onOpenAccount = { showAccountScrobbling = true },
+                onOpenDiscord = { showDiscord = true },
+                onOpenDiscordLogin = { showDiscordLogin = true },
+                onOpenEqualizer = { showEqualizer = true },
+                onOpenLyricsSources = { showLyricsSources = true },
+                onOpenTranslationLanguage = { showTranslationLanguage = true },
+                onOpenAppLanguage = { showAppLanguage = true },
+                onOpenReplay = { showReplay = true },
+                onOpenListenTogether = { showListenTogether = true },
+                onOpenDownloads = { showDownloadManager = true },
                 modifier = Modifier.fillMaxSize(),
             )
             return@BitChordApp

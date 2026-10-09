@@ -86,12 +86,19 @@ data class MenuItem(
     val title: String,
     val value: String? = null,
     val onSelect: () -> Unit = {},
+    /**
+     * Center-button action. Null means center does [onSelect]: menus keep
+     * that. Song rows pass the song menu and playlist rows the collection
+     * options, so the middle button is the three-dot menu everywhere.
+     */
+    val onCenter: (() -> Unit)? = null,
 )
 
 /**
  * Renders a [ClassipodPage.Menu]: header bar + selectable rows with a
- * wheel-driven cursor. Touch taps select directly; the wheel moves
- * [selected] and center confirms — both call the same [MenuItem.onSelect].
+ * wheel-driven cursor. Touch taps call [MenuItem.onSelect]; the wheel
+ * center calls [MenuItem.onCenter] when the row sets one (song and
+ * playlist options), else [MenuItem.onSelect].
  */
 @Composable
 fun ClassipodMenuPage(
@@ -108,7 +115,11 @@ fun ClassipodMenuPage(
             selected = ((selected + dir) % page.items.size + page.items.size) % page.items.size
         }
     }
-    wheel.onCenter = { page.items.getOrNull(selected)?.onSelect?.invoke() }
+    wheel.onCenter = {
+        page.items.getOrNull(selected)?.let { item ->
+            (item.onCenter ?: item.onSelect).invoke()
+        }
+    }
     LaunchedEffect(selected) {
         if (page.items.isNotEmpty()) listState.animateScrollToItem(selected)
     }

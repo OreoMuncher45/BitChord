@@ -48,9 +48,9 @@ import com.music.bitchord.data.model.isSameTrackAs
 import kotlinx.coroutines.launch
 
 /**
- * Flat track list with a wheel cursor: tap or center plays from the row
- * and opens Now Playing, exactly like Classipod's song lists.
- * Long-press opens the song menu.
+ * Flat track list with a wheel cursor: tap plays from the row and opens
+ * Now Playing; center opens the song's full options menu (the same
+ * sheet as the › affordance). Long-press opens the song menu too.
  */
 @Composable
 fun ClassipodTrackList(
@@ -70,7 +70,7 @@ fun ClassipodTrackList(
     wheel.onStep = { dir ->
         if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
     }
-    wheel.onCenter = { songs.getOrNull(selected)?.let { onPlay(songs, selected) } }
+    wheel.onCenter = { songs.getOrNull(selected)?.let(onLongPress) }
     LaunchedEffect(selected) {
         if (songs.isNotEmpty()) listState.animateScrollToItem(selected)
     }
@@ -188,7 +188,7 @@ fun ClassipodPagedTracks(
     wheel.onStep = { dir ->
         if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
     }
-    wheel.onCenter = { songs.getOrNull(selected)?.let { onPlay(songs, selected) } }
+    wheel.onCenter = { songs.getOrNull(selected)?.let(onLongPress) }
     LaunchedEffect(selected) {
         if (songs.isNotEmpty()) listState.animateScrollToItem(selected)
     }
@@ -294,6 +294,12 @@ fun ClassipodSearch(
     onSong: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
     onBrowse: (com.music.bitchord.data.model.BrowseItem) -> Unit,
+    /**
+     * Center-button action for collection hits. Defaults to [onBrowse];
+     * the host passes the playlist options sheet for playlists so the
+     * middle button acts as the three-dot menu there too.
+     */
+    onBrowseCenter: ((com.music.bitchord.data.model.BrowseItem) -> Unit)? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -319,12 +325,9 @@ fun ClassipodSearch(
         } else {
             songs.getOrNull(selected - 1)?.let { entry ->
                 when (entry) {
-                    is SearchEntry.Song -> {
-                        val list = songs.filterIsInstance<SearchEntry.Song>().map { it.song }
-                        val at = list.indexOfFirst { it.videoId == entry.song.videoId }.takeIf { it >= 0 } ?: 0
-                        onSong(list, at)
-                    }
-                    is SearchEntry.Browse -> onBrowse(entry.item)
+                    // Center is the options menu; tap the row to play.
+                    is SearchEntry.Song -> onSongLongPress(entry.song)
+                    is SearchEntry.Browse -> (onBrowseCenter ?: onBrowse)(entry.item)
                 }
             }
         }

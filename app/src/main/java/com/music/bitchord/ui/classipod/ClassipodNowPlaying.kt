@@ -85,6 +85,8 @@ fun ClassipodNowPlaying(
     qualityLine: String?,
     lyrics: List<LyricLine>?,
     lyricsChecked: Boolean,
+    queue: List<Song>,
+    queueIndex: Int,
     shuffleOn: Boolean,
     repeatMode: Int,
     lcd: ClassipodTheme.Lcd,
@@ -92,6 +94,9 @@ fun ClassipodNowPlaying(
     volume: Float,
     onVolume: (Float) -> Unit,
     onSeek: (Long) -> Unit,
+    onPlayAt: (Int) -> Unit,
+    onHoldSeekStart: (dir: Int) -> Unit,
+    onHoldSeekStop: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onSongMenu: (Song) -> Unit,
@@ -99,8 +104,15 @@ fun ClassipodNowPlaying(
 ) {
     val scope = rememberCoroutineScope()
     val hasLyrics = !lyrics.isNullOrEmpty()
-    var showLyrics by remember(song?.videoId) { mutableStateOf(false) }
-    if (!hasLyrics && showLyrics) showLyrics = false
+    // Center cycles art -> lyrics -> queue. Lyrics stays in the cycle
+    // while the lookup is still running so the button never feels dead.
+    val lyricsLive = hasLyrics || !lyricsChecked
+    // 0 = art, 1 = lyrics, 2 = queue.
+    var mode by remember(song?.videoId) { mutableIntStateOf(0) }
+    if (mode == 1 && !lyricsLive && !hasLyrics) mode = 0
+    var queueSel by remember(song?.videoId) {
+        mutableIntStateOf((queueIndex + 1).coerceAtLeast(0))
+    }
 
     // Transient volume bar: rotary shows it for 2s, like the real thing.
     var showVol by remember { mutableStateOf(false) }
@@ -115,23 +127,39 @@ fun ClassipodNowPlaying(
     var followSuspendUntil by remember { mutableLongStateOf(0L) }
 
     wheel.onStep = { dir ->
-        if (showLyrics) {
-            followSuspendUntil = System.currentTimeMillis() + 5000
-            scope.launch { lyricList.scrollBy(-dir * 90f) }
-        } else {
-            onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
-            showVol = true
-            volGen++
+        when (mode) {
+            1 -> {
+                followSuspendUntil = System.currentTimeMillis() + 5000
+                scope.launch { lyricList.scrollBy(-dir * 90f) }
+            }
+            2 -> if (queue.isNotEmpty()) {
+                queueSel = ((queueSel + dir) % queue.size + queue.size) % queue.size
+            }
+            else -> {
+                onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
+                showVol = true
+                volGen++
+            }
         }
     }
     wheel.onCenter = {
-        if (hasLyrics) showLyrics = !showLyrics
+        mode = when (mode) {
+            0 -> if (lyricsLive || hasLyrics) 1 else if (queue.isNotEmpty()) 2 else 0
+            1 -> if (queue.isNotEmpty()) 2 else 0
+            else -> 0
+        }
     }
     wheel.onCenterLongPress = {
         song?.let(onSongMenu)
     }
-    DisposableEffect(song?.videoId) {
-        onDispose { wheel.onCenterLongPress = {} }
+    wheel.onSeekHoldStart = onHoldSeekStart
+    wheel.onSeekHoldStop = onHoldSeekStop
+    DisposableEffect(Unit) {
+        onDispose {
+            wheel.onCenterLongPress = {}
+            wheel.onSeekHoldStart = {}
+            wheel.onSeekHoldStop = {}
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().background(lcd.bg)) {
@@ -163,20 +191,34 @@ fun ClassipodNowPlaying(
         } else {
             Spacer(Modifier.height(20.dp))
         }
-        if (showLyrics && lyrics != null) {
-            LyricsSheet(
-                lines = lyrics,
-                positionMs = positionMs,
-                followSuspendUntil = followSuspendUntil,
-                listState = lyricList,
-                lcd = lcd,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 10.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
+        // Pinned middle: the bar below always has room, on any LCD
+        // height — this is what kept it off-screen before.
+        Box(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (mode) {
+                1 -> LyricsSheet(
+                    lines = lyrics,
+                    positionMs = positionMs,
+                    followSuspendUntil = followSuspendUntil,
+                    listState = lyricList,
+                    lcd = lcd,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                2 -> QueueSheet(
+                    queue = queue,
+                    queueIndex = queueIndex,
+                    selected = queueSel,
+                    lcd = lcd,
+                    onPick = { queueSel = it },
+                    onPlayPick = { onPlayAt(queueSel) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
                 PodReflectiveArt(
                     url = song?.thumbnailUrl?.artworkAt(480),
                     lcd = lcd,
@@ -247,10 +289,10 @@ fun ClassipodNowPlaying(
                     }
                     Spacer(Modifier.weight(1f))
                 }
+                }
             }
         }
-        Spacer(Modifier.weight(1f))
-        if (showVol && !showLyrics) {
+        if (showVol && mode == 0) {
             NpVolumeBar(volume = volume, lcd = lcd)
         } else {
             NpSeekBar(
@@ -263,11 +305,13 @@ fun ClassipodNowPlaying(
         Spacer(Modifier.height(10.dp))
         // Hint row: only what the wheel can actually do from here.
         Text(
-            text = when {
-                hasLyrics && showLyrics -> "ROTATE SCROLLS · CENTER HIDES LYRICS"
-                hasLyrics -> "CENTER LYRICS · HOLD CENTER OPTIONS"
-                !lyricsChecked -> "FINDING LYRICS… · HOLD CENTER OPTIONS"
-                else -> "HOLD CENTER FOR OPTIONS"
+            text = when (mode) {
+                1 -> "ROTATE SCROLLS · CENTER QUEUE"
+                2 -> "ROTATE PICKS · CENTER PLAYS"
+                else -> when {
+                    lyricsLive || hasLyrics -> "CENTER LYRICS · HOLD CENTER OPTIONS"
+                    else -> "HOLD CENTER OPTIONS · HOLD ◀ ▶ SEEKS"
+                }
             },
             fontFamily = ClassipodTheme.helveticaBold,
             fontWeight = FontWeight.Bold,
@@ -287,14 +331,94 @@ fun ClassipodNowPlaying(
  * wheel, which buys 5s of manual control.
  */
 @Composable
+private fun QueueSheet(
+    queue: List<Song>,
+    queueIndex: Int,
+    selected: Int,
+    lcd: ClassipodTheme.Lcd,
+    onPick: (Int) -> Unit,
+    onPlayPick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selected) {
+        if (queue.isNotEmpty()) listState.animateScrollToItem(selected.coerceIn(0, queue.size - 1))
+    }
+    if (queue.isEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "Queue is empty",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = ClassipodTheme.helveticaBold,
+                color = lcd.dim,
+            )
+        }
+        return
+    }
+    LazyColumn(state = listState, modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        itemsIndexed(queue, key = { i, s -> "q:$i:${s.videoId}" }) { i, song ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (i == selected) lcd.selectedBg else Color.Transparent)
+                    .clickable { onPick(i); onPlayPick() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (i == queueIndex) "▶" else "${i + 1}.",
+                    fontSize = 12.sp,
+                    color = if (i == selected) lcd.selectedText else lcd.dim,
+                    fontFamily = ClassipodTheme.helvetica,
+                    modifier = Modifier.width(28.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    PodMarquee(
+                        text = song.title,
+                        color = if (i == selected) lcd.selectedText else lcd.text,
+                        fontSize = 14.sp,
+                        fontFamily = ClassipodTheme.helvetica,
+                        fontWeight = FontWeight.Normal,
+                        scroll = i == selected,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    PodMarquee(
+                        text = song.artist,
+                        color = if (i == selected) lcd.selectedText.copy(alpha = 0.75f) else lcd.dim,
+                        fontSize = 12.sp,
+                        fontFamily = ClassipodTheme.helvetica,
+                        fontWeight = FontWeight.Normal,
+                        scroll = i == selected,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun LyricsSheet(
-    lines: List<LyricLine>,
+    lines: List<LyricLine>?,
     positionMs: Long,
     followSuspendUntil: Long,
     listState: androidx.compose.foundation.lazy.LazyListState,
     lcd: ClassipodTheme.Lcd,
     modifier: Modifier = Modifier,
 ) {
+    if (lines.isNullOrEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "Finding lyrics…",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = ClassipodTheme.helveticaBold,
+                color = lcd.dim,
+            )
+        }
+        return
+    }
     val activeIdx = lines.indexOfLast { it.timeMs <= positionMs }.takeIf { it >= 0 }
     LaunchedEffect(activeIdx) {
         if (activeIdx != null && System.currentTimeMillis() > followSuspendUntil) {

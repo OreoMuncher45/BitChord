@@ -1,16 +1,27 @@
 package com.music.bitchord.ui.classipod
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
@@ -52,6 +63,17 @@ fun ClassipodHost(
     onPlaySongs: (List<Song>, Int, QueueSource) -> Unit,
     onStartFlow: () -> Unit,
     openSongMenu: (Song) -> Unit,
+    onQueueSongs: (List<Song>) -> Unit = {},
+    onOpenAccount: () -> Unit = {},
+    onOpenDiscord: () -> Unit = {},
+    onOpenDiscordLogin: () -> Unit = {},
+    onOpenEqualizer: () -> Unit = {},
+    onOpenLyricsSources: () -> Unit = {},
+    onOpenTranslationLanguage: () -> Unit = {},
+    onOpenAppLanguage: () -> Unit = {},
+    onOpenReplay: () -> Unit = {},
+    onOpenListenTogether: () -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -59,6 +81,20 @@ fun ClassipodHost(
     val lcd = ClassipodTheme.lcd(darkTheme)
     val wheel = remember { ClassipodWheelState() }
     var stack by remember { mutableStateOf<List<ClassipodPage>>(listOf(ClassipodPage.Menu("Music", emptyList()))) }
+
+    // Transient pill ("Queued 34 songs", "Couldn't load X"): queue-all and
+    // play-all answer here instead of dying silent like opens used to.
+    var notice by remember { mutableStateOf<String?>(null) }
+    var noticeGen by remember { mutableIntStateOf(0) }
+    fun notify(msg: String) {
+        notice = msg
+        noticeGen++
+    }
+    LaunchedEffect(noticeGen) {
+        if (noticeGen == 0) return@LaunchedEffect
+        delay(2200)
+        notice = null
+    }
 
     fun push(page: ClassipodPage) {
         stack = stack + page
@@ -95,6 +131,32 @@ fun ClassipodHost(
     val clicksOn by AppSettings.classipodClicks.collectAsStateWithLifecycle()
     val wheelSteps by AppSettings.classipodWheelSteps.collectAsStateWithLifecycle()
     val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
+    val account by viewModel.account.collectAsStateWithLifecycle()
+    val discordRpc by AppSettings.discordRpcEnabled.collectAsStateWithLifecycle()
+    val discordQuality by AppSettings.discordShowAudioQuality.collectAsStateWithLifecycle()
+    val discordDetails by AppSettings.discordUseDetails.collectAsStateWithLifecycle()
+    val atmosOn by AppSettings.dolbyAtmos.collectAsStateWithLifecycle()
+    val dlQuality by AppSettings.downloadQuality.collectAsStateWithLifecycle()
+    val wifiOnlyDl by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
+    val musicOnly by AppSettings.preferMusicOnly.collectAsStateWithLifecycle()
+    val autoplayOn by AppSettings.autoplay.collectAsStateWithLifecycle()
+    val loudness by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
+    val skipSil by AppSettings.skipSilence.collectAsStateWithLifecycle()
+    val usbDac by AppSettings.preferUsbDac.collectAsStateWithLifecycle()
+    val spatial by AppSettings.spatialAudio.collectAsStateWithLifecycle()
+    val speed by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
+    val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
+    val themeModeVal by AppSettings.themeMode.collectAsStateWithLifecycle()
+    val reduceAnim by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val nerd by AppSettings.showNerdStats.collectAsStateWithLifecycle()
+    val syncedLyr by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
+    val syllable by AppSettings.prioritizeSyllableSync.collectAsStateWithLifecycle()
+    val cacheLimit by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
+    val swipeNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
+    val noRepeat by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
+    val stopClose by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
+    val genreStats by AppSettings.replayGenres.collectAsStateWithLifecycle()
+    val eqOn by AppSettings.equalizerEnabled.collectAsStateWithLifecycle()
 
     val likedSongs = (library as? UiState.Success)?.data?.likedSongs.orEmpty()
     // The library tab only carries Liked Music's first page (~100 rows).
@@ -133,32 +195,46 @@ fun ClassipodHost(
         push(ClassipodPage.NowPlaying)
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /**
+     * The three-dot menu for a playlist or album, wherever it is met:
+     * Playlists menu, shelf cards, search hits. Open pages instantly,
+     * Play all replaces the queue and starts it, Queue all appends.
+     */
+    fun collectionOptionsPage(title: String, browseId: String): ClassipodPage.Menu =
+        ClassipodPage.Menu(
+            title,
+            listOf(
+                MenuItem("Open") { openPaged(title, browseId, false) },
+                MenuItem("Play all") {
+                    scope.launch {
+                        notify("Loading " + title + "\u2026")
+                        val all = com.music.bitchord.data.YtMusicRepository.allSongs(browseId)
+                            .getOrNull().orEmpty()
+                        if (all.isNotEmpty()) {
+                            playFromList(
+                                all, 0, title,
+                                com.music.bitchord.data.model.PlaybackSourceType.BROWSE,
+                            )
+                            push(ClassipodPage.NowPlaying)
+                        } else {
+                            notify("Couldn't load " + title)
+                        }
+                    }
+                },
+                MenuItem("Queue all") {
+                    scope.launch {
+                        val all = com.music.bitchord.data.YtMusicRepository.allSongs(browseId)
+                            .getOrNull().orEmpty()
+                        if (all.isNotEmpty()) {
+                            onQueueSongs(all)
+                            notify("Queued " + all.size + " songs")
+                        } else {
+                            notify("Couldn't load " + title)
+                        }
+                    }
+                },
+            ),
+        )
 
     fun repeatLabel(mode: Int): String = when (mode) {
         Player.REPEAT_MODE_ALL -> "All"
@@ -247,6 +323,166 @@ fun ClassipodHost(
         ),
     )
 
+    // ── Advanced Settings ─────────────────────────────────────────
+    // Every functional setting from the main Settings sheet, driven by the
+    // same AppSettings flows and the same app overlays: toggles flip the
+    // pref, rows that need a form raise the app's own sheet over the iPod.
+
+    /** Toggle row that rebuilds its page so the value reads live. */
+    fun tog(
+        title: String,
+        on: Boolean,
+        set: (Boolean) -> Unit,
+        refresh: () -> ClassipodPage.Menu,
+    ): MenuItem = MenuItem(title, if (on) "On" else "Off") {
+        set(!on)
+        push(refresh())
+        pop()
+    }
+
+    /** Cycle row for enums and rung lists. */
+    fun <T> cyc(
+        title: String,
+        value: String,
+        current: T,
+        order: List<T>,
+        set: (T) -> Unit,
+        refresh: () -> ClassipodPage.Menu,
+    ): MenuItem = MenuItem(title, value) {
+        set(order[(order.indexOf(current) + 1) % order.size])
+        push(refresh())
+        pop()
+    }
+
+    fun cacheLabel(bytes: Long): String = when (bytes) {
+        AppSettings.UNLIMITED_CACHE_LIMIT_BYTES -> "Unlimited"
+        else -> {
+            val mb = (bytes / (1024 * 1024)).toInt()
+            if (mb >= 1024) "${mb / 1024} GB" else "$mb MB"
+        }
+    }
+
+    fun discordPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Discord",
+        listOf(
+            tog("Rich presence", discordRpc, AppSettings::setDiscordRpcEnabled, ::discordPage),
+            tog("Show quality", discordQuality, AppSettings::setDiscordShowAudioQuality, ::discordPage),
+            tog("Show details", discordDetails, AppSettings::setDiscordUseDetails, ::discordPage),
+            MenuItem("Open Discord…") { onOpenDiscord() },
+            MenuItem("Discord login") { onOpenDiscordLogin() },
+        ),
+    )
+
+    fun advAudioPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Audio",
+        listOf(
+            cyc("Wi-Fi ceiling", wifiQuality.label, wifiQuality,
+                listOf(AudioQuality.LOSSLESS, AudioQuality.HIGH, AudioQuality.MEDIUM, AudioQuality.LOW),
+                AppSettings::setAudioQualityWifi, ::advAudioPage),
+            cyc("Data ceiling", cellularQuality.label, cellularQuality,
+                listOf(AudioQuality.LOSSLESS, AudioQuality.HIGH, AudioQuality.MEDIUM, AudioQuality.LOW),
+                AppSettings::setAudioQualityCellular, ::advAudioPage),
+            tog("Dolby Atmos", atmosOn, AppSettings::setDolbyAtmos, ::advAudioPage),
+            cyc("Download quality", dlQuality.label, dlQuality,
+                com.music.bitchord.data.settings.DownloadQuality.entries,
+                AppSettings::setDownloadQuality, ::advAudioPage),
+            tog("Wi-Fi-only downloads", wifiOnlyDl, AppSettings::setWifiOnlyDownloads, ::advAudioPage),
+        ),
+    )
+
+    fun advPlaybackPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Playback",
+        listOf(
+            tog("Music only", musicOnly, AppSettings::setPreferMusicOnly, ::advPlaybackPage),
+            tog("Autoplay", autoplayOn, AppSettings::setAutoplay, ::advPlaybackPage),
+            tog("Loudness", loudness, AppSettings::setLoudnessNormalization, ::advPlaybackPage),
+            tog("Skip silence", skipSil, AppSettings::setSkipSilence, ::advPlaybackPage),
+            tog("USB DAC", usbDac, AppSettings::setPreferUsbDac, ::advPlaybackPage),
+            tog("Spatial audio", spatial, AppSettings::setSpatialAudio, ::advPlaybackPage),
+            cyc("Speed", if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x", speed,
+                listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f),
+                AppSettings::setPlaybackSpeed, ::advPlaybackPage),
+            cyc("Crossfade", if (crossfade == 0) "Off" else "${crossfade}s", crossfade,
+                listOf(0, 2, 5, 10),
+                AppSettings::setCrossfadeSeconds, ::advPlaybackPage),
+        ),
+    )
+
+    fun advAppearancePage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Appearance",
+        listOf(
+            cyc("Theme", themeModeVal.label, themeModeVal,
+                com.music.bitchord.data.settings.ThemeMode.entries,
+                AppSettings::setThemeMode, ::advAppearancePage),
+            tog("Reduce animation", reduceAnim, AppSettings::setReduceAnimation, ::advAppearancePage),
+            tog("Nerd stats", nerd, AppSettings::setShowNerdStats, ::advAppearancePage),
+        ),
+    )
+
+    fun advLyricsPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Lyrics",
+        listOf(
+            tog("Synced lyrics", syncedLyr, AppSettings::setSyncedLyrics, ::advLyricsPage),
+            tog("Syllable sync", syllable, AppSettings::setPrioritizeSyllableSync, ::advLyricsPage),
+            MenuItem("Sources…") { onOpenLyricsSources() },
+            MenuItem("Translation…") { onOpenTranslationLanguage() },
+        ),
+    )
+
+    fun advStoragePage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Storage",
+        listOf(
+            cyc("Cache limit", cacheLabel(cacheLimit), cacheLimit,
+                listOf(512L * 1024 * 1024, 1024L * 1024 * 1024, 2048L * 1024 * 1024,
+                    4096L * 1024 * 1024, AppSettings.UNLIMITED_CACHE_LIMIT_BYTES),
+                AppSettings::setAudioCacheLimitBytes, ::advStoragePage),
+            MenuItem("Clear song cache") {
+                com.music.bitchord.playback.AudioCache.clear { notify("Song cache cleared") }
+            },
+            MenuItem("Clear image cache") {
+                coil3.SingletonImageLoader.get(context).memoryCache?.clear()
+                coil3.SingletonImageLoader.get(context).diskCache?.clear()
+                notify("Image cache cleared")
+            },
+        ),
+    )
+
+    fun advDataPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Data",
+        listOf(
+            MenuItem("Replay…") { onOpenReplay() },
+            tog("Genre stats", genreStats, AppSettings::setReplayGenres, ::advDataPage),
+        ),
+    )
+
+    fun advMorePage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "More",
+        listOf(
+            tog("Swipe to play next", swipeNext, AppSettings::setSwipeToPlayNext, ::advMorePage),
+            tog("Don't repeat", noRepeat, AppSettings::setDontRepeatSuggestions, ::advMorePage),
+            tog("Stop on close", stopClose, AppSettings::setStopOnTaskRemoved, ::advMorePage),
+            MenuItem("Equalizer", if (eqOn) "On" else "Off") { onOpenEqualizer() },
+            MenuItem("Language…") { onOpenAppLanguage() },
+            MenuItem("Listen Together…") { onOpenListenTogether() },
+            MenuItem("Downloads…") { onOpenDownloads() },
+        ),
+    )
+
+    fun advancedPage(): ClassipodPage.Menu = ClassipodPage.Menu(
+        "Advanced",
+        listOf(
+            MenuItem("Account", account?.email?.takeIf { it.isNotBlank() } ?: "Sign in") { onOpenAccount() },
+            MenuItem("Discord", if (discordRpc) "On" else "Off") { push(discordPage()) },
+            MenuItem("Audio") { push(advAudioPage()) },
+            MenuItem("Playback") { push(advPlaybackPage()) },
+            MenuItem("Appearance") { push(advAppearancePage()) },
+            MenuItem("Lyrics") { push(advLyricsPage()) },
+            MenuItem("Storage") { push(advStoragePage()) },
+            MenuItem("Data") { push(advDataPage()) },
+            MenuItem("More") { push(advMorePage()) },
+        ),
+    )
+
     fun podSettingsRows(): List<PodSettingRow> = listOf(
         PodSettingRow.Toggle("Shuffle", shuffleOn, AppSettings::setShuffleEnabled),
         PodSettingRow.Action("Repeat", repeatLabel(repeatMode)) {
@@ -268,6 +504,7 @@ fun ClassipodHost(
         ) { push(qualityPage()) },
         PodSettingRow.Action("Sources") { push(sourcesPage()) },
         PodSettingRow.Action("Interface", AppUi.CLASSIPOD.label) { push(interfacePage()) },
+        PodSettingRow.Action("Advanced") { push(advancedPage()) },
         PodSettingRow.Action("About") { push(aboutPage()) },
     )
 
@@ -294,21 +531,28 @@ fun ClassipodHost(
             ClassipodPage.Menu(
                 shelf.title,
                 shelf.items.map { item ->
-                    MenuItem(item.title, item.subtitle) {
-                        val song = item.videoId?.let { vid ->
-                            Song(vid, item.title, item.subtitle, item.thumbnailUrl)
-                        }
-                        if (song != null) {
-                            playFromList(
-                                listOf(song), 0, shelf.title,
-                                com.music.bitchord.data.model.PlaybackSourceType.HOME,
-                            )
-                        } else {
-                            val browseId = item.browseId
-                            if (browseId == null) return@MenuItem
-                            push(ClassipodPage.PagedTracks(item.title, browseId))
-                        }
+                    val song = item.videoId?.let { vid ->
+                        Song(vid, item.title, item.subtitle, item.thumbnailUrl)
                     }
+                    MenuItem(
+                        title = item.title,
+                        value = item.subtitle,
+                        onSelect = {
+                            if (song != null) {
+                                playFromList(
+                                    listOf(song), 0, shelf.title,
+                                    com.music.bitchord.data.model.PlaybackSourceType.HOME,
+                                )
+                            } else {
+                                val browseId = item.browseId ?: return@MenuItem
+                                push(ClassipodPage.PagedTracks(item.title, browseId))
+                            }
+                        },
+                        onCenter = song?.let { s -> { openSongMenu(s) } }
+                            ?: item.browseId?.let { id ->
+                                { push(collectionOptionsPage(item.title, id)) }
+                            },
+                    )
                 },
             ),
         )
@@ -352,10 +596,18 @@ fun ClassipodHost(
             ClassipodPage.Menu(
                 "Playlists",
                 playlists.map { pl ->
-                    MenuItem(pl.title, pl.subtitle) {
-                        val browseId = pl.browseId ?: return@MenuItem
-                        push(ClassipodPage.PagedTracks(pl.title, browseId))
-                    }
+                    MenuItem(
+                        title = pl.title,
+                        value = pl.subtitle,
+                        onSelect = {
+                            val browseId = pl.browseId ?: return@MenuItem
+                            push(ClassipodPage.PagedTracks(pl.title, browseId))
+                        },
+                        onCenter = {
+                            val browseId = pl.browseId ?: return@MenuItem
+                            push(collectionOptionsPage(pl.title, browseId))
+                        },
+                    )
                 },
             ),
         )
@@ -443,7 +695,8 @@ fun ClassipodHost(
         wheel = wheel,
         modifier = modifier,
         content = {
-            ClassipodPageContent(
+            Box(Modifier.fillMaxSize()) {
+                ClassipodPageContent(
                 page = stack.last(),
                 lcd = lcd,
                 wheel = wheel,
@@ -465,6 +718,7 @@ fun ClassipodHost(
                 openSongMenu = openSongMenu,
                 openTracks = ::openTracks,
                 openPaged = ::openPaged,
+                openCollectionOptions = { title, id -> push(collectionOptionsPage(title, id)) },
                 playFromList = ::playFromList,
                 playAndShow = ::playAndShow,
                 onLikedTotal = { likedTotal = it },
@@ -474,7 +728,23 @@ fun ClassipodHost(
                 repeatMode = repeatMode,
                 scope = scope,
                 onPop = ::pop,
-            )
+                )
+                if (notice != null) {
+                    Text(
+                        text = notice.orEmpty(),
+                        fontFamily = ClassipodTheme.helveticaBold,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color.White,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                    )
+                }
+            }
         },
     )
 }
@@ -499,6 +769,7 @@ private fun ClassipodPageContent(
     openSongMenu: (Song) -> Unit,
     openTracks: (String, List<Song>, QueueSource) -> Unit,
     openPaged: (String, String, Boolean) -> Unit,
+    openCollectionOptions: (String, String) -> Unit,
     playFromList: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
     playAndShow: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
     podSettingsRows: () -> List<PodSettingRow>,
@@ -557,6 +828,8 @@ private fun ClassipodPageContent(
                 val song = player.song
                 val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
                 val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
+                val holdScope = rememberCoroutineScope()
+                var holdJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
                 ClassipodNowPlaying(
                     song = song,
                     isPlaying = player.isPlaying,
@@ -567,6 +840,8 @@ private fun ClassipodPageContent(
                     qualityLine = discordAudioQualityLine(nerdStats),
                     lyrics = lyrics,
                     lyricsChecked = lyricsChecked,
+                    queue = player.queue,
+                    queueIndex = player.queueIndex,
                     shuffleOn = shuffleOn,
                     repeatMode = repeatMode,
                     lcd = lcd,
@@ -574,6 +849,20 @@ private fun ClassipodPageContent(
                     volume = volume,
                     onVolume = onVolume,
                     onSeek = { controller?.seekTo(it) },
+                    onPlayAt = { index -> controller?.seekTo(index, 0) },
+                    onHoldSeekStart = { dir ->
+                        holdJob?.cancel()
+                        holdJob = holdScope.launch {
+                            while (true) {
+                                controller?.let { c ->
+                                    val d = c.duration.coerceAtLeast(0)
+                                    if (d > 0) c.seekTo((c.currentPosition + dir * 8000).coerceIn(0, d))
+                                }
+                                delay(300)
+                            }
+                        }
+                    },
+                    onHoldSeekStop = { holdJob?.cancel(); holdJob = null },
                     onSongMenu = openSongMenu,
                     onToggleShuffle = { AppSettings.setShuffleEnabled(!shuffleOn) },
                     onCycleRepeat = {
@@ -634,6 +923,13 @@ private fun ClassipodPageContent(
                     onSongLongPress = openSongMenu,
                     onBrowse = { item ->
                         openPaged(item.title, item.browseId, false)
+                    },
+                    onBrowseCenter = { item ->
+                        if (item.type == BrowseType.PLAYLIST) {
+                            openCollectionOptions(item.title, item.browseId)
+                        } else {
+                            openPaged(item.title, item.browseId, false)
+                        }
                     },
                     onBack = onPop,
                 )
