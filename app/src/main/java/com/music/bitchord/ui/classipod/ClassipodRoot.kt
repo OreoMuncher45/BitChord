@@ -5,6 +5,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.ToneGenerator
 import android.os.BatteryManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -69,6 +76,16 @@ import kotlin.math.roundToInt
  * cannot also reach — rotation only ever calls [onWheelStep], taps only ever
  * call the same handlers a tap would.
  */
+/** Trace-proof identity for transitions: content growth must not replay them. */
+private val ClassipodPage.transitionKey: Any
+    get() = when (this) {
+        is ClassipodPage.Menu -> listOf("m", title)
+        is ClassipodPage.Tracks -> listOf("t", title, source)
+        is ClassipodPage.CoverFlow -> listOf("c", title, albums.size)
+        is ClassipodPage.PagedTracks -> listOf("p", title, browseId)
+        else -> listOf("o", title)
+    }
+
 @Composable
 fun ClassipodRoot(
     darkTheme: Boolean,
@@ -77,12 +94,15 @@ fun ClassipodRoot(
     onPop: () -> Unit,
     onPopToRoot: () -> Unit,
     wheel: ClassipodWheelState,
-    content: @Composable () -> Unit,
+    content: @Composable (ClassipodPage) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colorwayName by AppSettings.classipodColorway.collectAsStateWithLifecycle()
     val way = ClassipodTheme.colorway(colorwayName)
     val lcd = ClassipodTheme.lcd(darkTheme)
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    // System back pops the iPod stack, like MENU.
+    BackHandler(enabled = stack.size > 1) { onPop() }
 
     Column(
         modifier = modifier
@@ -103,7 +123,30 @@ fun ClassipodRoot(
                 .clip(RoundedCornerShape(8.dp))
                 .background(lcd.bg),
         ) {
-            content()
+            // Push slides in from the right, pop from the left; reduced
+            // motion fades. Keyed on identity, not contents, so a growing
+            // paged list never replays the transition as rows land. Depth
+            // scopes the keys so two same-titled pages never collide.
+            val pageByKey = remember { mutableMapOf<Any, ClassipodPage>() }
+            val keys = stack.mapIndexed { i, page ->
+                (i to page.transitionKey).also { pageByKey[it] = page }
+            }
+            AnimatedContent(
+                targetState = keys,
+                transitionSpec = {
+                    val push = targetState.size > initialState.size
+                    if (reduceMotion) {
+                        fadeIn() togetherWith fadeOut()
+                    } else {
+                        (slideInHorizontally { w -> if (push) w else -w } + fadeIn()) togetherWith
+                            (slideOutHorizontally { w -> if (push) -w else w } + fadeOut())
+                    }
+                },
+                contentAlignment = Alignment.TopStart,
+                modifier = Modifier.fillMaxSize(),
+            ) { ks ->
+                content(ks.mapNotNull { pageByKey[it] }.lastOrNull() ?: stack.last())
+            }
         }
         Spacer(Modifier.height(10.dp))
         ClickWheel(

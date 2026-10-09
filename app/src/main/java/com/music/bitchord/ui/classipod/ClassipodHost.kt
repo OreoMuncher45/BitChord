@@ -42,6 +42,8 @@ import com.music.bitchord.data.settings.AppUi
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.download.Downloads
+import com.music.bitchord.BuildConfig
+import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.playback.QueueSource
 import com.music.bitchord.playback.rememberPlayerState
 import com.music.bitchord.ui.components.QueueActionNotice
@@ -66,6 +68,8 @@ fun ClassipodHost(
     onStartFlow: () -> Unit,
     openSongMenu: (Song) -> Unit,
     onQueueSongs: (List<Song>) -> Unit = {},
+    onPlayNext: (List<Song>) -> Unit = {},
+    onDownloadSong: (Song) -> Unit = {},
     onOpenAccount: () -> Unit = {},
     onOpenDiscord: () -> Unit = {},
     onOpenDiscordLogin: () -> Unit = {},
@@ -241,6 +245,105 @@ fun ClassipodHost(
             ),
         )
 
+    /** Native playlist picker: existing playlists, honest empty states. */
+    fun podPlaylistPicker(song: Song): ClassipodPage.Menu {
+        if (account == null) {
+            return ClassipodPage.Menu(
+                song.title,
+                listOf(MenuItem("Sign in first", "Account in Advanced")),
+            )
+        }
+        if (playlists.isEmpty()) {
+            return ClassipodPage.Menu(
+                song.title,
+                listOf(MenuItem("No playlists yet", "Create one in BitChord")),
+            )
+        }
+        return ClassipodPage.Menu(
+            song.title,
+            playlists.map { pl ->
+                MenuItem(pl.title, pl.subtitle) {
+                    viewModel.addToPlaylists(listOf(pl), song) { added, there, _ ->
+                        notify(
+                            when {
+                                added > 0 -> "Added to " + pl.title
+                                there > 0 -> "Already in " + pl.title
+                                else -> "Couldn't add to " + pl.title
+                            },
+                        )
+                    }
+                    pop()
+                }
+            },
+        )
+    }
+
+    /**
+     * The universal song menu: one native iPod page for every song row in
+     * every list, reached by center, hold-center and the › affordance
+     * alike. It deliberately never touches the app's bottom sheets — a
+     * menu that is ordinary LCD content cannot fail to appear, swallow
+     * taps, or strand input the way a sheet over the iPod did.
+     */
+    fun podSongMenu(song: Song): ClassipodPage.Menu {
+        val liked = likeStatuses[song.videoId] == LikeStatus.LIKE
+        val albumSongs = song.albumName?.takeIf { it.isNotBlank() }
+            ?.let { name -> allKnown.filter { it.albumName == name } }.orEmpty()
+        val artistSongs = song.artist.takeIf { it.isNotBlank() }
+            ?.let { name -> allKnown.filter { it.artist == name } }.orEmpty()
+        return ClassipodPage.Menu(
+            song.title,
+            listOfNotNull(
+                MenuItem("Play") {
+                    playAndShow(listOf(song), 0, song.title, PlaybackSourceType.QUEUE)
+                },
+                MenuItem("Play next") {
+                    onPlayNext(listOf(song))
+                    pop()
+                },
+                MenuItem("Add to queue") {
+                    onQueueSongs(listOf(song))
+                    pop()
+                },
+                MenuItem(if (liked) "Unlove" else "Love") {
+                    viewModel.toggleLike(song.videoId)
+                    pop()
+                    push(podSongMenu(song))
+                },
+                MenuItem("Download") {
+                    onDownloadSong(song)
+                    pop()
+                },
+                MenuItem("Add to playlist…") { push(podPlaylistPicker(song)) },
+                MenuItem("Go to album", song.albumName)
+                    .takeIf { albumSongs.isNotEmpty() }
+                    ?.let {
+                        MenuItem("Go to album", song.albumName) {
+                            openTracks(
+                                song.albumName.orEmpty(), albumSongs,
+                                QueueSource(song.albumName.orEmpty(), PlaybackSourceType.BROWSE),
+                            )
+                        }
+                    },
+                MenuItem("Go to artist", song.artist)
+                    .takeIf { artistSongs.isNotEmpty() }
+                    ?.let {
+                        MenuItem("Go to artist", song.artist) {
+                            openTracks(
+                                song.artist, artistSongs,
+                                QueueSource(song.artist, PlaybackSourceType.BROWSE),
+                            )
+                        }
+                    },
+            ),
+        )
+    }
+
+    /** Every song row's center, hold-center and › land here. */
+    fun openPodSongMenu(song: Song) {
+        push(podSongMenu(song))
+    }
+
     fun repeatLabel(mode: Int): String = when (mode) {
         Player.REPEAT_MODE_ALL -> "All"
         Player.REPEAT_MODE_ONE -> "One"
@@ -322,7 +425,7 @@ fun ClassipodHost(
     fun aboutPage(): ClassipodPage.Menu = ClassipodPage.Menu(
         "About",
         listOf(
-            MenuItem("BitChord Next"),
+            MenuItem("BitChord Next", "v" + BuildConfig.VERSION_NAME),
             MenuItem("Tracks", allKnown.size.toString()),
             MenuItem("Liked", likedAll.size.toString()),
         ),
@@ -553,7 +656,7 @@ fun ClassipodHost(
                                 push(ClassipodPage.PagedTracks(item.title, browseId))
                             }
                         },
-                        onCenter = song?.let { s -> { openSongMenu(s) } }
+                        onCenter = song?.let { s -> { push(podSongMenu(s)) } }
                             ?: item.browseId?.let { id ->
                                 { push(collectionOptionsPage(item.title, id)) }
                             },
@@ -699,10 +802,10 @@ fun ClassipodHost(
         onPopToRoot = { stack = listOf(stack.first()) },
         wheel = wheel,
         modifier = modifier,
-        content = {
+        content = { page ->
             Box(Modifier.fillMaxSize()) {
                 ClassipodPageContent(
-                page = stack.last(),
+                page = page,
                 lcd = lcd,
                 wheel = wheel,
                 player = player,
@@ -720,7 +823,7 @@ fun ClassipodHost(
                     runCatching { controller?.volume = it }
                 },
                 onStartFlow = onStartFlow,
-                openSongMenu = openSongMenu,
+                openSongMenu = ::openPodSongMenu,
                 openTracks = ::openTracks,
                 openPaged = ::openPaged,
                 openCollectionOptions = { title, id -> push(collectionOptionsPage(title, id)) },

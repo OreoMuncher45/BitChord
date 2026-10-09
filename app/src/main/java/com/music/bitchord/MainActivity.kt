@@ -2616,6 +2616,8 @@ private fun BitChordApp(
                 onStartFlow = { startFlow(false) },
                 openSongMenu = openSongMenu,
                 onQueueSongs = addSongsToQueue,
+                onPlayNext = playSongsNext,
+                onDownloadSong = downloadSong,
                 onOpenAccount = { showAccountScrobbling = true },
                 onOpenDiscord = { showDiscord = true },
                 onOpenDiscordLogin = { showDiscordLogin = true },
