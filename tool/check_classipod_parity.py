@@ -42,6 +42,8 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("search/live results", CLS / "ClassipodHost.kt", ["typeaheadResults", "submitSearch"]),
     ("albums/cover flow", CLS / "ClassipodCoverFlow.kt", ["HorizontalPager", "rotationY", "CoverFlowMotion" if False else "51.6f", "zoom", "spin"]),
     ("albums/flow route", CLS / "ClassipodHost.kt", ["CoverFlow", "CoverAlbum"]),
+    ("playlists/instant open", CLS / "ClassipodHost.kt", ["openPaged", "PagedTracks(pl.title"]),
+    ("playlists/badge guard", CLS / "ClassipodHost.kt", ["reportTotal"]),
     ("now-playing/blue bar", CLS / "ClassipodTheme.kt", ["PROGRESS_FILL", "3D89EB"]),
     ("now-playing/counter", CLS / "ClassipodHost.kt", ["queueIndex", "queue.size"]),
     ("search/default tile", CLS / "ClassipodBrowse.kt", ["inputOpen", "SearchInputBar"]),

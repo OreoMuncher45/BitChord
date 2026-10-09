@@ -65,6 +65,8 @@ sealed interface ClassipodPage {
     data class PagedTracks(
         override val title: String,
         val browseId: String,
+        /** Only the Liked list reports its exact total back for the menu badge. */
+        val reportTotal: Boolean = false,
     ) : ClassipodPage
 
     data object UpNext : ClassipodPage {

@@ -118,6 +118,11 @@ fun ClassipodHost(
         push(ClassipodPage.Tracks(title, songs, source))
     }
 
+    /** A playlist/album/liked list that pages itself open — see PagedTracks. */
+    fun openPaged(title: String, browseId: String, reportTotal: Boolean = false) {
+        push(ClassipodPage.PagedTracks(title, browseId, reportTotal))
+    }
+
     fun playFromList(songs: List<Song>, index: Int, label: String, type: com.music.bitchord.data.model.PlaybackSourceType) {
         onPlaySongs(songs, index, QueueSource(label, type))
     }
@@ -301,16 +306,7 @@ fun ClassipodHost(
                         } else {
                             val browseId = item.browseId
                             if (browseId == null) return@MenuItem
-                            scope.launch {
-                                val songs = com.music.bitchord.data.YtMusicRepository.allSongs(browseId)
-                                    .getOrNull().orEmpty()
-                                if (songs.isNotEmpty()) {
-                                    openTracks(
-                                        item.title, songs,
-                                        QueueSource(item.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
-                                    )
-                                }
-                            }
+                            push(ClassipodPage.PagedTracks(item.title, browseId))
                         }
                     }
                 },
@@ -357,16 +353,8 @@ fun ClassipodHost(
                 "Playlists",
                 playlists.map { pl ->
                     MenuItem(pl.title, pl.subtitle) {
-                        scope.launch {
-                            val songs = com.music.bitchord.data.YtMusicRepository.allSongs(pl.browseId)
-                                .getOrNull().orEmpty()
-                            if (songs.isNotEmpty()) {
-                                openTracks(
-                                    pl.title, songs,
-                                    QueueSource(pl.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
-                                )
-                            }
-                        }
+                        val browseId = pl.browseId ?: return@MenuItem
+                        push(ClassipodPage.PagedTracks(pl.title, browseId))
                     }
                 },
             ),
@@ -417,6 +405,7 @@ fun ClassipodHost(
                         ClassipodPage.PagedTracks(
                             "Liked Songs",
                             com.music.bitchord.data.YtMusicRepository.LIKED_MUSIC,
+                            reportTotal = true,
                         ),
                     )
                 },
@@ -475,6 +464,7 @@ fun ClassipodHost(
                 onStartFlow = onStartFlow,
                 openSongMenu = openSongMenu,
                 openTracks = ::openTracks,
+                openPaged = ::openPaged,
                 playFromList = ::playFromList,
                 playAndShow = ::playAndShow,
                 onLikedTotal = { likedTotal = it },
@@ -508,6 +498,7 @@ private fun ClassipodPageContent(
     onStartFlow: () -> Unit,
     openSongMenu: (Song) -> Unit,
     openTracks: (String, List<Song>, QueueSource) -> Unit,
+    openPaged: (String, String, Boolean) -> Unit,
     playFromList: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
     playAndShow: (List<Song>, Int, String, com.music.bitchord.data.model.PlaybackSourceType) -> Unit,
     podSettingsRows: () -> List<PodSettingRow>,
@@ -546,7 +537,7 @@ private fun ClassipodPageContent(
                     )
                 },
                 onLongPress = openSongMenu,
-                onTotal = onLikedTotal,
+                onTotal = { if (page.reportTotal) onLikedTotal(it) },
                 onBack = onPop,
                 currentSong = player.song,
                 isPlaying = player.isPlaying,
@@ -642,16 +633,7 @@ private fun ClassipodPageContent(
                     },
                     onSongLongPress = openSongMenu,
                     onBrowse = { item ->
-                        scope.launch {
-                            val songs = com.music.bitchord.data.YtMusicRepository.allSongs(item.browseId)
-                                .getOrNull().orEmpty()
-                            if (songs.isNotEmpty()) {
-                                openTracks(
-                                    item.title, songs,
-                                    QueueSource(item.title, com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
-                                )
-                            }
-                        }
+                        openPaged(item.title, item.browseId, false)
                     },
                     onBack = onPop,
                 )
