@@ -2614,7 +2614,6 @@ private fun BitChordApp(
                 controller = controller,
                 onPlaySongs = { songs, index, source -> playFrom(songs, index, source) },
                 onStartFlow = { startFlow(false) },
-                openSongMenu = openSongMenu,
                 onQueueSongs = addSongsToQueue,
                 onPlayNext = playSongsNext,
                 onDownloadSong = downloadSong,

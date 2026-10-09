@@ -66,7 +66,6 @@ fun ClassipodHost(
     controller: MediaController?,
     onPlaySongs: (List<Song>, Int, QueueSource) -> Unit,
     onStartFlow: () -> Unit,
-    openSongMenu: (Song) -> Unit,
     onQueueSongs: (List<Song>) -> Unit = {},
     onPlayNext: (List<Song>) -> Unit = {},
     onDownloadSong: (Song) -> Unit = {},
@@ -823,7 +822,7 @@ fun ClassipodHost(
                     runCatching { controller?.volume = it }
                 },
                 onStartFlow = onStartFlow,
-                openSongMenu = ::openPodSongMenu,
+                openPodSongMenu = ::openPodSongMenu,
                 openTracks = ::openTracks,
                 openPaged = ::openPaged,
                 openCollectionOptions = { title, id -> push(collectionOptionsPage(title, id)) },
@@ -878,7 +877,7 @@ private fun ClassipodPageContent(
     volume: Float,
     onVolume: (Float) -> Unit,
     onStartFlow: () -> Unit,
-    openSongMenu: (Song) -> Unit,
+    openPodSongMenu: (Song) -> Unit,
     openTracks: (String, List<Song>, QueueSource) -> Unit,
     openPaged: (String, String, Boolean) -> Unit,
     openCollectionOptions: (String, String) -> Unit,
@@ -919,7 +918,7 @@ private fun ClassipodPageContent(
                         com.music.bitchord.data.model.PlaybackSourceType.BROWSE,
                     )
                 },
-                onLongPress = openSongMenu,
+                onLongPress = openPodSongMenu,
                 onTotal = { if (page.reportTotal) onLikedTotal(it) },
                 onBack = onPop,
                 currentSong = player.song,
@@ -931,7 +930,7 @@ private fun ClassipodPageContent(
                 lcd = lcd,
                 wheel = wheel,
                 onPlay = { songs, index -> playAndShow(songs, index, page.source.title, page.source.type) },
-                onLongPress = openSongMenu,
+                onLongPress = openPodSongMenu,
                 onBack = onPop,
                 currentSong = player.song,
                 isPlaying = player.isPlaying,
@@ -942,6 +941,9 @@ private fun ClassipodPageContent(
                 val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
                 val holdScope = rememberCoroutineScope()
                 var holdJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    onDispose { holdJob?.cancel(); holdJob = null }
+                }
                 ClassipodNowPlaying(
                     song = song,
                     isPlaying = player.isPlaying,
@@ -975,7 +977,7 @@ private fun ClassipodPageContent(
                         }
                     },
                     onHoldSeekStop = { holdJob?.cancel(); holdJob = null },
-                    onSongMenu = openSongMenu,
+                    onSongMenu = openPodSongMenu,
                     onToggleShuffle = { AppSettings.setShuffleEnabled(!shuffleOn) },
                     onCycleRepeat = {
                         val next = when (repeatMode) {
@@ -1032,7 +1034,7 @@ private fun ClassipodPageContent(
                             com.music.bitchord.data.model.PlaybackSourceType.SEARCH,
                         )
                     },
-                    onSongLongPress = openSongMenu,
+                    onSongLongPress = openPodSongMenu,
                     onBrowse = { item ->
                         openPaged(item.title, item.browseId, false)
                     },
@@ -1057,7 +1059,7 @@ private fun ClassipodPageContent(
                     onPlay = { songs, index ->
                         controller?.seekTo(at + 1 + index, 0)
                     },
-                    onLongPress = openSongMenu,
+                    onLongPress = openPodSongMenu,
                     onBack = onPop,
                     currentSong = player.song,
                     isPlaying = player.isPlaying,

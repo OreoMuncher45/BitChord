@@ -19,6 +19,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import com.music.bitchord.data.TrackLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import androidx.compose.foundation.layout.Arrangement
@@ -282,6 +284,33 @@ fun ClickWheel(
             return ((a % 360) + 360) % 360
         }
 
+        /**
+         * A dispatch that can never kill the input loop. Before this guard
+         * existed, a throwing center/menu callback ended the await loop
+         * below — which reads exactly as a dead middle button with the
+         * ring glyphs and rotary still alive, because those live in other
+         * handlers. Cancellation still propagates: only real faults are
+         * logged and swallowed.
+         */
+        fun guarded(action: () -> Unit) {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TrackLog.e("Classipod", "wheel dispatch failed", e)
+            }
+        }
+
+        fun tapRing(a: Float) {
+            when {
+                a in 235f..305f -> state.onMenu()
+                a in 125f..235f -> state.onPrev()
+                a <= 55f || a >= 305f -> state.onNext()
+                else -> state.onPlayPause()
+            }
+        }
+
         Box(
             modifier = Modifier
                 .size(diameter)
@@ -321,11 +350,14 @@ fun ClickWheel(
                     )
                 }
                 .pointerInput(Unit) {
-                    // Press state machine: quick lift = tap, 400ms hold =
-                    // long-press. Center hold opens the song menu, PREV/NEXT
-                    // hold seeks until lift (real iPod behavior). A null lift
-                    // means the rotary consumed the gesture — circling never
-                    // taps.
+                    // Press state machine, rebuilt: quick lift = tap, 400ms
+                    // hold = long-press. Center hold opens the song menu,
+                    // PREV/NEXT hold seeks until lift (real iPod behavior).
+                    // A null lift means the rotary consumed the gesture —
+                    // circling never taps. Every dispatch runs guarded and a
+                    // started hold ALWAYS sees its stop (try/finally, so even
+                    // disposal ends it) — a runaway seek loop hammering the
+                    // player forever used to read as a "bugged whole app".
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown()
@@ -333,6 +365,7 @@ fun ClickWheel(
                             val dist = kotlin.math.hypot(
                                 down.position.x - c.x, down.position.y - c.y,
                             )
+                            val angle = angleOf(down.position, c)
                             var timedOut = false
                             val up = try {
                                 withTimeout(400L) { waitForUpOrCancellation() }
@@ -341,34 +374,38 @@ fun ClickWheel(
                                 null
                             }
                             if (!timedOut && up == null) {
-                                Unit // rotary drag took it — not a tap
+                                Unit // rotary drag took it — not a press
                             } else if (!timedOut) {
-                                playClick(context)
+                                guarded { playClick(context) }
                                 if (dist < radiusPx * 0.38f) {
-                                    state.onCenter()
+                                    guarded { state.onCenter() }
                                 } else {
-                                    when (val a = angleOf(down.position, c)) {
-                                        in 235f..305f -> state.onMenu()
-                                        in 125f..235f -> state.onPrev()
-                                        else -> if (a <= 55f || a >= 305f) state.onNext()
-                                        else state.onPlayPause()
-                                    }
+                                    guarded { tapRing(angle) }
                                 }
                             } else {
-                                playClick(context)
-                                val seekDir = if (dist < radiusPx * 0.38f) {
-                                    state.onCenterLongPress()
-                                    0
+                                guarded { playClick(context) }
+                                if (dist < radiusPx * 0.38f) {
+                                    guarded { state.onCenterLongPress() }
+                                } else if (angle in 235f..305f) {
+                                    guarded { state.onMenu() }
                                 } else {
-                                    when (val a = angleOf(down.position, c)) {
-                                        in 125f..235f -> -1
-                                        in 235f..305f -> 0.also { state.onMenu() }
-                                        else -> if (a <= 55f || a >= 305f) 1 else 0
+                                    val dir = when {
+                                        angle in 125f..235f -> -1
+                                        angle <= 55f || angle >= 305f -> 1
+                                        else -> 0
+                                    }
+                                    if (dir == 0) {
+                                        guarded { state.onPlayPause() }
+                                        waitForUpOrCancellation()
+                                    } else {
+                                        guarded { state.onSeekHoldStart(dir) }
+                                        try {
+                                            waitForUpOrCancellation()
+                                        } finally {
+                                            guarded { state.onSeekHoldStop() }
+                                        }
                                     }
                                 }
-                                if (seekDir != 0) state.onSeekHoldStart(seekDir)
-                                waitForUpOrCancellation()
-                                if (seekDir != 0) state.onSeekHoldStop()
                             }
                         }
                     }
