@@ -109,6 +109,7 @@ fun ClassipodHost(
         }
     }
     val likedAll = fullLiked ?: likedSongs
+    var likedTotal by remember { mutableStateOf<Int?>(null) }
     val librarySongs = (library as? UiState.Success)?.data?.librarySongs.orEmpty()
     val allKnown = (likedAll + librarySongs).distinctBy { it.videoId }
     val historySongs = (history as? UiState.Success)?.data.orEmpty()
@@ -384,7 +385,7 @@ fun ClassipodHost(
 
 
     // Root menu, rebuilt as feeds land.
-    val root = remember(home, likedAll, librarySongs, playlists, flowStatus, player.song) {
+    val root = remember(home, likedAll, likedTotal, librarySongs, playlists, flowStatus, player.song) {
         ClassipodPage.Menu(
             title = "Music",
             items = listOf(
@@ -411,10 +412,12 @@ fun ClassipodHost(
                         QueueSource("Library", com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
                     )
                 },
-                MenuItem("Liked Songs", value = likedAll.size.takeIf { it > 0 }?.toString()) {
-                    openTracks(
-                        "Liked Songs", likedAll,
-                        QueueSource("Liked Songs", com.music.bitchord.data.model.PlaybackSourceType.BROWSE),
+                MenuItem("Liked Songs", value = likedTotal?.toString()) {
+                    push(
+                        ClassipodPage.PagedTracks(
+                            "Liked Songs",
+                            com.music.bitchord.data.YtMusicRepository.LIKED_MUSIC,
+                        ),
                     )
                 },
                 MenuItem("Playlists") { pushPlaylists() },
@@ -474,6 +477,7 @@ fun ClassipodHost(
                 openTracks = ::openTracks,
                 playFromList = ::playFromList,
                 playAndShow = ::playAndShow,
+                onLikedTotal = { likedTotal = it },
                 podSettingsRows = ::podSettingsRows,
                 sleepRows = ::sleepRows,
                 shuffleOn = shuffleOn,
@@ -511,6 +515,7 @@ private fun ClassipodPageContent(
     shuffleOn: Boolean,
     repeatMode: Int,
     scope: kotlinx.coroutines.CoroutineScope,
+    onLikedTotal: (Int) -> Unit,
     onPop: () -> Unit,
 ) {
     when (page) {
@@ -528,6 +533,23 @@ private fun ClassipodPageContent(
                     )
                 },
                 onBack = onPop,
+            )
+            is ClassipodPage.PagedTracks -> ClassipodPagedTracks(
+                title = page.title,
+                browseId = page.browseId,
+                lcd = lcd,
+                wheel = wheel,
+                onPlay = { songs, index ->
+                    playAndShow(
+                        songs, index, page.title,
+                        com.music.bitchord.data.model.PlaybackSourceType.BROWSE,
+                    )
+                },
+                onLongPress = openSongMenu,
+                onTotal = onLikedTotal,
+                onBack = onPop,
+                currentSong = player.song,
+                isPlaying = player.isPlaying,
             )
             is ClassipodPage.Tracks -> ClassipodTrackList(
                 title = page.title,

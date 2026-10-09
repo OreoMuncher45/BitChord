@@ -56,6 +56,17 @@ sealed interface ClassipodPage {
         override val title: String get() = "Albums"
     }
 
+    /**
+     * A long playlist (Liked Songs) that pages itself open: first ~100
+     * rows instantly, the next hundred each time the cursor nears the
+     * end. The header shows the true total once the feed names it
+     * (or the exact count once the last page lands), never the cap.
+     */
+    data class PagedTracks(
+        override val title: String,
+        val browseId: String,
+    ) : ClassipodPage
+
     data object UpNext : ClassipodPage {
         override val title: String get() = "Up Next"
     }

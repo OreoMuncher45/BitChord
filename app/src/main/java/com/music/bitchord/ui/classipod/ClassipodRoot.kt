@@ -383,14 +383,14 @@ fun ClassipodRow(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        PodMarquee(
             text = title,
+            color = if (selected) Color.White else lcd.text,
+            fontSize = ClassipodTheme.ROW_SIZE,
             fontFamily = ClassipodTheme.helveticaBold,
             fontWeight = FontWeight.Bold,
-            fontSize = ClassipodTheme.ROW_SIZE,
-            color = if (selected) Color.White else lcd.text,
+            scroll = selected,
             modifier = Modifier.weight(1f),
-            maxLines = 1,
         )
         if (value != null) {
             Text(

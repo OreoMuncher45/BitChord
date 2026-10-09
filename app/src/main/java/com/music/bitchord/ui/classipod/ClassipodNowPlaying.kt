@@ -187,60 +187,62 @@ fun ClassipodNowPlaying(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Spacer(Modifier.height(10.dp))
-                    Text(
+                    PodMarquee(
                         text = song?.title ?: "Nothing Playing",
-                        fontFamily = ClassipodTheme.helveticaBold,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
                         color = lcd.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 18.sp,
+                        fontFamily = ClassipodTheme.helveticaBold,
+                        fontWeight = FontWeight.Bold,
+                        scroll = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(5.dp))
-                    Text(
+                    PodMarquee(
                         text = song?.artist.orEmpty(),
+                        color = lcd.dim,
+                        fontSize = 14.sp,
                         fontFamily = ClassipodTheme.helveticaBold,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = lcd.dim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        scroll = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(5.dp))
-                    Text(
+                    PodMarquee(
                         text = song?.albumName.orEmpty(),
+                        color = lcd.dim,
+                        fontSize = 14.sp,
                         fontFamily = ClassipodTheme.helveticaBold,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = lcd.dim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        scroll = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     // Rating slot: no ratings in BitChord, keep the 22dp
                     // gap so the counter sits exactly where theirs does.
                     Spacer(Modifier.height(22.dp))
                     if (queueTotal > 0) {
-                        Text(
+                        PodMarquee(
                             text = "$queuePosition of $queueTotal",
+                            color = lcd.text,
+                            fontSize = 12.sp,
                             fontFamily = ClassipodTheme.helveticaBold,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = lcd.text,
+                            scroll = true,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     // Lossless/hi-res only: qualityLine is null for lossy,
                     // so lossy streams render nothing here.
                     if (qualityLine != null) {
                         Spacer(Modifier.height(3.dp))
-                        Text(
+                        PodMarquee(
                             text = qualityLine.uppercase(),
+                            color = lcd.dim,
+                            fontSize = 10.sp,
                             fontFamily = ClassipodTheme.helveticaBold,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
+                            scroll = true,
                             letterSpacing = 1.sp,
-                            color = lcd.dim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     Spacer(Modifier.weight(1f))

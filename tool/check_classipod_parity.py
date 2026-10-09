@@ -75,6 +75,20 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("host/flow+menu actions", APP / "MainActivity.kt", ["onStartFlow", "openSongMenu"]),
     ("settings/toggle both ways", APP / "ui/screens/SettingsSheet.kt", ["setAppUi", "AppUi.entries"]),
     ("settings/persisted", APP / "data/settings/AppSettings.kt", ["KEY_APP_UI", "KEY_CLASSIPOD_COLORWAY", "KEY_CLASSIPOD_CLICKS", "KEY_CLASSIPOD_WHEEL_STEPS"]),
+    ("marquee/rows", CLS / "ClassipodRoot.kt", ["PodMarquee", "scroll = selected"]),
+    ("marquee/tracks", CLS / "ClassipodBrowse.kt", ["PodMarquee", "scroll = index == selected"]),
+    ("marquee/now-playing", CLS / "ClassipodNowPlaying.kt", ["PodMarquee", "scroll = true"]),
+    ("marquee/coverflow", CLS / "ClassipodCoverFlow.kt", ["PodMarquee", "scroll = true"]),
+    ("liked/paged list", CLS / "ClassipodBrowse.kt", ["ClassipodPagedTracks", "moreSongs", "parsePlaylistCount"]),
+    ("liked/true total", CLS / "ClassipodHost.kt", ["likedTotal", "PagedTracks"]),
+    ("liked/menu badge", CLS / "ClassipodHost.kt", ["likedTotal?.toString()"]),
+    ("np/lyrics sheet", CLS / "ClassipodNowPlaying.kt", ["LyricsSheet", "animateScrollToItem", "followSuspendUntil"]),
+    ("np/volume bar", CLS / "ClassipodNowPlaying.kt", ["NpVolumeBar", "rotationZ = 45f"]),
+    ("np/song options", CLS / "ClassipodNowPlaying.kt", ["onCenterLongPress", "onSongMenu"]),
+    ("wheel/long-press", CLS / "ClassipodRoot.kt", ["onCenterLongPress"]),
+    ("search/live+submit", CLS / "ClassipodHost.kt", ["typeaheadResults", "submitSearch"]),
+    ("albums/coverflow", CLS / "ClassipodCoverFlow.kt", ["HorizontalPager", "rotationY", "360f * extra"]),
+    ("art/no letterbox", CLS / "ClassipodArt.kt", ["ContentScale.Crop", "scaleY = -1f"]),
 ]
 
 failures = []

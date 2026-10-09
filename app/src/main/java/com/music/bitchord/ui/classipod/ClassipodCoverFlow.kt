@@ -137,15 +137,13 @@ fun ClassipodCoverFlow(
             }
         }
         val center = albums.getOrNull(pager.currentPage)
-        Text(
+        PodMarquee(
             text = center?.name.orEmpty(),
+            color = lcd.text,
+            fontSize = 14.sp,
             fontFamily = ClassipodTheme.helveticaBold,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            color = lcd.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            scroll = true,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
         Text(
