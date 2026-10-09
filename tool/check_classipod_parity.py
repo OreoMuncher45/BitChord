@@ -50,6 +50,7 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("rows/center menu", CLS / "ClassipodBrowse.kt", ["let(onLongPress)", "onBrowseCenter"]),
     ("menu/center split", CLS / "ClassipodMenu.kt", ["onCenter", "three-dot"]),
     ("playlists/options page", CLS / "ClassipodHost.kt", ["collectionOptionsPage", "Queue all", "notify("]),
+    ("addon/neutral UA", APP / "data/sources/addon/AddonClient.kt", ["Mobile Safari", "Cloudflare"]),
     ("advanced/all settings", CLS / "ClassipodHost.kt", ["advancedPage", "discordPage", "advAudioPage", "advStoragePage", "onOpenEqualizer", "onQueueSongs"]),
     ("now-playing/blue bar", CLS / "ClassipodTheme.kt", ["PROGRESS_FILL", "3D89EB"]),
     ("now-playing/counter", CLS / "ClassipodHost.kt", ["queueIndex", "queue.size"]),

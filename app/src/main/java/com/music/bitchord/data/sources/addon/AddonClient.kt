@@ -528,7 +528,21 @@ class AddonClient(
          */
         private const val MAX_ERROR_BODY_CHARS = 300
 
-        private const val USER_AGENT = "BitChord"
+        /**
+         * A neutral browser UA, not the app name.
+         *
+         * Measured October 2026: at least one addon operator's Cloudflare
+         * rules answer HTTP 403 to requests carrying `BitChord` while the
+         * identical request with any browser UA returns 200 — the block keys
+         * on the string, not on behaviour. Addon traffic is plain JSON over
+         * GET either way, so there is nothing here a server needs the app's
+         * name for, and announcing it only buys refusals. This names no
+         * specific app; it is the same generic Chrome-on-Android string the
+         * codebase already sends where bot walls are expected (see
+         * PoTokenWebView).
+         */
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         /**
          * What [probeSearch] asks for. Deliberately an ordinary word rather
