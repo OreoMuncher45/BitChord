@@ -539,16 +539,14 @@ private fun ClassipodPageContent(
                     durationMs = player.durationMs,
                     queuePosition = (player.queueIndex + 1).coerceAtLeast(1),
                     queueTotal = player.queue.size,
-                    liked = song?.let { likeStatuses[it.videoId] == LikeStatus.LIKE } == true,
                     qualityLine = discordAudioQualityLine(nerdStats),
                     shuffleOn = shuffleOn,
-                    repeatOne = repeatMode == Player.REPEAT_MODE_ONE,
+                    repeatMode = repeatMode,
                     lcd = lcd,
                     wheel = wheel,
                     volume = volume,
                     onVolume = onVolume,
                     onSeek = { controller?.seekTo(it) },
-                    onToggleLike = { song?.let { viewModel.toggleLike(it.videoId) } },
                     onToggleShuffle = { AppSettings.setShuffleEnabled(!shuffleOn) },
                     onCycleRepeat = {
                         val next = when (repeatMode) {
@@ -559,7 +557,6 @@ private fun ClassipodPageContent(
                         AppSettings.setRepeatMode(next)
                         controller?.repeatMode = next
                     },
-                    onBack = onPop,
                 )
             }
             ClassipodPage.FlowHome -> ClassipodFlowHome(

@@ -116,6 +116,7 @@ object ClassipodTheme {
         val selectedBg: Color,
         val selectedText: Color,
         val divider: Color,
+        val dark: Boolean,
     )
 
     fun lcd(darkTheme: Boolean): Lcd = if (darkTheme) {
@@ -124,6 +125,7 @@ object ClassipodTheme {
             text = SCREEN_DARK_TEXT, dim = SCREEN_DARK_DIM,
             selectedBg = SCREEN_DARK_SELECTED_BG, selectedText = SCREEN_DARK_SELECTED_TEXT,
             divider = Color(0xFF2A2E34),
+            dark = true,
         )
     } else {
         Lcd(
@@ -131,6 +133,7 @@ object ClassipodTheme {
             text = SCREEN_LIGHT_TEXT, dim = SCREEN_LIGHT_DIM,
             selectedBg = SCREEN_LIGHT_SELECTED_BG, selectedText = SCREEN_LIGHT_SELECTED_TEXT,
             divider = Color(0xFFD9D9D9),
+            dark = false,
         )
     }
 
@@ -173,4 +176,24 @@ object ClassipodTheme {
 
     // Rating stars + secondary metadata gray, verbatim.
     val RATING_GRAY = Color(0xFF606060)
+
+    // Now Playing status header, verbatim from Classipod's StatusBar:
+    // light silver 3-stop + hairline, dark 2-stop + hairline.
+    val STATUS_DARK_TOP = Color(0xFF333942)
+    val STATUS_DARK_BOTTOM = Color(0xFF22272E)
+    val STATUS_BORDER = Color(0xFF6A6A6A)
+    val STATUS_DARK_BORDER = Color(0xFF3E4045)
+    val PLAYBACK_BLUE = Color(0xFF3DC4F1)
+
+    // Seek-bar track, verbatim: light 3-stop + border, dark 2-stop + border.
+    val TRACK_LIGHT = listOf(Color(0xFFFFFFFF), Color(0xFFE3E3E3), Color(0xFFEDEDED))
+    val TRACK_DARK = listOf(Color(0xFF2B2B2D), Color(0xFF3A3A3C))
+    val TRACK_BORDER = Color(0xFFC5C5C5)
+    val TRACK_DARK_BORDER = Color(0xFF4A4A4C)
+
+    // Album reflection wash, verbatim: light white, dark black.
+    val REFLECT_LIGHT_TOP = Color(0x66FFFFFF)
+    val REFLECT_LIGHT_BOTTOM = Color(0xFFFFFFFF)
+    val REFLECT_DARK_TOP = Color(0x73000000)
+    val REFLECT_DARK_BOTTOM = Color(0xCC000000)
 }

@@ -145,7 +145,7 @@ private fun ClassipodStatusBar(lcd: ClassipodTheme.Lcd, modifier: Modifier = Mod
     }
 }
 
-private fun readBatteryPct(context: Context): Int {
+internal fun readBatteryPct(context: Context): Int {
     val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
     val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
