@@ -49,6 +49,8 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("wheel/hold finally", CLS / "ClassipodRoot.kt", ["finally", "onSeekHoldStop"]),
     ("menus/hold-job disposed", CLS / "ClassipodHost.kt", ["holdJob?.cancel", "onDispose"]),
     ("menus/no sheet path", CLS / "ClassipodHost.kt", ["openPodSongMenu"]),
+    ("wheel/page slots", CLS / "ClassipodRoot.kt", ["WheelHandlers", "currentKey", "unregister"]),
+    ("wheel/claim sites", CLS / "ClassipodBrowse.kt", ["wheel.claim("]),
     ("np/mode cycle", CLS / "ClassipodNowPlaying.kt", ["QueueSheet", "onPlayAt", "Finding lyrics"]),
     ("np/pinned bar", CLS / "ClassipodNowPlaying.kt", ["contentAlignment = Alignment.Center", "Modifier.weight(1f).fillMaxWidth()"]),
     ("rows/center menu", CLS / "ClassipodBrowse.kt", ["let(onLongPress)", "onBrowseCenter"]),

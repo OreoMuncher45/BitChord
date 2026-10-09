@@ -50,6 +50,7 @@ fun ClassipodFlowHome(
     trackCount: Int,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onStartFlow: () -> Unit,
     onApply: (FlowMood, Float, Float, Set<String>) -> Unit,
     onNewMix: () -> Unit,
@@ -104,10 +105,15 @@ fun ClassipodFlowHome(
             }
         }
     }
-    wheel.onStep = { dir ->
-        if (rows.isNotEmpty()) cursor = ((cursor + dir) % rows.size + rows.size) % rows.size
-    }
-    wheel.onCenter = { rows.getOrNull(cursor)?.activate() }
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir ->
+                if (rows.isNotEmpty()) cursor = ((cursor + dir) % rows.size + rows.size) % rows.size
+            },
+            onCenter = { rows.getOrNull(cursor)?.activate() },
+        ),
+    )
 
     Column(modifier = modifier.fillMaxSize().background(lcd.bg)) {
         ClassipodBar(title = "Flow", lcd = lcd, onBack = onBack)

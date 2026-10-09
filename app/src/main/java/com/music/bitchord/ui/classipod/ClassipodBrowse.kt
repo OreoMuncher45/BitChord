@@ -58,6 +58,7 @@ fun ClassipodTrackList(
     songs: List<Song>,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onPlay: (List<Song>, Int) -> Unit,
     onLongPress: (Song) -> Unit,
     onBack: () -> Unit,
@@ -67,10 +68,15 @@ fun ClassipodTrackList(
 ) {
     var selected by remember(songs) { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
-    wheel.onStep = { dir ->
-        if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
-    }
-    wheel.onCenter = { songs.getOrNull(selected)?.let(onLongPress) }
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir ->
+                if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
+            },
+            onCenter = { songs.getOrNull(selected)?.let(onLongPress) },
+        ),
+    )
     LaunchedEffect(selected) {
         if (songs.isNotEmpty()) listState.animateScrollToItem(selected)
     }
@@ -146,6 +152,7 @@ fun ClassipodPagedTracks(
     browseId: String,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onPlay: (List<Song>, Int) -> Unit,
     onLongPress: (Song) -> Unit,
     onTotal: (Int) -> Unit,
@@ -185,10 +192,15 @@ fun ClassipodPagedTracks(
 
     var selected by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
-    wheel.onStep = { dir ->
-        if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
-    }
-    wheel.onCenter = { songs.getOrNull(selected)?.let(onLongPress) }
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir ->
+                if (songs.isNotEmpty()) selected = ((selected + dir) % songs.size + songs.size) % songs.size
+            },
+            onCenter = { songs.getOrNull(selected)?.let(onLongPress) },
+        ),
+    )
     LaunchedEffect(selected) {
         if (songs.isNotEmpty()) listState.animateScrollToItem(selected)
     }
@@ -291,6 +303,7 @@ fun ClassipodSearch(
     results: UiState<List<com.music.bitchord.data.model.SearchResult>>?,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onSong: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
     onBrowse: (com.music.bitchord.data.model.BrowseItem) -> Unit,
@@ -316,22 +329,27 @@ fun ClassipodSearch(
         }.orEmpty()
     // Row 0 = default tile, rows 1..n = hits.
     val rowCount = songs.size + 1
-    wheel.onStep = { dir ->
-        selected = ((selected + dir) % rowCount + rowCount) % rowCount
-    }
-    wheel.onCenter = {
-        if (selected == 0) {
-            inputOpen = !inputOpen
-        } else {
-            songs.getOrNull(selected - 1)?.let { entry ->
-                when (entry) {
-                    // Center is the options menu; tap the row to play.
-                    is SearchEntry.Song -> onSongLongPress(entry.song)
-                    is SearchEntry.Browse -> (onBrowseCenter ?: onBrowse)(entry.item)
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir ->
+                selected = ((selected + dir) % rowCount + rowCount) % rowCount
+            },
+            onCenter = {
+                if (selected == 0) {
+                    inputOpen = !inputOpen
+                } else {
+                    songs.getOrNull(selected - 1)?.let { entry ->
+                        when (entry) {
+                            // Center is the options menu; tap the row to play.
+                            is SearchEntry.Song -> onSongLongPress(entry.song)
+                            is SearchEntry.Browse -> (onBrowseCenter ?: onBrowse)(entry.item)
+                        }
+                    }
                 }
-            }
-        }
-    }
+            },
+        ),
+    )
     val listState = rememberLazyListState()
     LaunchedEffect(selected) { listState.animateScrollToItem(selected) }
 
@@ -491,21 +509,27 @@ fun ClassipodSettingsList(
     rows: List<PodSettingRow>,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selected by remember(rows) { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
-    wheel.onStep = { dir ->
-        if (rows.isNotEmpty()) selected = ((selected + dir) % rows.size + rows.size) % rows.size
-    }
-    wheel.onCenter = {
-        when (val row = rows.getOrNull(selected)) {
-            is PodSettingRow.Action -> row.onSelect()
-            is PodSettingRow.Toggle -> row.onToggle(!row.on)
-            null -> Unit
-        }
-    }
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir ->
+                if (rows.isNotEmpty()) selected = ((selected + dir) % rows.size + rows.size) % rows.size
+            },
+            onCenter = {
+                when (val row = rows.getOrNull(selected)) {
+                    is PodSettingRow.Action -> row.onSelect()
+                    is PodSettingRow.Toggle -> row.onToggle(!row.on)
+                    null -> Unit
+                }
+            },
+        ),
+    )
     LaunchedEffect(selected) {
         if (rows.isNotEmpty()) listState.animateScrollToItem(selected)
     }

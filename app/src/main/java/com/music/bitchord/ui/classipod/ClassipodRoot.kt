@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -227,30 +228,92 @@ private fun BatteryGlyph(pct: Int) {
 private fun Modifier.borderThin(color: Color): Modifier =
     this.then(Modifier.border(1.dp, color, RoundedCornerShape(3.dp)))
 
+/**
+ * Claim this page's wheel behavior. Re-registers every recomposition so
+ * closures stay fresh, unregisters on dispose so a dead page can never
+ * answer a button. Call it unconditionally at the top of every page.
+ */
+@Composable
+fun ClassipodWheelState.claim(key: Any, handlers: WheelHandlers) {
+    DisposableEffect(key) { onDispose { unregister(key) } }
+    register(key, handlers)
+}
+
 /** Which wheel zone was tapped. */
 enum class WheelZone { MENU, PREV, NEXT, PLAY_PAUSE, CENTER }
 
+/** Per-page wheel behavior. See [ClassipodWheelState]. */
+data class WheelHandlers(
+    val onStep: (Int) -> Unit = {},
+    val onCenter: () -> Unit = {},
+    val onCenterLongPress: () -> Unit = {},
+    val onSeekHoldStart: (Int) -> Unit = {},
+    val onSeekHoldStop: () -> Unit = {},
+)
+
 /**
- * Mutable wheel behaviour owned by the current screen: list screens scroll
- * on rotation, Now Playing scrubs-or-volumes. Screens set [onStep] and the
- * transport callbacks; the wheel itself is stateless chrome.
+ * Wheel dispatch, rebuilt around one rule: only the current page answers.
+ *
+ * Pages used to write globals directly, so an exited page — popped during
+ * a transition animation, or simply never recomposed again — kept answering
+ * the wheel forever. That reads as buttons doing nothing (or the wrong
+ * thing) with no visible cause. Now each page registers handlers under a
+ * key and unregisters on dispose; taps dispatch to the host's current page
+ * and a disposed page is unreachable by construction. Transport (menu,
+ * prev/next, play-pause) keeps single global owners in the host: exactly
+ * one writer, always fresh.
  */
 class ClassipodWheelState {
-    var onStep: (dir: Int) -> Unit = {}
     var onMenu: () -> Unit = {}
-    var onCenter: () -> Unit = {}
-    /** Center long-press: song options on Now Playing. Reset on leave. */
-    var onCenterLongPress: () -> Unit = {}
-    /**
-     * Zone hold: holding PREV/NEXT seeks backward/forward until release
-     * (real iPod behavior). Start fires once past the hold timeout, stop
-     * on lift. Reset on leave.
-     */
-    var onSeekHoldStart: (dir: Int) -> Unit = {}
-    var onSeekHoldStop: () -> Unit = {}
+    var onPlayPause: () -> Unit = {}
     var onPrev: () -> Unit = {}
     var onNext: () -> Unit = {}
-    var onPlayPause: () -> Unit = {}
+
+    private val slots = LinkedHashMap<Any, WheelHandlers>()
+
+    /** The nav stack's top, set by the host every recomposition. */
+    var currentKey: Any? = null
+
+    fun register(key: Any, handlers: WheelHandlers) {
+        slots[key] = handlers
+    }
+
+    fun unregister(key: Any) {
+        slots.remove(key)
+    }
+
+    private fun current(): WheelHandlers? =
+        currentKey?.let { slots[it] } ?: slots.values.lastOrNull()
+
+    private fun guardedFire(name: String, action: WheelHandlers.() -> Unit) {
+        try {
+            current()?.let { it.action() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.e("Classipod", "wheel $name failed", e)
+        }
+    }
+
+    private fun guardedTransport(name: String, action: () -> Unit) {
+        try {
+            action()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.e("Classipod", "wheel $name failed", e)
+        }
+    }
+
+    fun fireStep(dir: Int) = guardedFire("step") { onStep(dir) }
+    fun fireCenter() = guardedFire("center") { onCenter() }
+    fun fireCenterLongPress() = guardedFire("center-hold") { onCenterLongPress() }
+    fun fireSeekHoldStart(dir: Int) = guardedFire("seek-start") { onSeekHoldStart(dir) }
+    fun fireSeekHoldStop() = guardedFire("seek-stop") { onSeekHoldStop() }
+    fun fireMenu() = guardedTransport("menu", onMenu)
+    fun firePlayPause() = guardedTransport("playpause", onPlayPause)
+    fun firePrev() = guardedTransport("prev", onPrev)
+    fun fireNext() = guardedTransport("next", onNext)
 }
 
 /** Click feedback: the real iPod click sample (see [ClassipodClicks]). */
@@ -284,33 +347,6 @@ fun ClickWheel(
             return ((a % 360) + 360) % 360
         }
 
-        /**
-         * A dispatch that can never kill the input loop. Before this guard
-         * existed, a throwing center/menu callback ended the await loop
-         * below — which reads exactly as a dead middle button with the
-         * ring glyphs and rotary still alive, because those live in other
-         * handlers. Cancellation still propagates: only real faults are
-         * logged and swallowed.
-         */
-        fun guarded(action: () -> Unit) {
-            try {
-                action()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                TrackLog.e("Classipod", "wheel dispatch failed", e)
-            }
-        }
-
-        fun tapRing(a: Float) {
-            when {
-                a in 235f..305f -> state.onMenu()
-                a in 125f..235f -> state.onPrev()
-                a <= 55f || a >= 305f -> state.onNext()
-                else -> state.onPlayPause()
-            }
-        }
-
         Box(
             modifier = Modifier
                 .size(diameter)
@@ -335,12 +371,12 @@ fun ClickWheel(
                                 val stepDeg = 360f / stepsPerTurn
                                 while (acc >= stepDeg) {
                                     acc -= stepDeg
-                                    state.onStep(1)
+                                    state.fireStep(1)
                                     playClick(context)
                                 }
                                 while (acc <= -stepDeg) {
                                     acc += stepDeg
-                                    state.onStep(-1)
+                                    state.fireStep(-1)
                                     playClick(context)
                                 }
                             }
@@ -376,18 +412,23 @@ fun ClickWheel(
                             if (!timedOut && up == null) {
                                 Unit // rotary drag took it — not a press
                             } else if (!timedOut) {
-                                guarded { playClick(context) }
+                                playClick(context)
                                 if (dist < radiusPx * 0.38f) {
-                                    guarded { state.onCenter() }
+                                    state.fireCenter()
                                 } else {
-                                    guarded { tapRing(angle) }
+                                    when {
+                                        angle in 235f..305f -> state.fireMenu()
+                                        angle in 125f..235f -> state.firePrev()
+                                        angle <= 55f || angle >= 305f -> state.fireNext()
+                                        else -> state.firePlayPause()
+                                    }
                                 }
                             } else {
-                                guarded { playClick(context) }
+                                playClick(context)
                                 if (dist < radiusPx * 0.38f) {
-                                    guarded { state.onCenterLongPress() }
+                                    state.fireCenterLongPress()
                                 } else if (angle in 235f..305f) {
-                                    guarded { state.onMenu() }
+                                    state.fireMenu()
                                 } else {
                                     val dir = when {
                                         angle in 125f..235f -> -1
@@ -395,14 +436,14 @@ fun ClickWheel(
                                         else -> 0
                                     }
                                     if (dir == 0) {
-                                        guarded { state.onPlayPause() }
+                                        state.firePlayPause()
                                         waitForUpOrCancellation()
                                     } else {
-                                        guarded { state.onSeekHoldStart(dir) }
+                                        state.fireSeekHoldStart(dir)
                                         try {
                                             waitForUpOrCancellation()
                                         } finally {
-                                            guarded { state.onSeekHoldStop() }
+                                            state.fireSeekHoldStop()
                                         }
                                     }
                                 }

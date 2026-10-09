@@ -126,41 +126,41 @@ fun ClassipodNowPlaying(
     val lyricList = rememberLazyListState()
     var followSuspendUntil by remember { mutableLongStateOf(0L) }
 
-    wheel.onStep = { dir ->
-        when (mode) {
-            1 -> {
-                followSuspendUntil = System.currentTimeMillis() + 5000
-                scope.launch { lyricList.scrollBy(-dir * 90f) }
-            }
-            2 -> if (queue.isNotEmpty()) {
-                queueSel = ((queueSel + dir) % queue.size + queue.size) % queue.size
-            }
-            else -> {
-                onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
-                showVol = true
-                volGen++
-            }
-        }
-    }
-    wheel.onCenter = {
-        mode = when (mode) {
-            0 -> if (lyricsLive || hasLyrics) 1 else if (queue.isNotEmpty()) 2 else 0
-            1 -> if (queue.isNotEmpty()) 2 else 0
-            else -> 0
-        }
-    }
-    wheel.onCenterLongPress = {
-        song?.let(onSongMenu)
-    }
-    wheel.onSeekHoldStart = onHoldSeekStart
-    wheel.onSeekHoldStop = onHoldSeekStop
-    DisposableEffect(Unit) {
-        onDispose {
-            wheel.onCenterLongPress = {}
-            wheel.onSeekHoldStart = {}
-            wheel.onSeekHoldStop = {}
-        }
-    }
+    // Claimed, not assigned: when this screen leaves it unregisters, so no
+    // dead screen can ever answer the wheel again. No manual resets needed.
+    wheel.claim(
+        ClassipodPage.NowPlaying,
+        WheelHandlers(
+            onStep = { dir ->
+                when (mode) {
+                    1 -> {
+                        followSuspendUntil = System.currentTimeMillis() + 5000
+                        scope.launch { lyricList.scrollBy(-dir * 90f) }
+                    }
+                    2 -> if (queue.isNotEmpty()) {
+                        queueSel = ((queueSel + dir) % queue.size + queue.size) % queue.size
+                    }
+                    else -> {
+                        onVolume((volume + dir * 0.04f).coerceIn(0f, 1f))
+                        showVol = true
+                        volGen++
+                    }
+                }
+            },
+            onCenter = {
+                mode = when (mode) {
+                    0 -> if (lyricsLive || hasLyrics) 1 else if (queue.isNotEmpty()) 2 else 0
+                    1 -> if (queue.isNotEmpty()) 2 else 0
+                    else -> 0
+                }
+            },
+            onCenterLongPress = {
+                song?.let(onSongMenu)
+            },
+            onSeekHoldStart = onHoldSeekStart,
+            onSeekHoldStop = onHoldSeekStop,
+        ),
+    )
 
     Column(modifier = modifier.fillMaxSize().background(lcd.bg)) {
         NpStatusBar(isPlaying = isPlaying, lcd = lcd)

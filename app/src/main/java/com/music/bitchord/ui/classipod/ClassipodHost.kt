@@ -110,6 +110,8 @@ fun ClassipodHost(
     }
 
     // Wheel transport is global: every screen inherits it.
+    // Currency too: dispatch answers the stack top, never a dead page.
+    wheel.currentKey = stack.last()
     wheel.onMenu = { pop() }
     wheel.onPlayPause = {
         controller?.let { if (it.isPlaying) it.pause() else it.play() }
@@ -899,6 +901,7 @@ private fun ClassipodPageContent(
                 albums = page.albums,
                 lcd = lcd,
                 wheel = wheel,
+                pageKey = page,
                 onSelect = { album ->
                     openTracks(
                         album.name, album.songs,
@@ -912,6 +915,7 @@ private fun ClassipodPageContent(
                 browseId = page.browseId,
                 lcd = lcd,
                 wheel = wheel,
+                pageKey = page,
                 onPlay = { songs, index ->
                     playAndShow(
                         songs, index, page.title,
@@ -929,6 +933,7 @@ private fun ClassipodPageContent(
                 songs = page.songs,
                 lcd = lcd,
                 wheel = wheel,
+                pageKey = page,
                 onPlay = { songs, index -> playAndShow(songs, index, page.source.title, page.source.type) },
                 onLongPress = openPodSongMenu,
                 onBack = onPop,
@@ -991,6 +996,7 @@ private fun ClassipodPageContent(
                 )
             }
             ClassipodPage.FlowHome -> ClassipodFlowHome(
+                pageKey = page,
                 mood = flowMood,
                 tuner = flowTuner,
                 status = flowStatus,
@@ -1023,6 +1029,7 @@ private fun ClassipodPageContent(
                 val shown =
                     if (typeahead.isNotEmpty()) UiState.Success(typeahead) else results
                 ClassipodSearch(
+                    pageKey = page,
                     query = query,
                     onQuery = viewModel::onQueryChange,
                     results = shown,
@@ -1056,6 +1063,7 @@ private fun ClassipodPageContent(
                     songs = queue.drop(at + 1),
                     lcd = lcd,
                     wheel = wheel,
+                    pageKey = page,
                     onPlay = { songs, index ->
                         controller?.seekTo(at + 1 + index, 0)
                     },
@@ -1066,12 +1074,14 @@ private fun ClassipodPageContent(
                 )
             }
             ClassipodPage.PodSettings -> ClassipodSettingsList(
+                pageKey = page,
                 rows = podSettingsRows(),
                 lcd = lcd,
                 wheel = wheel,
                 onBack = onPop,
             )
             ClassipodPage.SleepTimer -> ClassipodSettingsList(
+                pageKey = page,
                 rows = sleepRows(),
                 lcd = lcd,
                 wheel = wheel,

@@ -54,6 +54,7 @@ fun ClassipodCoverFlow(
     albums: List<CoverAlbum>,
     lcd: ClassipodTheme.Lcd,
     wheel: ClassipodWheelState,
+    pageKey: Any,
     onSelect: (CoverAlbum) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -81,8 +82,13 @@ fun ClassipodCoverFlow(
         }
     }
 
-    wheel.onStep = { dir -> slideTo(pager.currentPage + dir) }
-    wheel.onCenter = { choose(pager.currentPage) }
+    wheel.claim(
+        pageKey,
+        WheelHandlers(
+            onStep = { dir -> slideTo(pager.currentPage + dir) },
+            onCenter = { choose(pager.currentPage) },
+        ),
+    )
 
     Column(modifier = modifier.fillMaxSize().background(lcd.bg)) {
         ClassipodBar(title = "Albums", lcd = lcd, onBack = onBack)

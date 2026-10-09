@@ -110,16 +110,21 @@ fun ClassipodMenuPage(
 ) {
     var selected by remember(page) { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
-    wheel.onStep = { dir ->
-        if (page.items.isNotEmpty()) {
-            selected = ((selected + dir) % page.items.size + page.items.size) % page.items.size
-        }
-    }
-    wheel.onCenter = {
-        page.items.getOrNull(selected)?.let { item ->
-            (item.onCenter ?: item.onSelect).invoke()
-        }
-    }
+    wheel.claim(
+        page,
+        WheelHandlers(
+            onStep = { dir ->
+                if (page.items.isNotEmpty()) {
+                    selected = ((selected + dir) % page.items.size + page.items.size) % page.items.size
+                }
+            },
+            onCenter = {
+                page.items.getOrNull(selected)?.let { item ->
+                    (item.onCenter ?: item.onSelect).invoke()
+                }
+            },
+        ),
+    )
     LaunchedEffect(selected) {
         if (page.items.isNotEmpty()) listState.animateScrollToItem(selected)
     }
