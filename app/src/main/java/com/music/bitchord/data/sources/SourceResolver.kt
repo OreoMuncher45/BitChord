@@ -858,9 +858,11 @@ object SourceResolver {
                 )
             } ?: return null
             var matches = TrackMatcher.ranked(candidates, target)
+            val rankedCount = matches.size
             if (requireSharedArtist) {
                 matches = matches.filter { TrackMatcher.sharesArtist(target.artist, it.artist) }
             }
+            val afterArtist = matches.size
             // JioSaavn can return different audio under the same title and
             // artist on different releases. With no album on the requested
             // track there is no honest way to choose between those rows;
@@ -894,7 +896,25 @@ object SourceResolver {
             if (strictLength) {
                 matches = matches.filter { TrackMatcher.withinSeconds(it, target, UPGRADE_DRIFT_SEC) }
             }
-            if (matches.isEmpty()) continue
+            if (matches.isEmpty()) {
+                // Said out loud, because this is otherwise indistinguishable
+                // from a source that had nothing: the search logs its row
+                // count and then the track quietly plays on the fallback with
+                // no statement anywhere of what was thrown away or by which
+                // rule. A catalogue that returns the recording and loses it
+                // to a matcher is a different defect from a catalogue that
+                // does not hold it, and they want opposite fixes.
+                TrackLog.d(
+                    TAG,
+                    "${source.displayName} returned $rankedCount rows for '${target.title}' " +
+                        "(${candidates.size} searched) but none survived: " +
+                        "ranked=$rankedCount afterArtist=$afterArtist afterLength=${matches.size} " +
+                        "wanted=[title='${target.title}' artist='${target.artist}' " +
+                        "dur=${target.durationSec}s] strictLength=$strictLength " +
+                        "sharedArtist=$requireSharedArtist",
+                )
+                continue
+            }
             return streamBest(source, matches, target, request)
         }
         return null

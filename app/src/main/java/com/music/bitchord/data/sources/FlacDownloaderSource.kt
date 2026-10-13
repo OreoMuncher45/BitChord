@@ -232,7 +232,18 @@ class FlacDownloaderSource(
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         HiResMonochromeBackend.originOf(trackId)?.let { return streamDirect(it) }
-        val origin = FlacDownloaderApi.originOf(trackId) ?: return null
+        val origin = FlacDownloaderApi.originOf(trackId) ?: run {
+            // A row whose metadata never made it into the memo cannot be
+            // queued: the queue body *is* that metadata. Returning null here
+            // used to be silent, which made it look identical to a conversion
+            // that was refused — two faults with different fixes, one line of
+            // silence between them.
+            TrackLog.w(
+                TAG,
+                "no queued metadata for '$trackId' (memo missed; the row cannot be converted)",
+            )
+            return null
+        }
         // Direct first, conversion second. A verified file answers a HEAD in
         // about a second; a conversion is server-side work on a free service
         // and measures in minutes when it answers at all. Trying conversion
@@ -257,7 +268,19 @@ class FlacDownloaderSource(
             coroutineContext.ensureActive()
             TrackLog.d(TAG, "  ✗ hifiresolver stream failed: ${e.message}")
             null
-        } ?: return null
+        } ?: run {
+            // resolveStream covers no-token, queue-refused, job-errored and
+            // budget-spent, and names the ones it can into lastFailure. Saying
+            // so here ties that reason to this track: without it the caller
+            // sees a null, the listener hears the YouTube copy, and nothing
+            // connects the two.
+            TrackLog.d(
+                TAG,
+                "  ✗ no Qobuz conversion for '${origin.title}' " +
+                    "(${FlacDownloaderApi.lastFailure ?: "no reason recorded"})",
+            )
+            return null
+        }
         TrackLog.d(TAG, "  ✓ hifiresolver ${file.formatId} ${file.url.take(96)}")
         val mp3 = file.formatId == FlacDownloaderApi.F_MP3_320
         return SourceStream(
