@@ -176,6 +176,121 @@ object FlacDownloaderApi {
         @SerialName("pretty_name") val prettyName: String? = null,
     )
 
+    // ── Tidal (same site, second catalogue) ───────────────────────────
+    //
+    // flacdownloader fronts two catalogues behind one token. Qobuz's
+    // conversion half stopped answering for everyone -- our addon and a
+    // third-party one alike -- while Tidal's is live and its catalogue is
+    // *broader* than the direct host we fall back to: tracks.monochrome.st
+    // returned nothing for 'Barqat' or 'Cigarette Coping', this returns
+    // both, marked hires, with artist credits matching what YouTube files
+    // them under. Same /prepare token, same queue -> job -> file shape.
+
+    @Serializable
+    data class TidalSearchResponse(
+        @SerialName("tracks") val tracks: List<TidalTrack> = emptyList(),
+    )
+
+    @Serializable
+    data class TidalTrack(
+        @SerialName("id") val id: Long = 0,
+        @SerialName("title") val title: String = "",
+        @SerialName("artist") val artist: String = "",
+        @SerialName("album") val album: String = "",
+        @SerialName("cover") val cover: String? = null,
+        @SerialName("durationMs") val durationMs: Long? = null,
+        @SerialName("isrc") val isrc: String? = null,
+        @SerialName("hires") val hires: Boolean = false,
+        @SerialName("lossless") val lossless: Boolean = false,
+        @SerialName("explicit") val explicit: Boolean = false,
+        @SerialName("version") val version: String = "",
+        @SerialName("url") val url: String? = null,
+    )
+
+    /** Tidal ids look exactly like Qobuz ones, so packed with a prefix. */
+    private const val TIDAL_PACK_PREFIX = "t:"
+
+    data class TidalOrigin(
+        val id: Long,
+        val url: String,
+        val title: String,
+        val artist: String,
+    )
+
+    private val tidalOrigins = Collections.synchronizedMap(
+        object : LinkedHashMap<String, TidalOrigin>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, TidalOrigin>) = size > 128
+        },
+    )
+
+    fun packTidalId(id: Long): String = "$TIDAL_PACK_PREFIX$id"
+
+    fun memoizeTidalOrigin(packed: String, origin: TidalOrigin) {
+        tidalOrigins[packed] = origin
+    }
+
+    fun tidalOriginOf(packed: String): TidalOrigin? = tidalOrigins[packed]
+
+    suspend fun searchTidal(query: String, limit: Int = 25): List<TidalTrack> {
+        val q = query.trim().takeIf { it.isNotEmpty() } ?: return emptyList()
+        return try {
+            json.decodeFromString<TidalSearchResponse>(
+                get("$base/api/tidal/search?q=${encode(q)}&limit=${limit.coerceIn(1, 50)}"),
+            ).tracks
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            TrackLog.d(TAG, "  ✗ hifiresolver tidal search failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Queue a Tidal conversion and poll it to a file, on the same budget as
+     * the Qobuz path: the site posts url/id/title/artist/formatId with the
+     * token and the job answers with the finished file name.
+     */
+    suspend fun resolveTidalStream(
+        origin: TidalOrigin,
+        budgetMs: Long = RESOLVE_BUDGET_MS,
+    ): ResolvedFile? {
+        if (origin.id <= 0L || origin.url.isBlank()) return null
+        val token = prepareToken() ?: return null
+        val payload = "{\"url\":${q(origin.url)}," +
+            "\"id\":${origin.id}," +
+            "\"title\":${q(origin.title)}," +
+            "\"artist\":${q(origin.artist)}," +
+            "\"formatId\":\"LOSSLESS\"}"
+        val jobId = try {
+            val request = Request.Builder()
+                .url("${base}/api/tidal/queue")
+                .post(payload.toRequestBody("application/json".toMediaType()))
+                .browserHeaders()
+                .header("Accept", "application/json, text/plain, */*")
+                .header("X-DL-Token", token)
+                .header("Referer", "${base}/")
+                .header("Origin", base)
+                .build()
+            val (code, body) = client.newCall(request).execute().use { response ->
+                response.code to
+                    (runCatching { response.body?.string() }.getOrNull()?.takeIf { it.isNotBlank() })
+            }
+            if (code != 200 || body == null) {
+                noteFailure("tidal queue refused (HTTP $code): ${(body ?: "empty").take(120)}")
+                return null
+            }
+            json.decodeFromString<QueueResponse>(body).jobId?.takeIf { it.isNotBlank() }
+                ?: run {
+                    noteFailure("tidal queue answered without a job id: ${body.take(120)}")
+                    null
+                }
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            noteFailure("tidal queue failed: ${e.message}")
+            null
+        } ?: return null
+        return pollJob(jobId, F_16_44, "/api/tidal/jobs/$jobId", "/tidal/files")
+    }
+
     @Serializable
     private data class DeezerSearchResponse(
         @SerialName("data") val data: List<DeezerRow> = emptyList(),
@@ -500,7 +615,15 @@ object FlacDownloaderApi {
         }
     }
 
-    private suspend fun pollJob(jobId: String, formatId: Int): ResolvedFile? {
+    private suspend fun pollJob(
+        jobId: String,
+        formatId: Int,
+        // Both catalogues answer with the same {status, file, pretty_name}
+        // shape and put their finished files under their own prefix, so the
+        // difference is two strings rather than a second copy of this loop.
+        jobsPath: String = "/api/qobuz/jobs/$jobId",
+        filesPrefix: String = "/qobuz/files",
+    ): ResolvedFile? {
         var lastStatus: String? = null
         var stagnant = 0
         var pollErrors = 0
@@ -508,7 +631,7 @@ object FlacDownloaderApi {
             coroutineContext.ensureActive()
             delay(pollDelayMs)
             val job = try {
-                val body = get("${base}/api/qobuz/jobs/$jobId")
+                val body = get("$base$jobsPath")
                 json.decodeFromString<JobResponse>(body)
             } catch (e: Exception) {
                 coroutineContext.ensureActive()
@@ -550,7 +673,7 @@ object FlacDownloaderApi {
                     val name = encodeSegment(job.prettyName?.takeIf { it.isNotBlank() } ?: file)
                     clearLastFailure()
                     return ResolvedFile(
-                        url = "${base}/qobuz/files/${encodeSegment(file)}?name=$name",
+                        url = "$base$filesPrefix/${encodeSegment(file)}?name=$name",
                         formatId = formatId,
                     )
                 }

@@ -100,6 +100,7 @@ class FlacDownloaderSource(
         // the ISRCs first.
         val textHits: List<FlacDownloaderApi.QobuzTrack>
         val monoRaw: List<HiResMonochromeBackend.MonoTrack>
+        val tidalRaw: List<FlacDownloaderApi.TidalTrack>
         val isrcs: List<String>
         coroutineScope {
             val deezer = async {
@@ -130,9 +131,23 @@ class FlacDownloaderSource(
                     emptyList()
                 }
             }
+            // The site's own Tidal catalogue, alongside Qobuz's. Same host and
+            // same token, and broader than the direct host for the niche
+            // recordings Qobuz's dead converter used to be the only route to.
+            val tidal = async {
+                try {
+                    FlacDownloaderApi.searchTidal(q, limit.coerceIn(1, 50))
+                        .filter { FlacDownloaderApi.isPlayableMatch(q, it.title) }
+                } catch (e: Exception) {
+                    coroutineContext.ensureActive()
+                    TrackLog.d(TAG, "  ✗ hifiresolver tidal search failed: ${e.message}")
+                    emptyList()
+                }
+            }
             val deezerRows = deezer.await()
             textHits = text.await()
             monoRaw = mono.await()
+            tidalRaw = tidal.await()
             isrcs = deezerRows.mapNotNull { it.isrc?.takeIf(String::isNotBlank) }
                 .distinct()
                 .take(3)
@@ -154,6 +169,16 @@ class FlacDownloaderSource(
             val artist = track.credits
             if (!seen.add(catalogueKey(title, artist))) continue
             songs += track.toSong(title, artist)
+        }
+        // Tidal rows join last: where the other catalogues hold the recording
+        // they are the better answer, since a direct file arrives in about a
+        // second and a Tidal conversion does not. They are here for what they
+        // alone hold.
+        for (track in tidalRaw) {
+            val title = track.title.ifBlank { "Unknown title" }
+            val artist = track.artist.ifBlank { "Unknown artist" }
+            if (!seen.add(catalogueKey(title, artist))) continue
+            songs += track.toSong()
         }
         val merged = songs.take(limit)
         if (merged.isNotEmpty()) TrackLog.d(TAG, "  ✓ hifiresolver ${merged.size} rows")
@@ -205,6 +230,27 @@ class FlacDownloaderSource(
         )
     }
 
+    private fun FlacDownloaderApi.TidalTrack.toSong(): Song {
+        val packed = FlacDownloaderApi.packTidalId(id)
+        val tidalUrl = url?.takeIf { it.isNotBlank() } ?: "https://tidal.com/browse/track/$id"
+        val durationSec = durationMs?.takeIf { it > 0 }?.div(1000)?.toInt()
+        FlacDownloaderApi.memoizeTidalOrigin(
+            packed,
+            FlacDownloaderApi.TidalOrigin(id, tidalUrl, title, artist),
+        )
+        val duration = durationSec?.let { s -> "%d:%02d".format(Locale.ROOT, s / 60, s % 60) }
+        return Song(
+            videoId = SourceRegistry.trackKey(config.id, packed),
+            title = title.ifBlank { "Unknown title" },
+            artist = artist.ifBlank { "Unknown artist" },
+            albumName = album.takeIf { it.isNotBlank() },
+            thumbnailUrl = cover?.takeIf { it.isNotBlank() },
+            durationText = duration,
+            sourceQuality = if (hires || lossless) "LOSSLESS" else null,
+            isExplicit = explicit,
+        )
+    }
+
     private fun catalogueKey(title: String, artist: String): String =
         "${FlacDownloaderApi.normalizeTitle(title).lowercase(Locale.ROOT)}|" +
             HiResMonochromeBackend.simplify(artist)
@@ -232,6 +278,38 @@ class FlacDownloaderSource(
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         HiResMonochromeBackend.originOf(trackId)?.let { return streamDirect(it) }
+        // A Tidal row: direct first (this host is not the direct host, so it
+        // will miss), then the site's Tidal queue, which is the route Qobuz's
+        // dead converter used to serve for these recordings.
+        FlacDownloaderApi.tidalOriginOf(trackId)?.let { origin ->
+            val file = try {
+                FlacDownloaderApi.resolveTidalStream(origin)
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
+                TrackLog.d(TAG, "  ✗ hifiresolver tidal stream failed: ${e.message}")
+                null
+            }
+            if (file != null) {
+                TrackLog.d(TAG, "  ✓ hifiresolver tidal ${file.url.take(96)}")
+                return SourceStream(
+                    url = file.url,
+                    format = com.music.bitchord.data.sources.StreamFormat(
+                        codec = "flac",
+                        kbps = file.kbps,
+                        sampleRateHz = file.sampleRateHz,
+                        bitDepth = file.bitDepth,
+                    ),
+                    durationSec = null,
+                    backend = BACKEND_TIDAL,
+                )
+            }
+            TrackLog.d(
+                TAG,
+                "  ✗ no Tidal conversion for '${origin.title}' " +
+                    "(${FlacDownloaderApi.lastFailure ?: "no reason recorded"})",
+            )
+            return null
+        }
         val origin = FlacDownloaderApi.originOf(trackId) ?: run {
             // A row whose metadata never made it into the memo cannot be
             // queued: the queue body *is* that metadata. Returning null here
@@ -365,5 +443,6 @@ class FlacDownloaderSource(
          */
         const val BACKEND_DIRECT = "Direct FLAC"
         const val BACKEND_CONVERSION = "Qobuz conversion"
+        const val BACKEND_TIDAL = "Tidal conversion"
     }
 }
