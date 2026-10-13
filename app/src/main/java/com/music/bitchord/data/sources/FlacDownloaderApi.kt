@@ -64,8 +64,25 @@ object FlacDownloaderApi {
      * costs radio only while an answer is genuinely still wanted.
      */
     const val RESOLVE_BUDGET_MS = 240_000L
-    private const val POLL_DELAY_MS = 2_000L
-    private const val MAX_POLLS_PER_FORMAT = 60
+
+    /**
+     * Poll timing. Internal vars rather than consts so tests can shrink a
+     * minute-long stall into milliseconds — same hook precedent as
+     * [baseOverride]. Production never writes them; tests reset them.
+     */
+    internal var pollDelayMs: Long = 2_000L
+    internal var maxPollsPerFormat: Int = 60
+    /** Consecutive identical non-terminal statuses before a job is declared stalled. */
+    internal var stagnantPolls: Int = 30
+    /** Consecutive failed poll round trips before a job is abandoned. */
+    internal var maxPollErrors: Int = 3
+
+    internal fun resetPollTiming() {
+        pollDelayMs = 2_000L
+        maxPollsPerFormat = 60
+        stagnantPolls = 30
+        maxPollErrors = 3
+    }
 
     private val json = Json {
         isLenient = true
@@ -112,6 +129,7 @@ object FlacDownloaderApi {
         @SerialName("title") val title: String = "",
         @SerialName("artist") val artist: String = "",
         @SerialName("album") val album: String = "",
+        @SerialName("albumArtist") val albumArtist: String = "",
         @SerialName("cover") val cover: String? = null,
         @SerialName("durationMs") val durationMs: Long? = null,
         @SerialName("isrc") val isrc: String? = null,
@@ -120,6 +138,18 @@ object FlacDownloaderApi {
         @SerialName("samplingRate") val samplingRate: Double? = null,
         @SerialName("url") val url: String? = null,
         @SerialName("explicit") val explicit: Boolean = false,
+        @SerialName("date") val date: String = "",
+        @SerialName("trackNumber") val trackNumber: Int = 0,
+        @SerialName("trackTotal") val trackTotal: Int = 0,
+        @SerialName("discNumber") val discNumber: Int = 0,
+        @SerialName("discTotal") val discTotal: Int = 0,
+        @SerialName("genre") val genre: String = "",
+        @SerialName("label") val label: String = "",
+        @SerialName("copyright") val copyright: String = "",
+        @SerialName("composer") val composer: String = "",
+        @SerialName("barcode") val barcode: String = "",
+        @SerialName("version") val version: String = "",
+        @SerialName("work") val work: String = "",
     )
 
     @Serializable
@@ -130,6 +160,14 @@ object FlacDownloaderApi {
 
     @Serializable
     private data class QueueResponse(@SerialName("id") val jobId: String? = null)
+
+    @Serializable
+    private data class FormatsResponse(
+        @SerialName("formats") val formats: List<FormatRow> = emptyList(),
+    )
+
+    @Serializable
+    private data class FormatRow(@SerialName("id") val id: Int = -1)
 
     @Serializable
     private data class JobResponse(
@@ -171,6 +209,22 @@ object FlacDownloaderApi {
         val cover: String = "",
         val isrc: String = "",
         val explicit: Boolean = false,
+        val albumArtist: String = "",
+        val date: String = "",
+        val trackNumber: Int = 0,
+        val trackTotal: Int = 0,
+        val discNumber: Int = 0,
+        val discTotal: Int = 0,
+        val genre: String = "",
+        val label: String = "",
+        val copyright: String = "",
+        val composer: String = "",
+        val barcode: String = "",
+        val version: String = "",
+        val work: String = "",
+        /** The row's own master figures, for the formats pre-check below. */
+        val bitDepth: Double? = null,
+        val samplingRate: Double? = null,
     )
 
     private val origins = Collections.synchronizedMap(
@@ -362,10 +416,56 @@ object FlacDownloaderApi {
             "\"artist\":${q(origin.artist)}," +
             "\"album\":${q(origin.album)}," +
             "\"cover\":${q(origin.cover)}," +
+            "\"albumArtist\":${q(origin.albumArtist)}," +
+            "\"date\":${q(origin.date)}," +
+            "\"trackNumber\":${origin.trackNumber}," +
+            "\"trackTotal\":${origin.trackTotal}," +
+            "\"discNumber\":${origin.discNumber}," +
+            "\"discTotal\":${origin.discTotal}," +
+            "\"genre\":${q(origin.genre)}," +
+            "\"label\":${q(origin.label)}," +
             "\"isrc\":${q(origin.isrc)}," +
+            "\"copyright\":${q(origin.copyright)}," +
+            "\"composer\":${q(origin.composer)}," +
+            "\"barcode\":${q(origin.barcode)}," +
+            "\"version\":${q(origin.version)}," +
+            "\"work\":${q(origin.work)}," +
             "\"duration\":$durationSec," +
             "\"explicit\":${origin.explicit}," +
             "\"formatId\":$formatId}"
+    }
+
+    /**
+     * Which tiers the backend will actually convert this track to, asked the
+     * same way the site's own download page asks before offering its quality
+     * picker (`/api/qobuz/formats?url=…&bd=…&sr=…`). A track with no 24-bit
+     * master simply omits those tiers, and queueing one anyway is a refusal
+     * that costs a round trip to learn — one per tier, on every play.
+     *
+     * Best-effort by design: null on any failure, and the caller then queues
+     * exactly as it would have without this, so a formats outage changes
+     * nothing but speed.
+     */
+    suspend fun availableFormats(
+        qobuzUrl: String,
+        bitDepth: Double?,
+        samplingRate: Double?,
+    ): Set<Int>? {
+        if (qobuzUrl.isBlank()) return null
+        return try {
+            val params = StringBuilder("url=${encode(qobuzUrl)}")
+            if (bitDepth != null && bitDepth > 0) params.append("&bd=$bitDepth")
+            if (samplingRate != null && samplingRate > 0) params.append("&sr=$samplingRate")
+            val body = get("$base/api/qobuz/formats?$params")
+            json.decodeFromString<FormatsResponse>(body).formats
+                .map { it.id }
+                .filter { it == F_24_192 || it == F_24_96 || it == F_16_44 || it == F_MP3_320 }
+                .toSet()
+                .takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            null
+        }
     }
 
     private suspend fun queueJob(token: String, origin: Origin, formatId: Int): String? {
@@ -401,14 +501,39 @@ object FlacDownloaderApi {
     }
 
     private suspend fun pollJob(jobId: String, formatId: Int): ResolvedFile? {
-        repeat(MAX_POLLS_PER_FORMAT) {
+        var lastStatus: String? = null
+        var stagnant = 0
+        var pollErrors = 0
+        repeat(maxPollsPerFormat) {
             coroutineContext.ensureActive()
-            delay(POLL_DELAY_MS)
+            delay(pollDelayMs)
             val job = try {
                 val body = get("${base}/api/qobuz/jobs/$jobId")
                 json.decodeFromString<JobResponse>(body)
             } catch (e: Exception) {
                 coroutineContext.ensureActive()
+                // One blip on a phone radio is weather, not a verdict — but
+                // three in a row means the backend is gone for this job.
+                pollErrors++
+                if (pollErrors >= maxPollErrors) {
+                    noteFailure("job $jobId poll failed repeatedly")
+                    return null
+                }
+                return@repeat
+            }
+            pollErrors = 0
+            if (job.status == lastStatus) {
+                stagnant++
+            } else {
+                lastStatus = job.status
+                stagnant = 0
+            }
+            // A job that sits in one non-terminal state for a full minute is
+            // not being served — move on to the next format/row rather than
+            // spending the whole budget watching it. A job whose status
+            // keeps changing is progressing and keeps the full budget.
+            if (stagnant >= stagnantPolls && job.status != "done") {
+                noteFailure("job $jobId stalled at '${job.status}'")
                 return null
             }
             when (job.status) {
@@ -451,9 +576,23 @@ object FlacDownloaderApi {
         budgetMs: Long = RESOLVE_BUDGET_MS,
     ): ResolvedFile? {
         if (origin.qobuzUrl.isBlank() || formatIds.isEmpty()) return null
+        // Skip tiers the track was never mastered for instead of queueing
+        // each one to be refused in turn. Unknown (formats outage, legacy
+        // rows without master figures) keeps the full order — see
+        // [availableFormats].
+        val known = availableFormats(origin.qobuzUrl, origin.bitDepth, origin.samplingRate)
+        val tried = known?.let { ids -> formatIds.filter { it in ids } } ?: formatIds
+        if (tried.isEmpty()) {
+            val losslessAsked = formatIds.any { it == F_24_192 || it == F_24_96 || it == F_16_44 }
+            noteFailure(
+                if (losslessAsked) "qobuz holds no lossless master for this track (tiers ${known!!.sorted()})"
+                else "qobuz offers none of the requested tiers (has ${known!!.sorted()})",
+            )
+            return null
+        }
         val token = prepareToken() ?: return null
         val deadline = System.currentTimeMillis() + budgetMs
-        for (formatId in formatIds) {
+        for (formatId in tried) {
             coroutineContext.ensureActive()
             if (System.currentTimeMillis() >= deadline) {
                 noteFailure("conversion budget spent before a file landed")

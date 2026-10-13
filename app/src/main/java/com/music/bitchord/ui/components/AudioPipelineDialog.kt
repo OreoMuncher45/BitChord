@@ -236,7 +236,14 @@ fun AudioPipelineDialog(
                 .onGloballyPositioned { columnCoordinates = it },
         ) {
             // 1. Track Info Stage
-            val sourceName = nerdStats?.sourceName ?: "—"
+            // The backend rides on the source line rather than taking its own
+            // row: it is provenance for the source above it, not a pipeline
+            // stage, and a separate row would need a new string in every
+            // locale for two words.
+            val sourceName = listOfNotNull(
+                nerdStats?.sourceName,
+                nerdStats?.backendName,
+            ).joinToString(" · ").ifBlank { "—" }
             // DSD is the one source whose own rate is not the rate the
             // rest of the pipeline runs at: DsdExtractor hands the
             // renderer 176.4 kHz PCM, so every stage after this one has

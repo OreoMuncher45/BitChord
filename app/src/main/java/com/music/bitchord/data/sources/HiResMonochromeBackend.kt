@@ -7,9 +7,17 @@ import java.util.Collections
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlin.coroutines.coroutineContext
@@ -71,9 +79,32 @@ object HiResMonochromeBackend {
         @SerialName("tracks") val tracks: List<MonoTrack> = emptyList(),
     )
 
+    /**
+     * The catalogue quotes large ids (`"id":"154032361934163968"`) while
+     * older rows arrive bare (`"id":777`): one shape per era, both live.
+     * A strict `Long` parses the second and throws on the first, which is
+     * how the whole direct catalogue read empty in production while every
+     * unit test — all written with bare ids — stayed green. The sibling
+     * client for this host family ([TidalApi][com.music.bitchord.data.tidal.TidalApi])
+     * reads ids as strings for the same reason; this matches it.
+     */
+    private object FlexibleId : KSerializer<String> {
+        override val descriptor: SerialDescriptor =
+            PrimitiveSerialDescriptor("FlexibleId", PrimitiveKind.STRING)
+
+        override fun deserialize(decoder: Decoder): String {
+            val element = (decoder as? JsonDecoder)?.decodeJsonElement()
+            return (element as? JsonPrimitive)?.content.orEmpty()
+        }
+
+        override fun serialize(encoder: Encoder, value: String) {
+            encoder.encodeString(value)
+        }
+    }
+
     @Serializable
     data class MonoTrack(
-        @SerialName("id") val id: Long = 0,
+        @SerialName("id") @Serializable(with = FlexibleId::class) val id: String = "",
         @SerialName("title") val title: String = "",
         @SerialName("artistNames") val artistNames: List<String> = emptyList(),
         /** Usually milliseconds; normalized rather than trusted. */
@@ -95,7 +126,7 @@ object HiResMonochromeBackend {
     }
 
     /** What a Hi-Res search row needs later at queue time, by its packed id. */
-    data class Origin(val id: Long, val durationMs: Long?)
+    data class Origin(val id: String, val durationMs: Long?)
 
     private val origins = Collections.synchronizedMap(
         object : LinkedHashMap<String, Origin>(64, 0.75f, true) {
@@ -103,7 +134,7 @@ object HiResMonochromeBackend {
         },
     )
 
-    fun packId(id: Long): String = "$PACK_PREFIX$id"
+    fun packId(id: String): String = "$PACK_PREFIX$id"
 
     fun memoizeOrigin(packed: String, origin: Origin) {
         origins[packed] = origin
@@ -144,7 +175,7 @@ object HiResMonochromeBackend {
         return try {
             val body = get("$base/search/tracks?q=${encode(q)}&limit=${limit.coerceIn(1, 50)}")
             json.decodeFromString<SearchResponse>(body).tracks
-                .filter { it.playable != false && it.id != 0L }
+                .filter { it.playable != false && it.id.isNotBlank() }
         } catch (e: Exception) {
             coroutineContext.ensureActive()
             TrackLog.d(TAG, "  ✗ hires direct catalogue search failed: ${e.message}")
@@ -157,7 +188,7 @@ object HiResMonochromeBackend {
      * when the host lacks the file (4xx), stays down, or hands over a
      * below-lossless file in a FLAC container: all are misses to walk past.
      */
-    suspend fun resolveFile(id: Long, durationMs: Long?): ResolvedFile? {
+    suspend fun resolveFile(id: String, durationMs: Long?): ResolvedFile? {
         val url = "$base/track/$id"
         val duration = normalizeDurationMs(durationMs)
         repeat(RETRY_DELAYS_MS.size + 1) { attempt ->

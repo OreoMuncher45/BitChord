@@ -1,5 +1,6 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.sources.FlacDownloaderApi
 import com.music.bitchord.data.sources.FlacDownloaderSource
 import com.music.bitchord.data.sources.HiResMonochromeBackend
@@ -7,6 +8,7 @@ import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.StreamFormat
 import com.music.bitchord.data.sources.StreamRequest
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.Dispatcher
@@ -56,6 +58,7 @@ class FlacDownloaderTest {
     @After
     fun tearDown() {
         FlacDownloaderApi.baseOverride = null
+        FlacDownloaderApi.resetPollTiming()
         HiResMonochromeBackend.resetForTests()
         FlacDownloaderApi.loadSp(null)
         FlacDownloaderApi.clearTokenBlock()
@@ -81,7 +84,7 @@ class FlacDownloaderTest {
     """.trimIndent()
 
     private fun directJson(
-        id: Long = 777,
+        id: String = "777",
         title: String = "Creepin",
         artist: String = "Metro Boomin",
         durationMs: Long = 221520,
@@ -95,7 +98,7 @@ class FlacDownloaderTest {
         }]}
     """.trimIndent()
 
-    private fun directFile(id: Long, sizeBytes: Long, code: Int = 200) {
+    private fun directFile(id: String, sizeBytes: Long, code: Int = 200) {
         routes["/track/$id"] = MockResponse().setResponseCode(code)
             .addHeader("Content-Length", sizeBytes.toString())
     }
@@ -224,7 +227,7 @@ class FlacDownloaderTest {
     @Test
     fun `direct stream measures size into hi-res figures`() = runBlocking {
         route("/search/tracks", directJson())
-        directFile(id = 777, sizeBytes = 74_310_837)
+        directFile(id = "777", sizeBytes = 74_310_837)
         val src = source()
         val trackId = innerId(src.search("Creepin", limit = 5).single().videoId)
         val stream = src.stream(trackId, StreamRequest.Lossless)
@@ -241,8 +244,8 @@ class FlacDownloaderTest {
 
     @Test
     fun `direct stream refuses a below-lossless file`() = runBlocking {
-        route("/search/tracks", directJson(id = 888, durationMs = 200_000))
-        directFile(id = 888, sizeBytes = 1_000_000)
+        route("/search/tracks", directJson(id = "888", durationMs = 200_000))
+        directFile(id = "888", sizeBytes = 1_000_000)
         val src = source()
         val trackId = innerId(src.search("Creepin", limit = 5).single().videoId)
         assertNull(src.stream(trackId, StreamRequest.Lossless))
@@ -252,7 +255,7 @@ class FlacDownloaderTest {
     fun `locked downloader rows fall back to the direct catalogue`() = runBlocking {
         route("/api/qobuz/search", searchJson("Locked Song"))
         route("/search/tracks", directJson(title = "Locked Song", artist = "The Artist", durationMs = 200_000))
-        directFile(id = 777, sizeBytes = 30_000_000)
+        directFile(id = "777", sizeBytes = 30_000_000)
         prepareHandshake(token = null)
         val src = source()
         val trackId = innerId(src.search("Locked Song", limit = 5).first().videoId)
@@ -287,6 +290,10 @@ class FlacDownloaderTest {
             """"duration":200""",
             """"explicit":true""",
             """"formatId":27""",
+            """"albumArtist":"""",
+            """"trackNumber":0""",
+            """"genre":"""",
+            """"barcode":"""",
         )) {
             assertTrue(field, field in payload)
         }
@@ -324,6 +331,77 @@ class FlacDownloaderTest {
         } finally {
             FlacDownloaderApi.loadSp(null)
             FlacDownloaderApi.clearTokenBlock()
+        }
+    }
+
+    @Test
+    fun `a job stuck on one status is abandoned, not watched forever`() = runBlocking {
+        FlacDownloaderApi.loadSp("sp-test")
+        FlacDownloaderApi.pollDelayMs = 1
+        FlacDownloaderApi.stagnantPolls = 5
+        try {
+            route("/prepare", """{"t":"tok123"}""")
+            route("/api/qobuz/queue", """{"id":"stuck9"}""")
+            route("/api/qobuz/jobs/stuck9", """{"status":"queued"}""")
+            val file = FlacDownloaderApi.resolveStream(
+                qobuzUrl = "https://open.qobuz.com/track/1",
+                title = "T",
+                artist = "A",
+                formatIds = listOf(FlacDownloaderApi.F_16_44),
+            )
+            assertNull(file)
+            assertTrue(
+                FlacDownloaderApi.lastFailure.orEmpty(),
+                "stalled" in FlacDownloaderApi.lastFailure.orEmpty(),
+            )
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+            FlacDownloaderApi.resetPollTiming()
+        }
+    }
+
+    @Test
+    fun `a progressing job is waited out, not mistaken for stalled`() = runBlocking {
+        FlacDownloaderApi.loadSp("sp-test")
+        FlacDownloaderApi.pollDelayMs = 1
+        FlacDownloaderApi.stagnantPolls = 3
+        try {
+            route("/prepare", """{"t":"tok123"}""")
+            route("/api/qobuz/queue", """{"id":"moving9"}""")
+            var polls = 0
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    synchronized(seen) { seen += request }
+                    val path = request.requestUrl?.encodedPath.orEmpty()
+                    if (path == "/api/qobuz/jobs/moving9") {
+                        polls++
+                        // Status keeps moving — never 3 identical in a row —
+                        // so the stall trip must not fire before done lands.
+                        if (polls >= 5) {
+                            return MockResponse().setResponseCode(200)
+                                .setBody("""{"status":"done","file":"track.flac","pretty_name":"T.flac"}""")
+                        }
+                        val status = if (polls <= 2) "queued" else "working"
+                        return MockResponse().setResponseCode(200)
+                            .setBody("""{"status":"$status"}""")
+                    }
+                    return routes[path] ?: MockResponse().setResponseCode(404)
+                }
+            }
+            val file = FlacDownloaderApi.resolveStream(
+                qobuzUrl = "https://open.qobuz.com/track/1",
+                title = "T",
+                artist = "A",
+                formatIds = listOf(FlacDownloaderApi.F_16_44),
+            )
+            assertNotNull(file)
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+            FlacDownloaderApi.resetPollTiming()
         }
     }
 
@@ -504,5 +582,147 @@ class FlacDownloaderTest {
     fun `kind carries the branded display name`() {
         assertEquals("BitChord Hi-Res Lossless Addon", SourceRegistry.HIRES_DISPLAY_NAME)
         assertEquals(SourceKind.HIRES, source().kind)
+    }
+
+    // ── Live-wire regressions: the direct catalogue as it really answers ──
+
+    private fun queuedFormatIds(): List<Int> =
+        synchronized(seen) { seen.toList() }
+            .filter { it.requestUrl?.encodedPath == "/api/qobuz/queue" }
+            .map { request ->
+                Regex(""""formatId":(\d+)""")
+                    .find(request.body.readUtf8())?.groupValues?.get(1)?.toInt() ?: -1
+            }
+
+    private fun sawQueue(): Boolean =
+        synchronized(seen) { seen.any { it.requestUrl?.encodedPath == "/api/qobuz/queue" } }
+
+    @Test
+    fun `direct catalogue parses quoted ids as the live host sends them`() = runBlocking {
+        // The host quotes large ids ("id":"154032361934163968"); a strict
+        // Long parses the test-shaped bare ones and throws on these, which
+        // emptied the whole direct catalogue in production while tests stayed
+        // green. This is the live shape, byte for byte.
+        route("/search/tracks", directJson(id = "\"154032361934163968\"", title = "Umbrella", durationMs = 222_000))
+        directFile(id = "154032361934163968", sizeBytes = 73_067_021)
+        val src = source()
+        val row = src.search("Umbrella", limit = 5).single()
+        val packed = innerId(row.videoId)
+        assertTrue(packed, packed == "m:154032361934163968")
+        assertNotNull(HiResMonochromeBackend.originOf(packed))
+        val stream = src.stream(packed, StreamRequest.Lossless)
+        assertNotNull(stream)
+        assertTrue(stream!!.url.contains("/track/154032361934163968"))
+        assertEquals("flac", stream.format.codec)
+        assertEquals(24, stream.format.bitDepth)
+        assertEquals(FlacDownloaderSource.BACKEND_DIRECT, stream.backend)
+    }
+
+    @Test
+    fun `qobuz rows resolve direct first and never touch the queue`() = runBlocking {
+        route("/api/qobuz/search", searchJson("Locked Song"))
+        route("/search/tracks", directJson(title = "Locked Song", artist = "The Artist", durationMs = 200_000))
+        directFile(id = "777", sizeBytes = 30_000_000)
+        // No sp, no prepare, no queue routes: direct must win on its own.
+        val src = source()
+        val trackId = innerId(src.search("Locked Song", limit = 5).first().videoId)
+        val stream = src.stream(trackId, StreamRequest.Lossless)
+        assertNotNull(stream)
+        assertTrue(stream!!.url.contains("/track/777"))
+        assertEquals(FlacDownloaderSource.BACKEND_DIRECT, stream.backend)
+        assertTrue("conversion was queued", !sawQueue())
+    }
+
+    @Test
+    fun `conversion rows carry their backend name`() = runBlocking {
+        route("/api/qobuz/search", searchJson("Blinding Lights"))
+        prepareHandshake()
+        try {
+            val src = source()
+            val trackId = innerId(src.search("Blinding Lights", limit = 5).first().videoId)
+            val stream = src.stream(trackId, StreamRequest.Lossless)
+            assertNotNull(stream)
+            assertEquals(FlacDownloaderSource.BACKEND_CONVERSION, stream!!.backend)
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+        }
+    }
+
+    @Test
+    fun `formats response narrows queued tiers to what the master holds`() = runBlocking {
+        route("/api/qobuz/search", searchJson("Blinding Lights"))
+        route("/api/qobuz/formats", """{"formats":[{"id":6,"label":"FLAC CD"}]}""")
+        prepareHandshake()
+        try {
+            val src = source()
+            val trackId = innerId(src.search("Blinding Lights", limit = 5).first().videoId)
+            val stream = src.stream(trackId, StreamRequest.Lossless)
+            assertNotNull(stream)
+            assertTrue(stream!!.url.contains("/qobuz/files/track.flac"))
+            // 27/7 were never attempted: the track was never mastered for them.
+            assertEquals(listOf(6), queuedFormatIds())
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+        }
+    }
+
+    @Test
+    fun `formats outage keeps the full tier order`() = runBlocking {
+        route("/api/qobuz/search", searchJson("Blinding Lights"))
+        route("/api/qobuz/formats", """{"error":"boom"}""", 500)
+        prepareHandshake()
+        try {
+            val src = source()
+            val trackId = innerId(src.search("Blinding Lights", limit = 5).first().videoId)
+            val stream = src.stream(trackId, StreamRequest.Lossless)
+            assertNotNull(stream)
+            // Best-first, exactly as without the pre-check.
+            assertEquals(listOf(27), queuedFormatIds().take(1))
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+        }
+    }
+
+    @Test
+    fun `no lossless master fails fast with a named reason`() = runBlocking {
+        route("/api/qobuz/search", searchJson("Blinding Lights"))
+        route("/api/qobuz/formats", """{"formats":[{"id":5,"label":"MP3 320"}]}""")
+        FlacDownloaderApi.loadSp("sp-test")
+        try {
+            val src = source()
+            val trackId = innerId(src.search("Blinding Lights", limit = 5).first().videoId)
+            assertNull(src.stream(trackId, StreamRequest.Lossless))
+            assertTrue("conversion was queued", !sawQueue())
+            assertTrue(
+                FlacDownloaderApi.lastFailure.orEmpty(),
+                "lossless" in FlacDownloaderApi.lastFailure.orEmpty(),
+            )
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.clearLastFailure()
+        }
+    }
+
+    @Test
+    fun `backend rides with the declared stream and clears with it`() {
+        NerdStats.onSourceStream(
+            "track-be",
+            StreamFormat(codec = "flac"),
+            source = "BitChord Hi-Res Lossless Addon",
+            backend = FlacDownloaderSource.BACKEND_DIRECT,
+        )
+        try {
+            assertEquals(FlacDownloaderSource.BACKEND_DIRECT, NerdStats.backendFor("track-be"))
+        } finally {
+            NerdStats.clearDeclared("track-be")
+        }
+        assertNull(NerdStats.backendFor("track-be"))
     }
 }

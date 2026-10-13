@@ -59,6 +59,8 @@ object NerdStats {
         val bitrateProvenance: TelemetryProvenance = TelemetryProvenance.UNKNOWN,
         /** True PCM throughput (sampleRate * bitDepth * channels / 1000). Never conflated with encoded bitrate. */
         val pcmDataRateKbps: Int? = null,
+        /** Backend inside a multi-backend source that served this stream, if it says. */
+        val backendName: String? = null,
     ) {
         /**
          * Whether what arrived is measurably worse than what was promised.
@@ -269,6 +271,9 @@ object NerdStats {
     /** Authoritative source name that supplied the stream, keyed by media/track id. */
     private val sources = ConcurrentHashMap<String, String>()
 
+    /** Backend inside a multi-backend source that served the stream, same keys. */
+    private val backends = ConcurrentHashMap<String, String>()
+
     fun onStreamPicked(videoId: String, kbps: Int, source: String? = null) {
         if (kbps > 0) {
             // Enough for the queue in hand; this is a lookup, not a store.
@@ -282,13 +287,22 @@ object NerdStats {
     }
 
     /** Recorded as a source hands over a stream, keyed by that source's own track id. */
-    fun onSourceStream(trackId: String?, format: StreamFormat, source: String? = null) {
+    fun onSourceStream(
+        trackId: String?,
+        format: StreamFormat,
+        source: String? = null,
+        backend: String? = null,
+    ) {
         if (trackId.isNullOrBlank()) return
         if (declared.size >= MAX_REMEMBERED) declared.clear()
         declared[trackId] = format
         if (!source.isNullOrBlank()) {
             if (sources.size >= MAX_REMEMBERED) sources.clear()
             sources[trackId] = source
+        }
+        if (!backend.isNullOrBlank()) {
+            if (backends.size >= MAX_REMEMBERED) backends.clear()
+            backends[trackId] = backend
         }
     }
 
@@ -304,6 +318,13 @@ object NerdStats {
         val key = mediaId ?: return null
         return sources[key]
             ?: SourceTrackKeys.parse(key)?.second?.let { sources[it] }
+    }
+
+    /** Backend that served [mediaId], same lookup shape as [sourceFor]. */
+    fun backendFor(mediaId: String?): String? {
+        val key = mediaId ?: return null
+        return backends[key]
+            ?: SourceTrackKeys.parse(key)?.second?.let { backends[it] }
     }
 
     fun pickedBitrateKbps(videoId: String?): Int? = videoId?.let { picked[it] }
@@ -322,6 +343,7 @@ object NerdStats {
         if (trackId != null) {
             declared.remove(trackId)
             sources.remove(trackId)
+            backends.remove(trackId)
         }
     }
 

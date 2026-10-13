@@ -1312,7 +1312,7 @@ class PlaybackService : MediaLibraryService() {
                 }
                 val trackParam = dataSpec.uri.getQueryParameter("t")
                 val fullMediaId = mediaIdIn(dataSpec.uri)
-                NerdStats.onSourceStream(fullMediaId ?: trackParam, stream.format, sourceName)
+                NerdStats.onSourceStream(fullMediaId ?: trackParam, stream.format, sourceName, stream.backend)
                 if (fullMediaId != null) {
                     NerdStats.recordSource(fullMediaId, sourceName)
                 }
@@ -1386,7 +1386,7 @@ class PlaybackService : MediaLibraryService() {
                 val sourceName = upgraded.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                     ?: "Upgrade"
                 if (!proving) {
-                    NerdStats.onSourceStream(videoId, upgraded.format, sourceName)
+                    NerdStats.onSourceStream(videoId, upgraded.format, sourceName, upgraded.backend)
                     NerdStats.recordSource(videoId, sourceName)
                 }
                 // Logged because the alternative — a swap that silently never
@@ -1439,7 +1439,7 @@ class PlaybackService : MediaLibraryService() {
                 val sourceName = serving.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                     ?: if (StreamChoice.isSubstitute(videoId)) "Module" else "YouTube"
                 if (serving.format != StreamFormat()) {
-                    NerdStats.onSourceStream(videoId, serving.format, sourceName)
+                    NerdStats.onSourceStream(videoId, serving.format, sourceName, serving.backend)
                 }
                 NerdStats.recordSource(videoId, sourceName)
                 // Read-ahead can pin JioSaavn's quick 320kbps answer before
@@ -1511,7 +1511,7 @@ class PlaybackService : MediaLibraryService() {
                 is Resolved.Module -> {
                     val sourceName = won.stream.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                         ?: "Module"
-                    NerdStats.onSourceStream(videoId, won.stream.format, sourceName)
+                    NerdStats.onSourceStream(videoId, won.stream.format, sourceName, won.stream.backend)
                     NerdStats.recordSource(videoId, sourceName)
                     StreamChoice.remember(videoId, won.stream, substituted = true)
                     dataSpec.buildUpon()
@@ -4156,7 +4156,7 @@ class PlaybackService : MediaLibraryService() {
             )
             val upgradedSourceName = stream.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                 ?: "Upgrade"
-            NerdStats.onSourceStream(mediaId, stream.format, upgradedSourceName)
+            NerdStats.onSourceStream(mediaId, stream.format, upgradedSourceName, stream.backend)
             NerdStats.recordSource(mediaId, upgradedSourceName)
             player.seekTo(player.currentMediaItemIndex, now.position)
             player.prepare()
@@ -5130,6 +5130,7 @@ class PlaybackService : MediaLibraryService() {
             bitDepth = if (dsd != null) 1 else if (isLossless) measured?.bitDepth else null,
             claimed = NerdStats.declaredFormat(mediaId),
             sourceName = currentSourceName(mediaId, player.currentMediaItem),
+            backendName = NerdStats.backendFor(mediaId),
             container = when (format?.containerMimeType) {
                 "audio/x-dsf" -> "DSF"
                 "audio/x-dff" -> "DFF"

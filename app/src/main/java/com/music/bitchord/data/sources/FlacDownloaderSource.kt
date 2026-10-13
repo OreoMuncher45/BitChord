@@ -16,10 +16,11 @@ import kotlinx.coroutines.ensureActive
  * precision matching, and queued conversions up to 24-bit/192kHz. No
  * account, no key — the backend holds whatever it holds.
  *
- * The fallback backend is direct FLAC. When conversions are gated or the
- * downloader has no row, the same source searches and streams verified FLAC
- * files directly, with quality inferred from measured size rather than
- * catalogue claims. It is deliberately not a separate source.
+ * The direct backend is tried first: when it holds the recording it
+ * streams a verified FLAC file in about a second, with quality inferred
+ * from measured size rather than catalogue claims. Conversions run only
+ * when direct has no row, since they are server-side work that measures in
+ * minutes. It is deliberately not a separate source.
  *
  * The protocol is the one the Spotube FLAC plugin speaks, reimplemented
  * against plain HTTP: that plugin needs a Hetu runtime and Spotube's host
@@ -173,6 +174,21 @@ class FlacDownloaderSource(
                 cover = cover.orEmpty(),
                 isrc = isrc.orEmpty(),
                 explicit = explicit,
+                albumArtist = albumArtist,
+                date = date,
+                trackNumber = trackNumber,
+                trackTotal = trackTotal,
+                discNumber = discNumber,
+                discTotal = discTotal,
+                genre = genre,
+                label = label,
+                copyright = copyright,
+                composer = composer,
+                barcode = barcode,
+                version = version,
+                work = work,
+                bitDepth = bitDepth,
+                samplingRate = samplingRate,
             ),
             packed,
         )
@@ -217,6 +233,13 @@ class FlacDownloaderSource(
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         HiResMonochromeBackend.originOf(trackId)?.let { return streamDirect(it) }
         val origin = FlacDownloaderApi.originOf(trackId) ?: return null
+        // Direct first, conversion second. A verified file answers a HEAD in
+        // about a second; a conversion is server-side work on a free service
+        // and measures in minutes when it answers at all. Trying conversion
+        // first held every upgrade race for the whole poll budget while the
+        // instant copy sat one lookup away — which is what "takes 20 seconds
+        // to load FLAC" felt like from the listener's side.
+        monochromeFallback(origin.title, origin.artist, origin.durationSec)?.let { return it }
         val formatIds = when (request) {
             // Best-first; a lower FLAC that answers is still lossless.
             is StreamRequest.Lossless -> FlacDownloaderApi.LOSSLESS_FORMATS
@@ -234,7 +257,7 @@ class FlacDownloaderSource(
             coroutineContext.ensureActive()
             TrackLog.d(TAG, "  ✗ hifiresolver stream failed: ${e.message}")
             null
-        } ?: return monochromeFallback(origin.title, origin.artist, origin.durationSec)
+        } ?: return null
         TrackLog.d(TAG, "  ✓ hifiresolver ${file.formatId} ${file.url.take(96)}")
         val mp3 = file.formatId == FlacDownloaderApi.F_MP3_320
         return SourceStream(
@@ -247,6 +270,7 @@ class FlacDownloaderSource(
             ),
             belowRequest = mp3 && request is StreamRequest.Lossless,
             durationSec = origin.durationSec,
+            backend = BACKEND_CONVERSION,
         )
     }
 
@@ -269,13 +293,14 @@ class FlacDownloaderSource(
             ),
             durationSec = HiResMonochromeBackend.normalizeDurationMs(origin.durationMs)
                 ?.div(1000)?.toInt(),
+            backend = BACKEND_DIRECT,
         )
     }
 
     /**
-     * A downloader row that cannot convert falls back to the direct
-     * catalogue before giving up. Title, artist credit and runtime all have
-     * to agree, so a cover or a different cut cannot stand in for the row.
+     * The direct catalogue for a downloader row, tried before any conversion
+     * is queued. Title, artist credit and runtime all have to agree, so a
+     * cover or a different cut cannot stand in for the row.
      */
     private suspend fun monochromeFallback(
         title: String,
@@ -310,5 +335,12 @@ class FlacDownloaderSource(
 
     companion object {
         private const val TAG = "BitChord"
+
+        /**
+         * Provenance labels for the two backends behind this one source row,
+         * shown in stats-for-nerds so a track's path is answerable on screen.
+         */
+        const val BACKEND_DIRECT = "Direct FLAC"
+        const val BACKEND_CONVERSION = "Qobuz conversion"
     }
 }
