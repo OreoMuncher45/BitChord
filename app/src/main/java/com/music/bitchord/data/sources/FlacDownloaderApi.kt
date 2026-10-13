@@ -421,13 +421,33 @@ object FlacDownloaderApi {
      * the challenge exists — so it fails fast instead of burning retries.
      */
     suspend fun prepareToken(force: Boolean = false): String? {
-        if (!force && System.currentTimeMillis() < tokenBlockedUntilMs) return null
+        if (!force && System.currentTimeMillis() < tokenBlockedUntilMs) {
+            // Previously silent, so a backoff left the source reporting
+            // nothing while conversions refused themselves. Said out loud:
+            // "blocked" and "no session" are different faults with different
+            // fixes, and neither is guessable from the outside.
+            noteFailure("backing off for another ${(tokenBlockedUntilMs - System.currentTimeMillis()) / 1000}s")
+            return null
+        }
         val sp = spToken
             ?: runCatching { spReader() }.getOrDefault("").takeIf { it.isNotBlank() }?.also { spToken = it }
         if (sp == null) {
             tokenBlockedUntilMs = System.currentTimeMillis() + TOKEN_BLOCK_MS
+            noteFailure("no stored session — tap the Hi-Res addon to unlock")
+            TrackLog.w(TAG, "  ✗ hifiresolver has no session; conversions cannot be queued")
             return null
         }
+        // Whether the backend *refused* this session, as opposed to us failing
+        // to reach it. The distinction is the whole bug: a dropped connection
+        // is weather, and treating it as a refusal threw the stored session
+        // away, which silently disabled every conversion on the device
+        // thereafter — with Direct FLAC still working, so the only symptom was
+        // that the niche tracks silently never upgraded and every report said
+        // "no reason recorded". Measured: Barqat by Satyam returned null 7ms
+        // after its Tidal row matched, which is a lookup in memory, not a
+        // request that crossed a network.
+        var refused = false
+        var lastError: String? = null
         repeat(TOKEN_ATTEMPTS) { attempt ->
             try {
                 val answer = json.decodeFromString<TokenResponse>(postPrepare(mapOf("sp" to sp)))
@@ -435,16 +455,28 @@ object FlacDownloaderApi {
                 val token = answer.token?.takeIf { it.isNotBlank() }
                 if (token != null) {
                     tokenBlockedUntilMs = 0L
+                    clearLastFailure()
                     return token
                 }
+                // The backend answered and declined. That is a verdict on this
+                // session, and only now is dropping it justified.
+                refused = true
                 TrackLog.w(TAG, "  ✗ hifiresolver session refused")
             } catch (e: Exception) {
                 coroutineContext.ensureActive()
+                lastError = e.message
                 TrackLog.d(TAG, "  ✗ hifiresolver prepare failed: ${e.message}")
             }
             if (attempt + 1 < TOKEN_ATTEMPTS) delay(TOKEN_RETRY_DELAY_MS)
         }
-        forgetSp()
+        noteFailure(
+            if (refused) "session refused by the backend"
+            else "could not reach the backend to exchange the session (${lastError ?: "unknown"})",
+        )
+        // Only a refusal costs the session. A network failure must not, or one
+        // bad signal disables lossless for the device until the listener
+        // notices and unlocks again by hand.
+        if (refused) forgetSp()
         tokenBlockedUntilMs = System.currentTimeMillis() + TOKEN_BLOCK_MS
         return null
     }

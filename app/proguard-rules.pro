@@ -50,39 +50,6 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# ---- Diagnostics -----------------------------------------------------------
-# The stock proguard-android-optimize.txt this file is layered onto carries
-#
-#   -assumenosideeffects class android.util.Log {
-#       public static int v(...); public static int d(...); ... }
-#
-# which tells R8 those calls have no side effects and deletes every call site
-# before packaging. That silently removes android.util.Log from the release
-# binary entirely — not just the platform's own logging, but every TrackLog
-# line this app records about why a track played from the source it did.
-#
-# The cost of that is not cosmetic. On a minified build `adb logcat -s BitChord`
-# returns nothing at all, so every failure the app diagnosed internally was
-# invisible: a Hi-Res search returning candidates that were then discarded by
-# the artist/length filters, a conversion refused for want of a token, and a
-# source answering empty all looked identical from the outside — the track
-# simply played on YouTube with no explanation. Measured on v2.0.8, Barqat by
-# Satyam: `✓ hifiresolver 12 rows` and then zero output for the rest of the
-# track, which said Hi-Res found candidates but nothing said which filter ate
-# them.
-#
-# Re-declaring the methods with -keep restores the call sites. Cost is a few
-# hundred bytes and some logcat noise on a debug-tagged device; the benefit is
-# that a release build is finally diagnosable.
--keep class android.util.Log {
-    public static int v(...);
-    public static int d(...);
-    public static int i(...);
-    public static int w(...);
-    public static int e(...);
-    public static boolean isLoggable(...);
-}
-
 # ---- JVM-only APIs ------------------------------------------------------------
 # Referenced by desktop-only paths in Rhino (JSR-223, java.beans, dynalink),
 # mbassy's EL filters, SMBJ's Kerberos and Ktor's IntelliJ debugger probe. None
