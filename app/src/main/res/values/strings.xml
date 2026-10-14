@@ -1194,7 +1194,4 @@
     <string name="diagnostics_empty">No errors recorded yet. Play something first — failures land here.</string>
     <string name="diagnostics_refresh">Refresh</string>
     <string name="on">On</string>
-    <string name="email">Email</string>
-    <string name="qobuz_account">Qobuz account</string>
-    <string name="qobuz_account_description">Sign in with your Qobuz login for direct lossless streaming — no converter, no challenge.</string>
 </resources>

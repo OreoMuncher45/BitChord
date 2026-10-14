@@ -143,12 +143,6 @@ fun SourcesScreen(
     onEditSmb: () -> Unit,
     /** Opens the full-window warning before JioSaavn is opted into. */
     onConfirmJioSaavn: () -> Unit,
-    /**
-     * Opens the one-tap guided unlock for the Hi-Res source: an in-app
-     * browser sheet where one manual download captures the session the
-     * API needs. No credentials change hands — the session is anonymous.
-     */
-    onUnlockHires: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -280,8 +274,6 @@ fun SourcesScreen(
                         // only, no editor and no address anywhere.
                         onClick = if (config.kind.needsServer && config.kind != SourceKind.TIDAL) {
                             ({ onEditSource(config) })
-                        } else if (config.kind == SourceKind.HIRES) {
-                            ({ onUnlockHires() })
                         } else {
                             null
                         },

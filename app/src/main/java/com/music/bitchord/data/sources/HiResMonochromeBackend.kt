@@ -25,20 +25,22 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Direct-FLAC fallback owned by the Hi-Res source — not a source itself.
+ * Direct-FLAC backend owned by the Hi-Res source — not a source itself.
  *
  * The sealed Tidal/Monochrome source already speaks `tracks.monochrome.st`;
- * this backend gives the same host to Hi-Res so a locked flacdownloader gate
- * degrades to playable direct FLAC instead of silence. No [SourceKind], no
- * registry row, no UI: the Hi-Res source is the only caller.
+ * this backend gives the same host to Hi-Res, whose entire catalogue and
+ * stream path is these direct files. No [SourceKind], no registry row, no
+ * UI: the Hi-Res source is the only caller.
  *
- * Search and stream state live here for the same reason the Qobuz origin memo
- * lives on [FlacDownloaderApi]: source instances are rebuilt when configs
- * change, and an instance memo would strand every search row it minted.
+ * Search and stream state live here rather than on the source instance:
+ * instances are rebuilt when configs change, and an instance memo would
+ * strand every search row it minted the moment the registry rebuilds.
  */
 object HiResMonochromeBackend {
 
     const val BASE = "https://tracks.monochrome.st"
+    /** The host files resolve under — the key stream refusals are recorded by. */
+    const val BASE_HOST = "tracks.monochrome.st"
     private const val TAG = "BitChord"
     private const val PACK_PREFIX = "m:"
 
@@ -263,6 +265,57 @@ object HiResMonochromeBackend {
     // ── Matching ──────────────────────────────────────────────────────
     // ISRC-exact first; anything else must share an artist credit, because
     // the search returns covers next to originals.
+    //
+    // Title matching lives here rather than in the source so every caller
+    // ranks rows the same way: strip featured/remaster/version noise and
+    // refuse a result carrying a modifier the request lacks, so a live cut
+    // never stands in for the studio recording.
+
+    private val MODIFIERS = listOf(
+        "karaoke", "remix", "live", "instrumental", "version", "edit",
+        "acoustic", "reprise", "demo", "session", "cover", "tribute",
+        "orchestral", "piano",
+    )
+
+    fun normalizeTitle(title: String): String {
+        var t = title.replace(Regex("[áàäâã]"), "a")
+            .replace(Regex("[éèëê]"), "e")
+            .replace(Regex("[íìïî]"), "i")
+            .replace(Regex("[óòöôõ]"), "o")
+            .replace(Regex("[úùüû]"), "u")
+            .replace("ñ", "n").replace("Ñ", "N")
+            .trim()
+        t = t.substringBefore("(").trim()
+        t = t.substringBefore("[").trim()
+        t = t.substringBefore(" - ").trim()
+        val lower = t.lowercase()
+        t = t.substringBefore(" feat", t).trim().let {
+            if (lower.contains(" feat")) it.substring(0, lower.indexOf(" feat")).trim() else it
+        }
+        val lower2 = t.lowercase()
+        t = if (" ft." in lower2) t.substring(0, lower2.indexOf(" ft.")).trim() else t
+        val lower3 = t.lowercase()
+        t = if ("remaster" in lower3) t.substring(0, lower3.indexOf("remaster")).trim() else t
+        return t
+    }
+
+    fun titlesMatch(search: String, result: String): Boolean {
+        val s = normalizeTitle(search).lowercase()
+        val r = normalizeTitle(result).lowercase()
+        if (s.isEmpty() || r.isEmpty()) return false
+        return r.contains(s) || s.contains(r)
+    }
+
+    fun hasModifier(title: String): Boolean {
+        val lower = title.lowercase()
+        return MODIFIERS.any { it in lower }
+    }
+
+    /** A result is playable for a request when titles match and it adds no new modifier. */
+    fun isPlayableMatch(request: String, result: String): Boolean {
+        if (!titlesMatch(request, result)) return false
+        return !(hasModifier(result) && !hasModifier(request))
+    }
 
     private const val KEEP = "abcdefghijklmnopqrstuvwxyz0123456789 "
 

@@ -1337,7 +1337,4 @@
     <string name="sing_duet_note">Halfway down keeps the backing vocals while the lead steps back — that middle is the duet mix.</string>
     <string name="sing_turn_off">Turn off</string>
     <string name="on">On</string>
-    <string name="email">Email</string>
-    <string name="qobuz_account">Qobuz account</string>
-    <string name="qobuz_account_description">Sign in with your Qobuz login for direct lossless streaming — no converter, no challenge.</string>
 </resources>

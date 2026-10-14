@@ -148,8 +148,6 @@ import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
-import com.music.bitchord.data.sources.FlacDownloaderApi
-import com.music.bitchord.ui.components.FdlUnlockSheet
 import com.music.bitchord.ui.components.SingSheet
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
@@ -583,7 +581,6 @@ private fun BitChordApp(
     var showListenBrainzLogin by remember { mutableStateOf(false) }
     var showLastfmLogin by remember { mutableStateOf(false) }
     var showWebDavEditor by remember { mutableStateOf(false) }
-    var showFdlUnlock by remember { mutableStateOf(false) }
     var showSmbEditor by remember { mutableStateOf(false) }
     /**
      * Whether the download manager is open.
@@ -2940,7 +2937,6 @@ private fun BitChordApp(
                             onEditWebDav = { showWebDavEditor = true },
                             onEditSmb = { showSmbEditor = true },
                             onConfirmJioSaavn = { confirmJioSaavn = true },
-                            onUnlockHires = { showFdlUnlock = true },
                         )
                     } else if (key == "listen_together") {
                         ListenTogetherScreen(
@@ -3520,7 +3516,6 @@ private fun BitChordApp(
                                 onEditWebDav = { showWebDavEditor = true },
                                 onEditSmb = { showSmbEditor = true },
                                 onConfirmJioSaavn = { confirmJioSaavn = true },
-                                onUnlockHires = { showFdlUnlock = true },
                             )
                         }
                     }
@@ -5274,35 +5269,6 @@ private fun BitChordApp(
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
                 SingSheet(onDismiss = { showSing = false })
-            }
-        }
-
-        if (showFdlUnlock) {
-            BackHandler { showFdlUnlock = false }
-            Dialog(
-                onDismissRequest = { showFdlUnlock = false },
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    decorFitsSystemWindows = false,
-                ),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(WindowInsets.safeDrawing.asPaddingValues()),
-                ) {
-                    FdlUnlockSheet(
-                        onUnlocked = { sp, cookies ->
-                            AppSettings.setFdlSp(sp)
-                            AppSettings.setFdlCookies(cookies)
-                            FlacDownloaderApi.loadSp(sp)
-                            showQueueNotice("Hi-Res unlocked")
-                            showFdlUnlock = false
-                        },
-                        onDismiss = { showFdlUnlock = false },
-                    )
-                }
             }
         }
 

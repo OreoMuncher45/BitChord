@@ -144,7 +144,6 @@ import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.R
 import com.music.bitchord.data.sources.DeviceCodecs
-import com.music.bitchord.data.sources.QobuzApi
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.data.settings.DownloadQuality
 import com.music.bitchord.data.settings.AppUi
@@ -346,7 +345,6 @@ fun SettingsScreen(
     }
     var showListenBrainzTokenDialog by remember { mutableStateOf(false) }
     var showLastfmLoginDialog by remember { mutableStateOf(false) }
-    var showQobuzLoginDialog by remember { mutableStateOf(false) }
     val scrobbleScope = rememberCoroutineScope()
 
     val version = remember(context) {
@@ -441,26 +439,6 @@ fun SettingsScreen(
                     title = sourceTitle,
                     subtitle = sourceSubtitle,
                     onClick = onSources,
-                )
-            }
-            // Qobuz sits with the quality ceilings: it decides which version
-            // of a track gets fetched. Signed in, Hi-Res streams come
-            // straight from Qobuz at the account's tier — no converter, no
-            // challenge — so this row states the account and its tier.
-            val qobuzEmail by AppSettings.qobuzEmail.collectAsStateWithLifecycle()
-            val qobuzTier by AppSettings.qobuzTier.collectAsStateWithLifecycle()
-            val qobuzTitle = stringResource(R.string.qobuz_account)
-            row(qobuzTitle, "qobuz", "lossless", "account", "login") {
-                SettingsRow(
-                    icon = Icons.Rounded.Person,
-                    title = qobuzTitle,
-                    subtitle = if (qobuzEmail.isNotBlank()) {
-                        "$qobuzEmail · ${qobuzTier.ifBlank { "…" }}"
-                    } else {
-                        stringResource(R.string.qobuz_account_description)
-                    },
-                    value = qobuzTier.takeIf { qobuzEmail.isNotBlank() && it.isNotBlank() },
-                    onClick = { showQobuzLoginDialog = true },
                 )
             }
             val onWifiTitle = stringResource(R.string.on_wifi)
@@ -1755,110 +1733,6 @@ fun SettingsScreen(
         )
     }
 
-    if (showQobuzLoginDialog) {
-        val signedInEmail by AppSettings.qobuzEmail.collectAsStateWithLifecycle()
-        val signedInTier by AppSettings.qobuzTier.collectAsStateWithLifecycle()
-        var emailInput by remember { mutableStateOf(signedInEmail) }
-        var passwordInput by remember { mutableStateOf("") }
-        var qobuzError by remember { mutableStateOf<String?>(null) }
-        var qobuzLoading by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { if (!qobuzLoading) showQobuzLoginDialog = false },
-            title = { Text(stringResource(R.string.qobuz_account)) },
-            text = {
-                Column {
-                    if (signedInEmail.isNotBlank()) {
-                        Text(
-                            text = "$signedInEmail · ${signedInTier.ifBlank { "…" }}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                    }
-                    if (qobuzError != null) {
-                        Text(
-                            text = qobuzError!!,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                    }
-                    OutlinedTextField(
-                        value = emailInput,
-                        onValueChange = { emailInput = it },
-                        label = { Text(stringResource(R.string.email)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        label = { Text(stringResource(R.string.password)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        text = stringResource(R.string.qobuz_account_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        qobuzLoading = true
-                        qobuzError = null
-                        scrobbleScope.launch {
-                            try {
-                                // The password is MD5'd for the wire and never
-                                // stored; only the exchanged token is kept —
-                                // see QobuzApi.login and setQobuzAccount.
-                                val session = QobuzApi.login(emailInput.trim(), passwordInput)
-                                if (session?.userAuthToken.isNullOrBlank()) {
-                                    qobuzError = context.getString(R.string.login_failed)
-                                } else {
-                                    AppSettings.setQobuzAccount(
-                                        emailInput.trim(),
-                                        session.userAuthToken!!,
-                                        QobuzApi.tierName(session.user),
-                                    )
-                                    showQobuzLoginDialog = false
-                                }
-                            } catch (e: Exception) {
-                                qobuzError = e.message ?: context.getString(R.string.login_failed)
-                            } finally {
-                                qobuzLoading = false
-                            }
-                        }
-                    },
-                    enabled = !qobuzLoading && emailInput.isNotBlank() && passwordInput.isNotBlank(),
-                ) {
-                    Text(stringResource(if (qobuzLoading) R.string.signing_in else R.string.sign_in))
-                }
-            },
-            dismissButton = {
-                Row {
-                    if (signedInEmail.isNotBlank()) {
-                        TextButton(
-                            onClick = {
-                                AppSettings.clearQobuzAccount()
-                                showQobuzLoginDialog = false
-                            },
-                            enabled = !qobuzLoading,
-                        ) {
-                            Text(stringResource(R.string.sign_out))
-                        }
-                    }
-                    TextButton(onClick = { showQobuzLoginDialog = false }, enabled = !qobuzLoading) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
-            },
-        )
-    }
 
 }
 

@@ -524,7 +524,7 @@ object SourceRegistry {
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
         SourceKind.TIDAL -> TidalSource(config)
-        SourceKind.HIRES -> FlacDownloaderSource(config)
+        SourceKind.HIRES -> HiresDirectSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
 
