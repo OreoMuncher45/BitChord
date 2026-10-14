@@ -10,24 +10,25 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 
 /**
- * Community Hi-Res FLAC through two backends under one source row.
+ * Community Hi-Res FLAC through four backends under one source row.
  *
- * The primary backend is the downloader: Qobuz catalogue search, Deezer ISRC
- * precision matching, and queued conversions up to 24-bit/192kHz. No
- * account, no key — the backend holds whatever it holds.
+ * The deterministic backend is the listener's own Qobuz account: Qobuz's
+ * catalogue API answers with nothing but public credentials, and its file
+ * endpoint serves whatever tier that account holds — no converter, no
+ * challenge, no waiting. Signed in, this is tried first and usually ends
+ * the search for a stream right there.
  *
- * The direct backend is tried first: when it holds the recording it
- * streams a verified FLAC file in about a second, with quality inferred
- * from measured size rather than catalogue claims. Conversions run only
- * when direct has no row, since they are server-side work that measures in
- * minutes. It is deliberately not a separate source.
+ * Without an account the order is direct, conversion, Tidal conversion:
+ * the direct backend streams a verified FLAC file in about a second when
+ * it holds the recording; the downloaders queue server-side conversions
+ * that measure in minutes. It is deliberately not a separate source.
  *
- * The protocol is the one the Spotube FLAC plugin speaks, reimplemented
- * against plain HTTP: that plugin needs a Hetu runtime and Spotube's host
- * APIs, neither of which exists here, but its half-dozen calls reduce to
- * JSON this app can ask for directly. Conversion is a *job*, not a URL, so
- * resolution is budgeted and cancellable: a slow backend loses the
- * resolver's race instead of holding it.
+ * The Qobuz-downloader protocol is the one the Spotube FLAC plugin speaks,
+ * reimplemented against plain HTTP: that plugin needs a Hetu runtime and
+ * Spotube's host APIs, neither of which exists here, but its half-dozen
+ * calls reduce to JSON this app can ask for directly. Conversion is a
+ * *job*, not a URL, so resolution is budgeted and cancellable: a slow
+ * backend loses the resolver's race instead of holding it.
  */
 class FlacDownloaderSource(
     override val config: SourceConfig,
@@ -49,6 +50,16 @@ class FlacDownloaderSource(
         FlacDownloaderApi.memoizeOrigin(packed, origin)
 
     override suspend fun health(): SourceHealth {
+        // The account leg is independent of every catalogue: a signed-in
+        // listener streams from Qobuz itself even when all three converters
+        // and the direct host are down.
+        val accountSuffix = when {
+            AppSettings.qobuzToken.value.isNotBlank() ->
+                " · Qobuz account (${AppSettings.qobuzTier.value.ifBlank { "signed in" }})"
+            AppSettings.qobuzEmail.value.isNotBlank() ->
+                " · Qobuz sign-in expired"
+            else -> ""
+        }
         val catalogueOk = try {
             // An empty catalogue still proves the backend is there; only a
             // failed call means it isn't. (The search call itself never
@@ -62,8 +73,17 @@ class FlacDownloaderSource(
             false
         }
         val directOk = HiResMonochromeBackend.probe()
+        // A signed-in account streams from Qobuz itself, so it is healthy
+        // even when every other backend is down — and checking the
+        // challenge gate first would misreport it on a blocked network.
+        if (AppSettings.qobuzToken.value.isNotBlank()) {
+            return SourceHealth.Ok(
+                "Qobuz account (${AppSettings.qobuzTier.value.ifBlank { "signed in" }})" +
+                    if (!catalogueOk && !directOk) " · converters down" else "",
+            )
+        }
         if (!catalogueOk) {
-            if (directOk) return SourceHealth.Ok("direct FLAC ready · Qobuz catalogue down")
+            if (directOk) return SourceHealth.Ok("direct FLAC ready · Qobuz catalogue down$accountSuffix")
             return SourceHealth.Unreachable("no Hi-Res catalogue answered")
         }
         val directSuffix = if (directOk) " · direct FLAC ready" else ""
@@ -74,11 +94,11 @@ class FlacDownloaderSource(
         // along so "says unlocked, streams nothing" names its reason.
         val failureSuffix = FlacDownloaderApi.lastFailure?.let { " · last conversion: $it" } ?: ""
         return if (FlacDownloaderApi.prepareToken() != null) {
-            SourceHealth.Ok("flacdownloader.com · Qobuz FLAC$directSuffix$failureSuffix")
+            SourceHealth.Ok("flacdownloader.com · Qobuz FLAC$directSuffix$failureSuffix$accountSuffix")
         } else if (AppSettings.fdlSp.value.isBlank()) {
-            SourceHealth.Ok("tap to unlock Qobuz$directSuffix")
+            SourceHealth.Ok("tap to unlock Qobuz$directSuffix$accountSuffix")
         } else {
-            SourceHealth.Ok("catalogue ok · conversions blocked on this network$directSuffix$failureSuffix")
+            SourceHealth.Ok("catalogue ok · conversions blocked on this network$directSuffix$failureSuffix$accountSuffix")
         }
     }
 
@@ -101,6 +121,7 @@ class FlacDownloaderSource(
         val textHits: List<FlacDownloaderApi.QobuzTrack>
         val monoRaw: List<HiResMonochromeBackend.MonoTrack>
         val tidalRaw: List<FlacDownloaderApi.TidalTrack>
+        val accountRaw: List<QobuzApi.QobuzTrack>
         val isrcs: List<String>
         coroutineScope {
             val deezer = async {
@@ -131,6 +152,20 @@ class FlacDownloaderSource(
                     emptyList()
                 }
             }
+            // Qobuz's own catalogue, signed with public credentials — no
+            // account, no challenge. Richer rows than the downloader's
+            // (true maximum bit depth), and the same global track ids, so
+            // the dedupe below folds the two together.
+            val account = async {
+                try {
+                    QobuzApi.search(q, limit.coerceIn(1, 50))
+                        .filter { it.id != 0L && FlacDownloaderApi.isPlayableMatch(q, it.title) }
+                } catch (e: Exception) {
+                    coroutineContext.ensureActive()
+                    TrackLog.d(TAG, "  ✗ hires qobuz-direct search failed: ${e.message}")
+                    emptyList()
+                }
+            }
             // The site's own Tidal catalogue, alongside Qobuz's. Same host and
             // same token, and broader than the direct host for the niche
             // recordings Qobuz's dead converter used to be the only route to.
@@ -148,6 +183,7 @@ class FlacDownloaderSource(
             textHits = text.await()
             monoRaw = mono.await()
             tidalRaw = tidal.await()
+            accountRaw = account.await()
             isrcs = deezerRows.mapNotNull { it.isrc?.takeIf(String::isNotBlank) }
                 .distinct()
                 .take(3)
@@ -164,6 +200,20 @@ class FlacDownloaderSource(
         val flacRows = (isrcHits + textHits).distinctBy { it.id }
         val songs = flacRows.map { it.toSong() }.toMutableList()
         val seen = songs.mapTo(HashSet()) { catalogueKey(it.title, it.artist) }
+        // Account rows lead when signed in: their stream is instant and
+        // tier-exact, so trying a minutes-long conversion first would be
+        // pure waste. Without a token they cannot stream yet, so they join
+        // behind the convertible rows rather than spending attempts.
+        val accountSongs = accountRaw.mapNotNull { it.toSongOrNull() }
+        if (AppSettings.qobuzToken.value.isNotBlank()) {
+            val lead = accountSongs.filter { seen.add(catalogueKey(it.title, it.artist)) }
+            songs.addAll(0, lead)
+        } else {
+            for (song in accountSongs) {
+                if (!seen.add(catalogueKey(song.title, song.artist))) continue
+                songs += song
+            }
+        }
         for (track in monoHits) {
             val title = track.title.ifBlank { "Unknown title" }
             val artist = track.credits
@@ -230,6 +280,32 @@ class FlacDownloaderSource(
         )
     }
 
+    /**
+     * A direct-Qobuz row. Null only for id 0, which carries no track. Rows
+     * stream through the signed-in account; without one they miss fast at
+     * stream time (blank token, no network), while still carrying true
+     * maximum-bit-depth metadata for badges and ranking.
+     */
+    private fun QobuzApi.QobuzTrack.toSongOrNull(): Song? {
+        if (id == 0L) return null
+        val packed = QobuzApi.packId(id)
+        QobuzApi.memoizeOrigin(packed, QobuzApi.Origin(id))
+        val title = this.title.ifBlank { "Unknown title" }
+        val artist = artistName.ifBlank { "Unknown artist" }
+        val durationSec = durationSec.takeIf { it > 0 }
+        val duration = durationSec?.let { s -> "%d:%02d".format(Locale.ROOT, s / 60, s % 60) }
+        return Song(
+            videoId = SourceRegistry.trackKey(config.id, packed),
+            title = title,
+            artist = artist,
+            albumName = album.title.takeIf { it.isNotBlank() },
+            thumbnailUrl = album.artwork,
+            durationText = duration,
+            sourceQuality = if (hires || maximumBitDepth >= 24) "LOSSLESS" else null,
+            isExplicit = isExplicit,
+        )
+    }
+
     private fun FlacDownloaderApi.TidalTrack.toSong(): Song {
         val packed = FlacDownloaderApi.packTidalId(id)
         val tidalUrl = url?.takeIf { it.isNotBlank() } ?: "https://tidal.com/browse/track/$id"
@@ -277,6 +353,12 @@ class FlacDownloaderSource(
     }
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
+        // The listener's own Qobuz account first: deterministic, instant,
+        // tier-exact, no challenge and no minutes-long conversion. A blank
+        // token misses here in microseconds — no network spent.
+        QobuzApi.originOf(trackId)?.let { origin ->
+            streamAccount(origin, request)?.let { return it }
+        }
         HiResMonochromeBackend.originOf(trackId)?.let { return streamDirect(it) }
         // A Tidal row: direct first (this host is not the direct host, so it
         // will miss), then the site's Tidal queue, which is the route Qobuz's
@@ -375,6 +457,51 @@ class FlacDownloaderSource(
         )
     }
 
+    /**
+     * A direct-Qobuz file behind the listener's own account. The token is
+     * never cleared here: a null covers both "track not entitled at this
+     * tier" and "sign-in expired", and logging the listener out because one
+     * track isn't theirs would be the wrong verdict for the common case.
+     * An expired token surfaces in health as "sign-in expired" once its
+     * stored email outlives it — re-signing mints a new one.
+     */
+    private suspend fun streamAccount(
+        origin: QobuzApi.Origin,
+        request: StreamRequest,
+    ): SourceStream? {
+        val token = AppSettings.qobuzToken.value.takeIf { it.isNotBlank() } ?: return null
+        val formatIds = when (request) {
+            is StreamRequest.Lossless -> QobuzApi.LOSSLESS_FORMATS
+            is StreamRequest.Capped -> if (request.maxKbps >= 1000) {
+                QobuzApi.LOSSLESS_FORMATS + listOf(QobuzApi.F_MP3_320)
+            } else {
+                listOf(QobuzApi.F_MP3_320)
+            }
+            is StreamRequest.Best -> listOf(QobuzApi.F_MP3_320)
+        }
+        val file = try {
+            QobuzApi.resolveFile(origin.id, token, formatIds)
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            TrackLog.d(TAG, "  ✗ hires qobuz account stream failed: ${e.message}")
+            null
+        } ?: return null
+        TrackLog.d(TAG, "  ✓ hires qobuz account ${file.formatId} ${file.url.take(96)}")
+        val mp3 = file.formatId == QobuzApi.F_MP3_320
+        return SourceStream(
+            url = file.url,
+            format = com.music.bitchord.data.sources.StreamFormat(
+                codec = if (mp3) "mp3" else "flac",
+                kbps = file.kbps,
+                sampleRateHz = file.sampleRateHz,
+                bitDepth = file.bitDepth,
+            ),
+            belowRequest = mp3 && request is StreamRequest.Lossless,
+            durationSec = null,
+            backend = BACKEND_ACCOUNT,
+        )
+    }
+
     private suspend fun streamDirect(origin: HiResMonochromeBackend.Origin): SourceStream? {
         val file = try {
             HiResMonochromeBackend.resolveFile(origin.id, origin.durationMs)
@@ -444,5 +571,6 @@ class FlacDownloaderSource(
         const val BACKEND_DIRECT = "Direct FLAC"
         const val BACKEND_CONVERSION = "Qobuz conversion"
         const val BACKEND_TIDAL = "Tidal conversion"
+        const val BACKEND_ACCOUNT = "Qobuz account"
     }
 }

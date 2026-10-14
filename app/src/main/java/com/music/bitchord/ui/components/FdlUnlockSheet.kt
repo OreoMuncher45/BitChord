@@ -49,7 +49,7 @@ import kotlin.coroutines.resume
  */
 @Composable
 fun FdlUnlockSheet(
-    onUnlocked: (String) -> Unit,
+    onUnlocked: (sp: String, cookies: String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -66,7 +66,15 @@ fun FdlUnlockSheet(
             val sp = view.readLocalStorage("fd_sp")
             if (!sp.isNullOrBlank()) {
                 unlocked = true
-                onUnlocked(sp)
+                // The browser context's cookies ride along: edge checks a
+                // headless client trips have already been passed here, and
+                // the clearance travels with the session — see
+                // FlacDownloaderApi.cookiesReader.
+                val cookies = runCatching {
+                    android.webkit.CookieManager.getInstance()
+                        .getCookie("https://flacdownloader.com")
+                }.getOrDefault("").orEmpty()
+                onUnlocked(sp, cookies)
                 return@LaunchedEffect
             }
         }

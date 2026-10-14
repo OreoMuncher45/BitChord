@@ -1,9 +1,11 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.NerdStats
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.FlacDownloaderApi
 import com.music.bitchord.data.sources.FlacDownloaderSource
 import com.music.bitchord.data.sources.HiResMonochromeBackend
+import com.music.bitchord.data.sources.QobuzApi
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
@@ -53,6 +55,7 @@ class FlacDownloaderTest {
         server.start()
         FlacDownloaderApi.baseOverride = server.url("/").toString().trimEnd('/')
         HiResMonochromeBackend.baseOverride = server.url("/").toString().trimEnd('/')
+        QobuzApi.baseOverride = server.url("/").toString().trimEnd('/')
     }
 
     @After
@@ -60,6 +63,7 @@ class FlacDownloaderTest {
         FlacDownloaderApi.baseOverride = null
         FlacDownloaderApi.resetPollTiming()
         HiResMonochromeBackend.resetForTests()
+        QobuzApi.resetForTests()
         FlacDownloaderApi.loadSp(null)
         FlacDownloaderApi.clearTokenBlock()
         FlacDownloaderApi.spReader = { "" }
@@ -575,6 +579,89 @@ class FlacDownloaderTest {
             FlacDownloaderApi.spReader = { "" }
             FlacDownloaderApi.spWriter = {}
             FlacDownloaderApi.clearTokenBlock()
+        }
+    }
+
+    private fun directSearchJson() = """
+        {"tracks":{"limit":5,"offset":0,"total":1,"items":[{
+            "id":555,"title":"Account Song",
+            "performer":{"name":"Account Artist","id":7},
+            "album":{"title":"Account Album","maximum_bit_depth":24,
+                "image":{"large":"https://static.qobuz.com/a_600.jpg"}},
+            "duration":200,"maximum_bit_depth":24,"maximum_sampling_rate":96.0,
+            "hires":true,"isrc":"USXX1000001","parental_warning":false
+        }]}}
+    """.trimIndent()
+
+    @Test
+    fun `direct qobuz rows merge with namespaced ids`() = runBlocking {
+        route("/api.json/0.2/track/search", directSearchJson())
+        val rows = source().search("Account Song", limit = 10)
+        val row = rows.single { innerId(it.videoId).startsWith("q:") }
+        assertEquals("Account Song", row.title)
+        assertEquals("Account Artist", row.artist)
+        assertEquals("LOSSLESS", row.sourceQuality)
+        assertEquals("https://static.qobuz.com/a_600.jpg", row.thumbnailUrl)
+        assertNotNull(QobuzApi.originOf(innerId(row.videoId)))
+    }
+
+    @Test
+    fun `signed-in account streams instantly with tier figures`() = runBlocking {
+        AppSettings.qobuzToken.value = "tok-account"
+        try {
+            route("/api.json/0.2/track/search", directSearchJson())
+            route("/api.json/0.2/track/getFile", """{"url":"https://stream.qobuz.com/f?x=1"}""")
+            val src = source()
+            val trackId = innerId(src.search("Account Song", limit = 5).first().videoId)
+            val stream = src.stream(trackId, StreamRequest.Lossless)
+            assertNotNull(stream)
+            assertTrue(stream!!.url.contains("stream.qobuz.com"))
+            assertEquals("flac", stream.format.codec)
+            assertEquals(false, stream.belowRequest)
+            assertEquals("Qobuz account", stream.backend)
+        } finally {
+            AppSettings.qobuzToken.value = ""
+        }
+    }
+
+    @Test
+    fun `health names the signed-in account`() = runBlocking {
+        AppSettings.qobuzToken.value = "tok-account"
+        AppSettings.qobuzTier.value = "Studio"
+        try {
+            route("/api/qobuz/search", searchJson("x"))
+            val health = source().health()
+            assertTrue(health.isOk)
+            assertTrue(
+                (health as com.music.bitchord.data.sources.SourceHealth.Ok).detail.orEmpty(),
+                (health as com.music.bitchord.data.sources.SourceHealth.Ok).detail.orEmpty()
+                    .contains("Qobuz account (Studio)"),
+            )
+        } finally {
+            AppSettings.qobuzToken.value = ""
+            AppSettings.qobuzTier.value = ""
+        }
+    }
+
+    @Test
+    fun `unlock cookies ride the gated calls only`() = runBlocking {
+        FlacDownloaderApi.loadSp("sp-test")
+        FlacDownloaderApi.cookiesReader = { "cf_clearance=abc" }
+        try {
+            route("/prepare", """{"t":"tok123"}""")
+            route("/api/qobuz/search", searchJson("x"))
+            assertEquals("tok123", FlacDownloaderApi.prepareToken(force = true))
+            FlacDownloaderApi.searchQobuz("x", 1)
+            val prepare = seen.filter { it.requestUrl?.encodedPath == "/prepare" }
+            assertTrue(prepare.isNotEmpty())
+            assertTrue(prepare.all { it.getHeader("Cookie") == "cf_clearance=abc" })
+            val search = seen.filter { it.requestUrl?.encodedPath == "/api/qobuz/search" }
+            assertTrue(search.isNotEmpty())
+            assertTrue(search.all { it.getHeader("Cookie") == null })
+        } finally {
+            FlacDownloaderApi.loadSp(null)
+            FlacDownloaderApi.clearTokenBlock()
+            FlacDownloaderApi.cookiesReader = { "" }
         }
     }
 

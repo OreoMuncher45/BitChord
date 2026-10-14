@@ -5293,8 +5293,9 @@ private fun BitChordApp(
                         .padding(WindowInsets.safeDrawing.asPaddingValues()),
                 ) {
                     FdlUnlockSheet(
-                        onUnlocked = { sp ->
+                        onUnlocked = { sp, cookies ->
                             AppSettings.setFdlSp(sp)
+                            AppSettings.setFdlCookies(cookies)
                             FlacDownloaderApi.loadSp(sp)
                             showQueueNotice("Hi-Res unlocked")
                             showFdlUnlock = false

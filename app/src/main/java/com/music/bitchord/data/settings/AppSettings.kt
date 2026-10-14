@@ -660,6 +660,21 @@ object AppSettings {
      */
     val fdlSp = MutableStateFlow("")
 
+    /** Browser cookies captured with the session — see [setFdlCookies]. */
+    val fdlCookies = MutableStateFlow("")
+
+    /**
+     * The listener's own Qobuz account, for deterministic streaming without
+     * any converter or challenge in the middle. Email identifies the account;
+     * the token is Qobuz's `user_auth_token`, exchanged once from the
+     * password (which is never stored). Tier is the subscription label the
+     * login answered with. All empty means no account — the Hi-Res source
+     * then serves conversions and direct files only.
+     */
+    val qobuzEmail = MutableStateFlow("")
+    val qobuzToken = MutableStateFlow("")
+    val qobuzTier = MutableStateFlow("")
+
     // ── Discord Rich Presence ───────────────────────────────────────────
 
     /**
@@ -922,6 +937,10 @@ object AppSettings {
         listenBrainzEnabled.value = prefs.getBoolean(KEY_LISTENBRAINZ_ENABLED, false)
         listenBrainzToken.value = prefs.getString(KEY_LISTENBRAINZ_TOKEN, "").orEmpty()
         fdlSp.value = prefs.getString(KEY_FDL_SP, "").orEmpty()
+        fdlCookies.value = prefs.getString(KEY_FDL_COOKIES, "").orEmpty()
+        qobuzEmail.value = prefs.getString(KEY_QOBUZ_EMAIL, "").orEmpty()
+        qobuzToken.value = prefs.getString(KEY_QOBUZ_TOKEN, "").orEmpty()
+        qobuzTier.value = prefs.getString(KEY_QOBUZ_TIER, "").orEmpty()
         listenBrainzPrimaryArtistOnly.value = prefs.getBoolean(KEY_LISTENBRAINZ_PRIMARY_ARTIST_ONLY, false)
         spotifySpdcToken.value = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, "").orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
@@ -1629,6 +1648,30 @@ object AppSettings {
         prefs.edit().putString(KEY_FDL_SP, value).apply()
     }
 
+    /**
+     * Cookies captured from the unlock WebView alongside the session —
+     * the clearance that tells the edge the gated calls that follow come
+     * from the same browser context. Cleared with the session, never typed.
+     */
+    fun setFdlCookies(value: String) {
+        fdlCookies.value = value
+        prefs.edit().putString(KEY_FDL_COOKIES, value).apply()
+    }
+
+    /** Stores the exchanged token, never the password that minted it. */
+    fun setQobuzAccount(email: String, token: String, tier: String) {
+        qobuzEmail.value = email
+        qobuzToken.value = token
+        qobuzTier.value = tier
+        prefs.edit()
+            .putString(KEY_QOBUZ_EMAIL, email)
+            .putString(KEY_QOBUZ_TOKEN, token)
+            .putString(KEY_QOBUZ_TIER, tier)
+            .apply()
+    }
+
+    fun clearQobuzAccount() = setQobuzAccount("", "", "")
+
     fun setListenBrainzPrimaryArtistOnly(value: Boolean) {
         listenBrainzPrimaryArtistOnly.value = value
         prefs.edit().putBoolean(KEY_LISTENBRAINZ_PRIMARY_ARTIST_ONLY, value).apply()
@@ -2110,6 +2153,10 @@ object AppSettings {
     private const val KEY_LISTENBRAINZ_ENABLED = "listenbrainz_enabled"
     private const val KEY_LISTENBRAINZ_TOKEN = "listenbrainz_token"
     private const val KEY_FDL_SP = "fdl_sp"
+    private const val KEY_FDL_COOKIES = "fdl_cookies"
+    private const val KEY_QOBUZ_EMAIL = "qobuz_email"
+    private const val KEY_QOBUZ_TOKEN = "qobuz_token"
+    private const val KEY_QOBUZ_TIER = "qobuz_tier"
     private const val KEY_LISTENBRAINZ_PRIMARY_ARTIST_ONLY = "listenbrainz_primary_artist_only"
     private const val KEY_SPOTIFY_SPDC_TOKEN = "spotify_spdc_token"
 

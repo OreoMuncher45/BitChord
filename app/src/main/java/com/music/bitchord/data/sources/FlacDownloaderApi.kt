@@ -267,8 +267,9 @@ object FlacDownloaderApi {
                 .browserHeaders()
                 .header("Accept", "application/json, text/plain, */*")
                 .header("X-DL-Token", token)
-                .header("Referer", "${base}/")
+                .header("Referer", "${base}/en/tidal")
                 .header("Origin", base)
+                .withCookies()
                 .build()
             val (code, body) = client.newCall(request).execute().use { response ->
                 response.code to
@@ -495,6 +496,21 @@ object FlacDownloaderApi {
     internal var spReader: () -> String = { AppSettings.fdlSp.value }
     internal var spWriter: (String) -> Unit = { AppSettings.setFdlSp(it) }
 
+    /**
+     * Cookies captured from the unlock WebView, sent only on the gated calls
+     * (prepare/queue/jobs) — never on open search. The WebView is a real
+     * browser context: it passes whatever edge checks a headless client
+     * trips, and the clearance cookies it holds are what tell the edge the
+     * next call comes from that same context. They age with the session, so
+     * a dead session takes its cookies with it — see [forgetSp].
+     */
+    internal var cookiesReader: () -> String = { AppSettings.fdlCookies.value }
+
+    private fun Request.Builder.withCookies(): Request.Builder {
+        val cookies = runCatching { cookiesReader() }.getOrDefault("").trim()
+        return if (cookies.isBlank()) this else header("Cookie", cookies)
+    }
+
     private fun persistSp(sp: String) {
         spToken = sp
         runCatching { spWriter(sp) }
@@ -503,6 +519,7 @@ object FlacDownloaderApi {
     private fun forgetSp() {
         spToken = null
         runCatching { spWriter("") }
+        runCatching { AppSettings.setFdlCookies("") }
     }
 
     private suspend fun postPrepare(params: Map<String, String>): String {
@@ -512,12 +529,20 @@ object FlacDownloaderApi {
             .post(payload.toRequestBody("application/json".toMediaType()))
             .browserHeaders()
             .header("Content-Type", "application/json")
-            .header("Referer", "${base}/")
+            .header("Referer", "${base}/en/qobuz")
             .header("Origin", base)
+            .withCookies()
             .build()
         return client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
-            response.body?.string()?.takeIf { it.isNotBlank() }
+            // The body is the diagnosis: challenge_failed means the session
+            // is dead, a Cloudflare page means the network is gated. Both
+            // used to arrive as a bare "HTTP 403", which made the two
+            // indistinguishable everywhere downstream.
+            val body = runCatching { response.body?.string() }.getOrNull()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP ${response.code}: ${(body ?: "").take(160)}")
+            }
+            body?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Empty response")
         }
     }
@@ -624,8 +649,9 @@ object FlacDownloaderApi {
                 .browserHeaders()
                 .header("Accept", "application/json, text/plain, */*")
                 .header("X-DL-Token", token)
-                .header("Referer", "${base}/")
+                .header("Referer", "${base}/en/qobuz")
                 .header("Origin", base)
+                .withCookies()
                 .build()
             val (code, body) = client.newCall(request).execute().use { response ->
                 response.code to
@@ -663,7 +689,7 @@ object FlacDownloaderApi {
             coroutineContext.ensureActive()
             delay(pollDelayMs)
             val job = try {
-                val body = get("$base$jobsPath")
+                val body = get("$base$jobsPath", withCookies = true)
                 json.decodeFromString<JobResponse>(body)
             } catch (e: Exception) {
                 coroutineContext.ensureActive()
@@ -849,12 +875,13 @@ object FlacDownloaderApi {
             .header("Sec-Fetch-Mode", "cors")
             .header("Sec-Fetch-Dest", "empty")
 
-    private suspend fun get(url: String): String {
+    private suspend fun get(url: String, withCookies: Boolean = false): String {
         val request = Request.Builder()
             .url(url)
             .browserHeaders()
             .header("Referer", "${base}/")
             .header("Origin", base)
+            .let { if (withCookies) it.withCookies() else it }
             .build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
