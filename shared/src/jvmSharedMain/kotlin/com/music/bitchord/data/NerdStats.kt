@@ -304,9 +304,14 @@ object NerdStats {
         return message
     }
 
-    /** Test-only: drop all recorded refusals. Public because app-module tests need it. */
-    fun clearRefusalsForTests() {
+    /** Drop all recorded refusals — a manual retry asks everything again. */
+    fun clearRefusals() {
         refusals.clear()
+    }
+
+    /** Test-only alias. Public because app-module tests need it. */
+    fun clearRefusalsForTests() {
+        clearRefusals()
     }
 
     fun onStreamPicked(videoId: String, kbps: Int, source: String? = null) {

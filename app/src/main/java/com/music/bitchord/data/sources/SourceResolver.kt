@@ -771,7 +771,30 @@ object SourceResolver {
         requireSharedArtist: Boolean = false,
         accept: (MusicSource, SourceStream) -> Boolean = { _, _ -> true },
     ): Pair<MusicSource, SourceStream>? = coroutineScope {
-        val running: MutableList<Deferred<Pair<MusicSource, SourceStream?>>> = sources
+        // A host that just refused a stream will refuse the next one too:
+        // asking it again burns a search, an audition and minutes of the
+        // listener's track on an answer already in hand. Skipped on the
+        // patient paths only (upgrades, download lookups) — the live race
+        // fails fast on its own, and a manual retry clears refusals first
+        // (see upgradeQualityNow), so a revival is one tap away.
+        val usable = if (waitForAll) {
+            sources.filter { source ->
+                val host = streamHostOf(source)
+                val refusal = host?.let { com.music.bitchord.data.NerdStats.refusalFor(it) }
+                if (refusal == null) {
+                    true
+                } else {
+                    TrackLog.d(
+                        TAG,
+                        "${source.displayName} sits out '${target.title}': $refusal",
+                    )
+                    false
+                }
+            }
+        } else {
+            sources
+        }
+        val running: MutableList<Deferred<Pair<MusicSource, SourceStream?>>> = usable
             .map { source ->
                 async {
                     source to matchAndStream(
@@ -814,6 +837,17 @@ object SourceResolver {
             running.forEach { it.cancel() }
         }
         best
+    }
+
+    /**
+     * The stream host a refusal would be recorded under, for sources with a
+     * single one. Multi-host sources (Tidal's instance pool) never sit out:
+     * one dead volunteer says nothing about the rest.
+     */
+    private fun streamHostOf(source: MusicSource): String? = when (source) {
+        is AddonSource -> source.streamHost()
+        is HiresDirectSource -> HiResMonochromeBackend.BASE_HOST
+        else -> null
     }
 
     /**

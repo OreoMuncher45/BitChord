@@ -79,6 +79,8 @@ CHECKS = [  # list of (name, file, required patterns — ALL must match)
     ("diag/refusal memory", ROOT / "shared/src/jvmSharedMain/kotlin/com/music/bitchord/data/NerdStats.kt", ["noteRefusal", "refusalFor", "REFUSAL_TTL_MS"]),
     ("diag/refusal parse", APP / "playback/ChunkedDataSource.kt", ["refusalMessage", "ERROR_BODY"]),
     ("diag/addon health refusal", APP / "data/sources/AddonSource.kt", ["streamHost", "last stream"]),
+    ("upgrade/dead-host skip", APP / "data/sources/SourceResolver.kt", ["streamHostOf", "sits out"]),
+    ("upgrade/manual retry clears", APP / "playback/PlaybackService.kt", ["clearRefusals()"]),
     ("verify/refusal tests", TST / "ChunkedDataSourceTest.kt", ["inactive or no longer valid", "bodies that state nothing"]),
     ("automix/v2 setting", APP / "data/settings/AppSettings.kt", ["automixEngine", "setAutomixEngine"]),
     ("flow/card art outside", APP / "MainActivity.kt", ["flowArt", "thumbnailUrl = flowArt"]),

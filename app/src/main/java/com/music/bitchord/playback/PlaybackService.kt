@@ -3859,7 +3859,10 @@ class PlaybackService : MediaLibraryService() {
         // of the addon's upstreams was unavailable or reuse an earlier stream
         // URL. Running calls are retained and joined; only completed track
         // answers are discarded. The manifest is intentionally unaffected.
+        // Same for recorded refusals: a benching from minutes ago must not
+        // veto a search the listener explicitly asked for right now.
         SourceRegistry.clearCompletedAddonTrackCalls()
+        NerdStats.clearRefusals()
         QualityUpgrade.askByHand(mediaId)
         TrackLog.d("BitChord", "upgrade asked for by hand for $mediaId", about = mediaId)
         lookForBetterCopy(player)

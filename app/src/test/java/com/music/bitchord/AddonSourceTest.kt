@@ -6,6 +6,7 @@ import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.sources.SourceResolver
 import com.music.bitchord.data.sources.StreamRequest
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.playback.StreamContainer
@@ -160,6 +161,41 @@ class AddonSourceTest {
 
         assertTrue("expected Ok, got $health", health is SourceHealth.Ok)
         assertEquals("No manifest · search works", (health as SourceHealth.Ok).detail)
+    }
+
+    @Test
+    fun `a refused host sits out the patient race but not the live one`() = runBlocking {
+        route("/search", json("""{"tracks":[{"id":"t1","title":"S","artist":"A","duration":"2:00"}]}"""))
+        com.music.bitchord.data.NerdStats.noteRefusal("localhost", "Addon is inactive")
+        try {
+            val target = com.music.bitchord.data.sources.TrackMatcher.Target("S", "A", durationSec = 120)
+            val patient = SourceResolver.bestAcross(
+                listOf(source()),
+                target,
+                StreamRequest.Lossless,
+                waitForAll = true,
+            )
+            assertNull(patient)
+            val searchedPatient = synchronized(seen) {
+                seen.count { it.requestUrl?.encodedPath == "/search" }
+            }
+            assertEquals(0, searchedPatient)
+            // The live race fails fast on its own; benching it too would
+            // trade a millisecond miss for a fifteen-minute blind spot.
+            val live = SourceResolver.bestAcross(
+                listOf(source()),
+                target,
+                StreamRequest.Lossless,
+                waitForAll = false,
+            )
+            assertNull(live)
+            val searchedLive = synchronized(seen) {
+                seen.count { it.requestUrl?.encodedPath == "/search" }
+            }
+            assertTrue(searchedLive > 0)
+        } finally {
+            com.music.bitchord.data.NerdStats.clearRefusalsForTests()
+        }
     }
 
     @Test

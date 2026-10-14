@@ -83,16 +83,24 @@ class AddonSource(
         // it reads on the Sources screen instead of only in a log nobody
         // on the device ever opens.
         val refusal = com.music.bitchord.data.NerdStats.refusalFor(streamHost())?.let {
-            " · last stream: $it"
-        } ?: ""
+            "last stream: $it"
+        }?.takeIf { it.isNotBlank() }
         client.manifest().fold(
             onSuccess = { manifest ->
+                // Masked for proprietary services so a key in the hostname
+                // never leaks; named plainly for everything else. The mask
+                // answers null for ordinary addons, and stringing that null
+                // into the detail is what used to draw a bare "null" row.
+                val base = ProprietarySources.maskHealthDetail(
+                    config.baseUrl,
+                    manifest.displayName,
+                    manifest.version,
+                ) ?: listOfNotNull(
+                    manifest.displayName.takeIf { it.isNotBlank() },
+                    manifest.version.takeIf { it.isNotBlank() }?.let { "v$it" },
+                ).joinToString(" ").ifBlank { null }
                 SourceHealth.Ok(
-                    ProprietarySources.maskHealthDetail(
-                        config.baseUrl,
-                        manifest.displayName,
-                        manifest.version,
-                    ) + refusal,
+                    listOfNotNull(base, refusal).joinToString(" · ").takeIf { it.isNotBlank() },
                 )
             },
             onFailure = { failure ->
@@ -104,7 +112,9 @@ class AddonSource(
                 // kinds of working this is.
                 if (client.probeSearch().isSuccess) {
                     TrackLog.d(TAG, "${config.displayName}: no manifest, but search answers")
-                    return@fold SourceHealth.Ok("No manifest · search works$refusal")
+                    return@fold SourceHealth.Ok(
+                        listOfNotNull("No manifest · search works", refusal).joinToString(" · "),
+                    )
                 }
                 val reason = failure.message ?: "Could not reach the addon"
                 if (failure is AddonException) {
@@ -117,8 +127,12 @@ class AddonSource(
         )
     }
 
-    /** The host stream URLs from this addon resolve to, for refusal lookup. */
-    private fun streamHost(): String? =
+    /**
+     * The host stream URLs from this addon resolve to, for refusal lookup
+     * and dead-host skipping. Internal rather than private: the resolver
+     * asks it when deciding who races.
+     */
+    internal fun streamHost(): String? =
         runCatching { java.net.URI(config.baseUrl.trim()).host }.getOrNull()
 
     /**
