@@ -625,6 +625,24 @@ class FlacDownloaderTest {
     }
 
     @Test
+    fun `health repeats a recorded stream refusal`() = runBlocking {
+        route("/api/qobuz/search", searchJson("x"))
+        route("/search/tracks", """{"tracks":[]}""")
+        com.music.bitchord.data.NerdStats.noteRefusal("flacdownloader.com", "Token inválido o expirado")
+        try {
+            val health = source().health()
+            assertTrue(health.isOk)
+            assertTrue(
+                (health as com.music.bitchord.data.sources.SourceHealth.Ok).detail.orEmpty(),
+                "last stream: Token inválido o expirado" in
+                    (health as com.music.bitchord.data.sources.SourceHealth.Ok).detail.orEmpty(),
+            )
+        } finally {
+            com.music.bitchord.data.NerdStats.clearRefusalsForTests()
+        }
+    }
+
+    @Test
     fun `health names the signed-in account`() = runBlocking {
         AppSettings.qobuzToken.value = "tok-account"
         AppSettings.qobuzTier.value = "Studio"

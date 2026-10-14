@@ -163,6 +163,20 @@ class AddonSourceTest {
     }
 
     @Test
+    fun `a stream refusal the fetch path recorded shows on the health line`() = runBlocking {
+        route("/manifest.json", manifest())
+        com.music.bitchord.data.NerdStats.noteRefusal("localhost", "Addon is inactive or no longer valid")
+        try {
+            val health = source().health()
+            assertTrue("expected Ok, got $health", health is SourceHealth.Ok)
+            val detail = (health as SourceHealth.Ok).detail.orEmpty()
+            assertTrue(detail, "last stream: Addon is inactive or no longer valid" in detail)
+        } finally {
+            com.music.bitchord.data.NerdStats.clearRefusalsForTests()
+        }
+    }
+
+    @Test
     fun `a URL that answers with something other than a manifest is rejected`() = runBlocking {
         route("/manifest.json", json("""{"hello":"world"}"""))
         assertTrue(source().health() is SourceHealth.Rejected)

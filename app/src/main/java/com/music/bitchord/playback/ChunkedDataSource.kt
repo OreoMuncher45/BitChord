@@ -143,10 +143,18 @@ class ChunkedDataSource(
      * [StreamResolver] sorts out whether the URL was one of its own — see
      * [StreamResolver.onPlaybackRefused]. Anything that isn't a refusal, or
      * isn't from a client it models, costs nothing here.
+     *
+     * Separately, the refusal *body* is recorded for the Sources screen: a
+     * catalogue that answers while its files refuse is the common shape of
+     * a dead addon ("Addon is inactive"), and the code alone never says so.
      */
     private fun report(spec: DataSpec, e: Exception) {
         if (e is HttpDataSource.InvalidResponseCodeException) {
             StreamResolver.onPlaybackRefused(spec.uri.toString(), e.responseCode)
+            refusalMessage(e.responseCode, e.responseBody)?.let { message ->
+                val host = runCatching { spec.uri.host }.getOrNull()
+                com.music.bitchord.data.NerdStats.noteRefusal(host, message)
+            }
         }
     }
 
@@ -193,11 +201,25 @@ class ChunkedDataSource(
         chunkRemaining = 0L
     }
 
-    private companion object {
+    internal companion object {
         const val TAG = "BitChord"
 
         /** Enough to ride out a truncated range, not enough to hang on a dead one. */
         const val MAX_EMPTY_RANGES = 3
+
+        private val ERROR_BODY = Regex(""""error"\s*:\s*"([^"]{1,140})"""")
+
+        /**
+         * The server's stated reason from a refusal body, if it states one.
+         * Pure over code + bytes so it stays unit-testable without standing
+         * up an exception (whose DataSpec needs Android stubs).
+         */
+        fun refusalMessage(responseCode: Int, responseBody: ByteArray): String? {
+            val body = runCatching {
+                responseBody.toString(Charsets.UTF_8)
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+            return ERROR_BODY.find(body)?.groupValues?.getOrNull(1)
+        }
     }
 
     /** Wraps [upstream]'s sources so everything opened through it is ranged. */

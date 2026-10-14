@@ -93,12 +93,17 @@ class FlacDownloaderSource(
         // token exists yet conversions still fail, the last failure rides
         // along so "says unlocked, streams nothing" names its reason.
         val failureSuffix = FlacDownloaderApi.lastFailure?.let { " · last conversion: $it" } ?: ""
+        // A converted file that then refuses at playback: same story as
+        // the addon above, reported on this row rather than in a log.
+        val streamSuffix =
+            com.music.bitchord.data.NerdStats.refusalFor("flacdownloader.com")
+                ?.let { " · last stream: $it" } ?: ""
         return if (FlacDownloaderApi.prepareToken() != null) {
-            SourceHealth.Ok("flacdownloader.com · Qobuz FLAC$directSuffix$failureSuffix$accountSuffix")
+            SourceHealth.Ok("flacdownloader.com · Qobuz FLAC$directSuffix$failureSuffix$streamSuffix$accountSuffix")
         } else if (AppSettings.fdlSp.value.isBlank()) {
-            SourceHealth.Ok("tap to unlock Qobuz$directSuffix$accountSuffix")
+            SourceHealth.Ok("tap to unlock Qobuz$directSuffix$streamSuffix$accountSuffix")
         } else {
-            SourceHealth.Ok("catalogue ok · conversions blocked on this network$directSuffix$failureSuffix$accountSuffix")
+            SourceHealth.Ok("catalogue ok · conversions blocked on this network$directSuffix$failureSuffix$streamSuffix$accountSuffix")
         }
     }
 

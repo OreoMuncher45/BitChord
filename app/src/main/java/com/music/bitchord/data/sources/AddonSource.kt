@@ -76,6 +76,15 @@ class AddonSource(
         if (config.baseUrl.isBlank()) {
             return@withContext SourceHealth.Rejected("An addon URL is required")
         }
+        // A catalogue that answers while its files refuse is the common
+        // shape of a dead install: search works, every stream 403s with the
+        // reason in the body. The fetch path records those bodies (see
+        // ChunkedDataSource.report), and the row repeats the latest here so
+        // it reads on the Sources screen instead of only in a log nobody
+        // on the device ever opens.
+        val refusal = com.music.bitchord.data.NerdStats.refusalFor(streamHost())?.let {
+            " · last stream: $it"
+        } ?: ""
         client.manifest().fold(
             onSuccess = { manifest ->
                 SourceHealth.Ok(
@@ -83,7 +92,7 @@ class AddonSource(
                         config.baseUrl,
                         manifest.displayName,
                         manifest.version,
-                    ),
+                    ) + refusal,
                 )
             },
             onFailure = { failure ->
@@ -95,7 +104,7 @@ class AddonSource(
                 // kinds of working this is.
                 if (client.probeSearch().isSuccess) {
                     TrackLog.d(TAG, "${config.displayName}: no manifest, but search answers")
-                    return@fold SourceHealth.Ok("No manifest · search works")
+                    return@fold SourceHealth.Ok("No manifest · search works$refusal")
                 }
                 val reason = failure.message ?: "Could not reach the addon"
                 if (failure is AddonException) {
@@ -107,6 +116,10 @@ class AddonSource(
             },
         )
     }
+
+    /** The host stream URLs from this addon resolve to, for refusal lookup. */
+    private fun streamHost(): String? =
+        runCatching { java.net.URI(config.baseUrl.trim()).host }.getOrNull()
 
     /**
      * What the addon calls itself, or null if it has not said yet.

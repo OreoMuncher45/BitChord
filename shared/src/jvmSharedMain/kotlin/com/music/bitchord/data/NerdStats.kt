@@ -274,6 +274,41 @@ object NerdStats {
     /** Backend inside a multi-backend source that served the stream, same keys. */
     private val backends = ConcurrentHashMap<String, String>()
 
+    /**
+     * The last refusal each stream host served, keyed by host. A 403 on a
+     * stream URL is where upgrades actually die — the catalogue answered,
+     * the match was made, and then the bytes were refused — and the status
+     * code alone never says why. The body usually does ("Addon is inactive",
+     * "Token inválido"), so it is kept here, briefly, for the Sources
+     * screen to report instead of failing silently into a revert.
+     */
+    private val refusals = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    /** How long a recorded refusal stays reportable. */
+    const val REFUSAL_TTL_MS = 15 * 60 * 1000L
+
+    fun noteRefusal(host: String?, message: String?) {
+        if (host.isNullOrBlank() || message.isNullOrBlank()) return
+        if (refusals.size >= MAX_REMEMBERED) refusals.clear()
+        refusals[host.lowercase()] = message.take(160) to System.currentTimeMillis()
+    }
+
+    /** The recorded refusal for [host], or null when none is fresh. */
+    fun refusalFor(host: String?): String? {
+        if (host.isNullOrBlank()) return null
+        val (message, at) = refusals[host.lowercase()] ?: return null
+        if (System.currentTimeMillis() - at > REFUSAL_TTL_MS) {
+            refusals.remove(host.lowercase())
+            return null
+        }
+        return message
+    }
+
+    /** Test-only: drop all recorded refusals. Public because app-module tests need it. */
+    fun clearRefusalsForTests() {
+        refusals.clear()
+    }
+
     fun onStreamPicked(videoId: String, kbps: Int, source: String? = null) {
         if (kbps > 0) {
             // Enough for the queue in hand; this is a lookup, not a store.
