@@ -1173,6 +1173,10 @@
     <string name="tidal_community_warning">Community instances · may break · Hi-Res FLAC when live</string>
     <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. BitChord tries it first, then healthy community instances.</string>
     <string name="tidal_auto_update">Auto-update instance list</string>
+    <string name="qobuz_unlock_title">Unlock Qobuz conversions</string>
+    <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
+    <string name="qobuz_unlock_checking">Running the browser check…</string>
+    <string name="qobuz_unlock_retry">Try again</string>
     <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 
     <!-- Octave (account key, free lossless) -->

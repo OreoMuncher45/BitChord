@@ -143,6 +143,11 @@ fun SourcesScreen(
     onEditSmb: () -> Unit,
     /** Opens the full-window warning before JioSaavn is opted into. */
     onConfirmJioSaavn: () -> Unit,
+    /**
+     * Opens the Qobuz unlock sheet for a config — raised like [onEditSource]
+     * because the sheet hosts a WebView the frosted subtree cannot draw.
+     */
+    onUnlockQobuz: (SourceConfig) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -168,10 +173,14 @@ fun SourcesScreen(
     // was any good, and the only place a manifest that fails validation gets to
     // say why. Except an addon waiting on a lossless output: it is not to be
     // contacted at all until one is connected, and connecting one re-runs this.
-    val probeKey = configs.filter { it.kind.needsServer }
-        .joinToString { "${it.id}@${it.baseUrl}@${it.checkValidLossless}" } + "@${losslessOutput.capable}"
+    val probeKey = configs.filter { it.kind.needsServer || it.kind == SourceKind.QOBUZ }
+        .joinToString { "${it.id}@${it.baseUrl}@${it.checkValidLossless}@${it.settings.hashCode()}" } +
+        "@${losslessOutput.capable}"
     LaunchedEffect(probeKey) {
-        configs.filter { it.kind.needsServer && it.isComplete && !it.awaitsLosslessOutput }.forEach { config ->
+        configs.filter {
+            (it.kind.needsServer || it.kind == SourceKind.QOBUZ) &&
+                it.isComplete && !it.awaitsLosslessOutput
+        }.forEach { config ->
             val source = SourceRegistry.instance(config.id) ?: return@forEach
             health[config.id] = withContext(Dispatchers.IO) {
                 runCatching { source.health() }
@@ -272,10 +281,11 @@ fun SourcesScreen(
                         // change, so a tap on them would open an empty editor.
                         // The lossless source is sealed: branded row, toggle
                         // only, no editor and no address anywhere.
-                        onClick = if (config.kind.needsServer && config.kind != SourceKind.TIDAL) {
-                            ({ onEditSource(config) })
-                        } else {
-                            null
+                        onClick = when {
+                            config.kind == SourceKind.QOBUZ -> ({ onUnlockQobuz(config) })
+                            config.kind.needsServer && config.kind != SourceKind.TIDAL ->
+                                ({ onEditSource(config) })
+                            else -> null
                         },
                         // YouTube gets no switch at all — see
                         // [SourceRegistry.setEnabled] for why one would be a lie.
@@ -865,6 +875,7 @@ private fun SourceRow(
                 SourceKind.MODULE -> Icons.Rounded.Extension
                 SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq // or some other icon
                 SourceKind.TIDAL -> Icons.Rounded.MusicNote
+                SourceKind.QOBUZ -> Icons.Rounded.Album
                 SourceKind.HIRES -> Icons.Rounded.MusicNote
                 SourceKind.OCTAVE -> Icons.Rounded.Album
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle

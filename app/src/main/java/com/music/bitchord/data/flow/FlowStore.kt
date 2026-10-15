@@ -64,6 +64,13 @@ object FlowStore {
     /** A snapshot older than this rebuilds instead of restoring. */
     const val FLOW_TTL_MS = 24L * 60 * 60 * 1000
 
+    /** A mix older than this rebuilds itself in the background, hourly. */
+    const val FLOW_AUTO_REFRESH_MS = 60L * 60 * 1000
+
+    /** Age of the stored mix, or null when there is none. */
+    fun snapshotAgeMs(): Long? =
+        readSnapshot()?.let { (_, builtAt) -> System.currentTimeMillis() - builtAt }
+
     fun saveSnapshot(songs: List<Song>) {
         if (!this::prefs.isInitialized || songs.isEmpty()) return
         prefs.edit()

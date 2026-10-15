@@ -566,6 +566,7 @@ private fun BitChordApp(
     // background at all. Hosting it here also puts the scrim over the tab bar
     // and the mini player, like every other alert in the app.
     var editingSource by remember { mutableStateOf<SourceConfig?>(null) }
+    var unlockQobuz by remember { mutableStateOf<SourceConfig?>(null) }
     var confirmJioSaavn by remember { mutableStateOf(false) }
     var editingPartyServer by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
@@ -2937,6 +2938,7 @@ private fun BitChordApp(
                             onEditWebDav = { showWebDavEditor = true },
                             onEditSmb = { showSmbEditor = true },
                             onConfirmJioSaavn = { confirmJioSaavn = true },
+                            onUnlockQobuz = { unlockQobuz = it },
                         )
                     } else if (key == "listen_together") {
                         ListenTogetherScreen(
@@ -3200,12 +3202,12 @@ private fun BitChordApp(
                                 val browseId = item.browseId
                                 when {
                                     browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
-                                        // Flow tap: open the session mix and play it —
-                                        // resuming, never rebuilding. BACK + tap
-                                        // returns to this same mix; New mix
-                                        // (on the Flow page) is the only reset.
+                                        // Flow tap only opens the page — never
+                                        // rebuilds, never plays. BACK + tap
+                                        // returns to this same mix; Play and
+                                        // Shuffle inside it are what start
+                                        // playback, New mix is the only reset.
                                         showFlow = true
-                                        startFlow(false)
                                     }
                                     song != null -> playRadio(
                                         song,
@@ -3516,6 +3518,7 @@ private fun BitChordApp(
                                 onEditWebDav = { showWebDavEditor = true },
                                 onEditSmb = { showSmbEditor = true },
                                 onConfirmJioSaavn = { confirmJioSaavn = true },
+                                onUnlockQobuz = { unlockQobuz = it },
                             )
                         }
                     }
@@ -4603,6 +4606,25 @@ private fun BitChordApp(
         // — the ⋮, the player — starts from the sheet.
         LaunchedEffect(songActions == null) {
             if (songActions == null) songMenuOrigin = null
+        }
+        // Qobuz unlock: the browser check that mints the conversion
+        // session. The sp/token land in the config's settings, which
+        // re-probes the row above on the way past.
+        unlockQobuz?.let { unlockConfig ->
+            BackHandler { unlockQobuz = null }
+            com.music.bitchord.ui.components.QobuzUnlockSheet(
+                config = unlockConfig,
+                onUnlocked = { sp, token ->
+                    val next = unlockConfig.settings.toMutableMap()
+                    next[com.music.bitchord.data.sources.QobuzQueueSource.SP_KEY] = sp
+                    next[com.music.bitchord.data.sources.QobuzQueueSource.TOKEN_KEY] = token
+                    com.music.bitchord.data.sources.SourceRegistry.update(
+                        unlockConfig.copy(settings = next),
+                    )
+                    unlockQobuz = null
+                },
+                onDismiss = { unlockQobuz = null },
+            )
         }
         // Flow save asks for a name instead of stamping "Flow — Flow".
         if (showFlowSave) {

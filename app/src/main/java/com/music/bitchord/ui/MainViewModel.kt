@@ -3275,11 +3275,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // Yesterday's mix, restored: Flow opens resumed, never re-rolled, until
     // the snapshot is a day old — at which point the next use rebuilds.
+    // One mix stays for the day and refreshes itself every hour (see
+    // [maybeAutoRefreshFlow]); a restart resumes it, never deletes it.
     init {
         FlowStore.readSnapshot()?.let { (songs, builtAt) ->
             if (System.currentTimeMillis() - builtAt < FlowStore.FLOW_TTL_MS) {
                 _flowQueue.value = UiState.Success(songs)
             }
+        }
+        maybeAutoRefreshFlow()
+        viewModelScope.launch {
+            while (true) {
+                delay(FlowStore.FLOW_AUTO_REFRESH_MS)
+                maybeAutoRefreshFlow()
+            }
+        }
+    }
+
+    private var flowAutoRefreshing = false
+
+    /**
+     * Rebuilds the mix when it is older than an hour, silently: no Loading
+     * flash, no frozen-saved-list touched, failure keeps the current mix and
+     * retries next hour. The player holds its own queue, so swapping this
+     * list never interrupts what is playing.
+     */
+    private fun maybeAutoRefreshFlow() {
+        if (flowAutoRefreshing || _flowSaved.value) return
+        if ((_flowQueue.value as? UiState.Success)?.data.isNullOrEmpty()) return
+        if ((FlowStore.snapshotAgeMs() ?: return) < FlowStore.FLOW_AUTO_REFRESH_MS) return
+        flowAutoRefreshing = true
+        viewModelScope.launch {
+            runCatching { buildFlowQueue() }.fold(
+                onSuccess = {
+                    _flowQueue.value = UiState.Success(it)
+                    FlowStore.saveSnapshot(it)
+                },
+                onFailure = { /* keep current mix; next hour retries */ },
+            )
+            flowAutoRefreshing = false
         }
     }
 
