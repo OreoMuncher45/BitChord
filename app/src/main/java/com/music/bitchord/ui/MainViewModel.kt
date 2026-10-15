@@ -3277,23 +3277,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // the snapshot is a day old — at which point the next use rebuilds.
     // One mix stays for the day and refreshes itself every hour (see
     // [maybeAutoRefreshFlow]); a restart resumes it, never deletes it.
-    init {
-        FlowStore.readSnapshot()?.let { (songs, builtAt) ->
-            if (System.currentTimeMillis() - builtAt < FlowStore.FLOW_TTL_MS) {
-                _flowQueue.value = UiState.Success(songs)
-            }
-        }
-        maybeAutoRefreshFlow()
-        viewModelScope.launch {
-            while (true) {
-                delay(FlowStore.FLOW_AUTO_REFRESH_MS)
-                maybeAutoRefreshFlow()
-            }
-        }
-    }
-
-    private var flowAutoRefreshing = false
-
     /**
      * Rebuilds the mix when it is older than an hour, silently: no Loading
      * flash, no frozen-saved-list touched, failure keeps the current mix and
@@ -3394,6 +3377,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _flowSaveNotice = MutableStateFlow<String?>(null)
     val flowSaveNotice: StateFlow<String?> = _flowSaveNotice.asStateFlow()
     fun consumeFlowSaveNotice() { _flowSaveNotice.value = null }
+
+    private var flowAutoRefreshing = false
+
+    // Yesterday's mix, restored: Flow opens resumed, never re-rolled, until
+    // the snapshot is a day old — at which point the next use rebuilds.
+    // One mix stays for the day and refreshes itself every hour (see
+    // [maybeAutoRefreshFlow]); a restart resumes it, never deletes it.
+    //
+    // Placed after every Flow val on purpose: init blocks run in textual
+    // order, and this one reads _flowQueue/_flowSaved, which must exist.
+    init {
+        FlowStore.readSnapshot()?.let { (songs, builtAt) ->
+            if (System.currentTimeMillis() - builtAt < FlowStore.FLOW_TTL_MS) {
+                _flowQueue.value = UiState.Success(songs)
+            }
+        }
+        maybeAutoRefreshFlow()
+        viewModelScope.launch {
+            while (true) {
+                delay(FlowStore.FLOW_AUTO_REFRESH_MS)
+                maybeAutoRefreshFlow()
+            }
+        }
+    }
 
     /**
      * The session's mix, building it only once. The screen and the player
