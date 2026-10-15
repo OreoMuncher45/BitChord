@@ -138,6 +138,62 @@ enum class SourceKind(
     ),
 
     /**
+     * Tidal Hi-Fi through a hifi-api-compatible instance: genuine lossless
+     * FLAC (up to 24-bit/192kHz) streamed straight from Tidal's CDN, no
+     * account or keys on this device — the instance holds its own tokens.
+     *
+     * On by default with community instances and silent failover between
+     * them; a custom instance URL can replace the primary. Instances are
+     * volunteers' servers and die regularly (Tidal bans aggressively), so
+     * the address is infrastructure that rots rather than a promise — see
+     * [TidalInstances][com.music.bitchord.data.tidal.TidalInstances].
+     */
+    TIDAL(
+        label = "Tidal Hi-Fi",
+        detail = "Genuine lossless FLAC via community instances with automatic failover. Instances break often; disable anytime.",
+        labels = listOf("FLAC", "Lossless", "Hi-Res"),
+        needsServer = true,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 1,
+    ),
+
+    /**
+     * Octave (octavestreaming.com): free lossless streaming with an account
+     * key. No manifest, no self-hosting — the key rides as a Bearer token to
+     * mint short-lived playback tokens, and audio streams straight from
+     * Octave's CDN. Seeded off: without a key it answers nothing, so there
+     * is nothing to default on.
+     */
+    OCTAVE(
+        label = "Octave",
+        detail = "Free lossless FLAC with your Octave account key. Paste the key, Test, save.",
+        labels = listOf("FLAC", "Lossless", "Key"),
+        needsServer = true,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 0,
+    ),
+
+    /**
+     * Community Hi-Res FLAC through a downloader backend: Qobuz catalogue
+     * search with Deezer ISRC precision matching, conversions up to
+     * 24-bit/192kHz. No account, no key, no URL — the backend holds whatever
+     * it holds. Conversion is a queued job rather than an instant URL, so it
+     * resolves slowly and loses races it cannot win in time; that is a miss,
+     * not a fault. On by default; the toggle is the off switch.
+     */
+    HIRES(
+        label = "Hi-Res Lossless",
+        detail = "Direct FLAC files, verified and measured — no converter, no account, no waiting. Only tracks the catalogue holds; disable anytime.",
+        labels = listOf("FLAC", "Lossless", "Hi-Res"),
+        needsServer = false,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 1,
+    ),
+
+    /**
      * The source the app was built on, listed here so it always has a fixed
      * place: second, behind the module source. It cannot be removed — see
      * [SourceRegistry]. Nothing else in the app can supply a home feed, a

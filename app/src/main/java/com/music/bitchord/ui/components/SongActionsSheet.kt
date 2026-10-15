@@ -39,8 +39,12 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.PlaylistRemove
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbDown
@@ -80,7 +84,9 @@ import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.webdav.WebDavUploads
+import kotlin.math.roundToInt
 import com.music.bitchord.download.DownloadState
 import com.music.bitchord.download.Downloads
 import com.music.bitchord.playback.SleepTimer
@@ -172,12 +178,30 @@ fun SongActionsSheet(
     isAudioVersion: Boolean = false,
     onShare: (() -> Unit)? = null,
     /**
+     * Saves this track's cover at full quality to the gallery. Offered
+     * wherever there is art to save — rows and player alike — unlike the
+     * account rows above it.
+     */
+    onSaveArtwork: (() -> Unit)? = null,
+    /**
      * Copies what the app logged while starting this track. Null everywhere
      * except the player, where "this track" means something.
      */
     onCopyLog: (() -> Unit)? = null,
     /** Opens the timing control offered only by the main player's menu. */
     onLyricsOffset: (() -> Unit)? = null,
+    /**
+     * Opens the Sing vocal-level sheet. Player-only: it acts on the track
+     * coming out of the speakers right now, not on the song as a library
+     * entry.
+     */
+    onOpenSing: (() -> Unit)? = null,
+    /** Opens Replay. Player-only, for the same reason as the copy-log row. */
+    onOpenReplay: (() -> Unit)? = null,
+    /** Current spatial-audio state, or null to hide the toggle row. */
+    spatialAudioOn: Boolean? = null,
+    /** Flips spatial audio. Player-only. */
+    onToggleSpatialAudio: (() -> Unit)? = null,
     /**
      * True while a lookup for this track's album/artist ids is still in
      * flight, so it isn't yet known whether "Open album" and "Open artist"
@@ -354,9 +378,47 @@ fun SongActionsSheet(
                 onClick = it,
             )
         }
+        // Sing, Replay and Spatial sit together: all three are about the
+        // listening session in progress rather than the song as a library
+        // entry, and all three are player-only for that reason.
+        onOpenSing?.let {
+            ActionRow(
+                icon = Icons.Rounded.Mic,
+                label = stringResource(R.string.sing),
+                value = singStatus(),
+                accent = palette.accent,
+                onClick = it,
+            )
+        }
+        onOpenReplay?.let {
+            ActionRow(
+                icon = Icons.Rounded.History,
+                label = stringResource(R.string.your_replay),
+                accent = palette.accent,
+                onClick = it,
+            )
+        }
+        if (spatialAudioOn != null && onToggleSpatialAudio != null) {
+            val on = spatialAudioOn
+            ActionRow(
+                icon = Icons.Rounded.SurroundSound,
+                label = stringResource(R.string.spatial_audio),
+                value = stringResource(if (on) R.string.on else R.string.off),
+                accent = palette.accent,
+                onClick = onToggleSpatialAudio,
+            )
+        }
         if (!isOffline) {
             onShare?.let {
                 ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
+            }
+        }
+        // Beside share: the row's own art is a thumbnail, so this fetches
+        // the largest rendition first — see ArtworkDownload. Hidden only
+        // when there is no art to save.
+        if (song.thumbnailUrl != null) {
+            onSaveArtwork?.let {
+                ActionRow(Icons.Rounded.Image, stringResource(R.string.save_cover_art), accent = palette.accent, onClick = it)
             }
         }
         // Last, and only from the player: it is about the track playing right
@@ -746,6 +808,14 @@ private fun SleepOption(
             )
         }
     }
+}
+
+/** What the Sing row shows on the right, or null while Sing is off. */
+@Composable
+private fun singStatus(): String? {
+    val level by AppSettings.singLevel.collectAsStateWithLifecycle()
+    if (level <= 0.001f) return null
+    return stringResource(R.string.sing_level_percent, (level * 100).roundToInt())
 }
 
 /** What the sleep timer row shows on the right, or null when none is armed. */

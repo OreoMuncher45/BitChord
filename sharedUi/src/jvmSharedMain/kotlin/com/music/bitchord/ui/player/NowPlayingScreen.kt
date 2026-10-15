@@ -726,6 +726,14 @@ fun NowPlayingScreen(
     lyricsUnavailable: Boolean,
     lyricsOffsetOpen: Boolean,
     onDismissLyricsOffset: () -> Unit,
+    /** Opens the Sing vocal-level sheet. A no-op on hosts without one. */
+    onOpenSing: () -> Unit = {},
+    /** Whether the vocal cut is currently engaged, for the lyrics mic disc. */
+    singActive: Boolean = false,
+    /** Current spatial-audio state, for the output sheet's toggle row. */
+    spatialAudioOn: Boolean = false,
+    /** Flips spatial audio. A no-op on hosts without one. */
+    onToggleSpatial: () -> Unit = {},
     /** The width of the window the player is in — see [fullBleedArtworkAvailable]. */
     windowWidth: Dp,
     /**
@@ -1515,6 +1523,8 @@ fun NowPlayingScreen(
                 onDismiss = { showAudioOutput = false },
                 onOpenPipeline = { showAudioPipeline = true },
                 onOpenCast = { showCast = true },
+                spatialOn = spatialAudioOn,
+                onToggleSpatial = onToggleSpatial,
             )
         }
         if (showLyricsProviders) {
@@ -3358,6 +3368,22 @@ fun NowPlayingScreen(
                                 // opacity is on its way to gone, not a target.
                                 enabled = translateShown && !lyrics.isNullOrEmpty(),
                                 onClick = lyricsTranslation.toggleTranslation,
+                            )
+                        }
+                        // Sing's way in, centered between the two language
+                        // discs the way Apple's mic sits in its lyrics view.
+                        // Hidden while picking: the pick bar owns the bottom
+                        // center then, and a mic under it would be a second
+                        // target in the same place.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .graphicsLayer { alpha = translateFade },
+                        ) {
+                            SingMicButton(
+                                singActive = singActive,
+                                enabled = translateShown && !lyrics.isNullOrEmpty(),
+                                onClick = onOpenSing,
                             )
                         }
                     }

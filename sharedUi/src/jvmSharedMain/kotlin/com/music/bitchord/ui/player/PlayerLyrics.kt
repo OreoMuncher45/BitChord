@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -1340,6 +1341,48 @@ internal fun RomanizationToggleButton(
                 modifier = Modifier.size(19.dp),
             )
         }
+    }
+}
+
+/**
+ * Apple Music Sing's way in: a mic disc beside the translation discs, lit
+ * while the vocal cut is engaged. Same 34dp frosted-disc language as its
+ * neighbours, so it reads as one control group rather than a sticker.
+ */
+@Composable
+internal fun SingMicButton(
+    singActive: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val tint = when {
+        !enabled -> Color.White.copy(alpha = 0.42f)
+        singActive -> Color.White
+        else -> Color.White.copy(alpha = 0.78f)
+    }
+    val discAlpha by animateFloatAsState(
+        targetValue = if (singActive) 0.34f else 0.18f,
+        label = "singDisc",
+    )
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = discAlpha))
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Mic,
+            contentDescription = stringResource(Res.string.sing_lyrics_button),
+            tint = tint,
+            modifier = Modifier.size(19.dp),
+        )
     }
 }
 

@@ -52,6 +52,14 @@ data class SourceStream(
      * reproduces the stream already playing.
      */
     val sourceConfigId: String? = null,
+    /**
+     * Which backend inside a multi-backend source served this, in plain
+     * words ("Qobuz conversion", "Direct FLAC"). Set by the source itself —
+     * it is the only one that knows. Surfaces in the player so a track's
+     * provenance is answerable on screen, and in diagnostics so a failing
+     * backend can be told apart from a failing source.
+     */
+    val backend: String? = null,
 )
 
 /**

@@ -167,10 +167,10 @@ class DiscordRPC(
          */
         private const val APPLICATION_ID = "1411019391843172514"
 
-        const val PROJECT_URL = "https://github.com/kushagrasinghx/BitChord"
+        const val PROJECT_URL = "https://github.com/OreoMuncher45/BitChord"
 
         const val DEFAULT_BUTTON_1 = "Listen on YouTube Music"
-        const val DEFAULT_BUTTON_2 = "Visit BitChord"
+        const val DEFAULT_BUTTON_2 = "Visit BitChord Next"
 
         /** Discord draws the sleeve at roughly 96dp; 480px covers it on any density. */
         private const val ART_PX = 480
@@ -183,7 +183,7 @@ class DiscordRPC(
          * APK — a `res/` drawable has no address the presence can carry.
          */
         private const val FALLBACK_ART_URL =
-            "https://raw.githubusercontent.com/kushagrasinghx/BitChord/main/app/src/main/ic_launcher-playstore.png"
+            "https://raw.githubusercontent.com/OreoMuncher45/BitChord/main/app/src/main/ic_launcher-playstore.png"
 
         fun watchUrl(song: Song): String =
             "https://music.youtube.com/watch?v=${song.videoId}"

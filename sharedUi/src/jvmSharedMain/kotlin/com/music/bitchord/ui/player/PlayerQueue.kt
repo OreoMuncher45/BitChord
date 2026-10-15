@@ -753,6 +753,7 @@ private fun InlineQueueRow(
                 song = song,
                 style = MaterialTheme.typography.titleMedium,
                 color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.92f),
+                qualityBadge = true,
             )
             Text(
                 text = song.artist,

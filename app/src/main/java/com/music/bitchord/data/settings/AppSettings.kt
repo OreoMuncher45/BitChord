@@ -100,6 +100,16 @@ enum class ThemeMode(val label: String) {
 }
 
 /**
+ * Which interface shell the app wears. BitChord is the full modern UI;
+ * Classipod is the iPod Classic re-creation (click wheel + LCD) running on
+ * the same playback, library, Flow and sources underneath. Switchable both
+ * ways, from either shell's settings.
+ */
+enum class AppUi(val label: String) {
+    BITCHORD("BitChord"), CLASSIPOD("Classipod")
+}
+
+/**
  * Which of the equaliser's two tabs is driving the sound.
  *
  * One at a time rather than both at once: they are two ways of describing the
@@ -235,6 +245,9 @@ object AppSettings {
 
     /** The CPU budget used by Beat This! and vocal analysis for Automix. */
     val automixPerformanceMode = MutableStateFlow(AutomixPerformanceMode.BALANCED)
+
+    /** Which transition planner Automix runs. V2 is the default; Legacy is the way back. */
+    val automixEngine = MutableStateFlow(AutomixEngine.V2)
     val skipSilence = MutableStateFlow(false)
 
     /** Requested PCM representation at the Android AudioTrack boundary. */
@@ -301,6 +314,16 @@ object AppSettings {
     val spatialAudio = MutableStateFlow(false)
 
     /**
+     * Apple Music Sing equivalent: how much of the center-mixed lead vocal to
+     * remove, 0..1. 0 is off (bit-exact passthrough); 1 is a full center-cut
+     * karaoke mix. Applied inside ExoPlayer's pipeline by
+     * [com.music.bitchord.playback.VocalCutProcessor], first in the chain so
+     * the widening, EQ and levelling stages shape what's left rather than
+     * fighting the removal.
+     */
+    val singLevel = MutableStateFlow(0f)
+
+    /**
      * The app's own equaliser, master switch.
      *
      * Separate from the system equaliser row beside it, which is still there and
@@ -340,6 +363,9 @@ object AppSettings {
 
     val playbackSpeed = MutableStateFlow(1.0f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
+
+    /** Which shell the app wears — see [AppUi]. Defaults to the modern UI. */
+    val appUi = MutableStateFlow(AppUi.BITCHORD)
 
     /** Keep playing similar music once the queue runs out. */
     val autoplay = MutableStateFlow(true)
@@ -790,6 +816,11 @@ object AppSettings {
                 prefs.getString(KEY_AUTOMIX_PERFORMANCE_MODE, null) ?: AutomixPerformanceMode.BALANCED.name,
             )
         }.getOrDefault(AutomixPerformanceMode.BALANCED)
+        automixEngine.value = runCatching {
+            AutomixEngine.valueOf(
+                prefs.getString(KEY_AUTOMIX_ENGINE, null) ?: AutomixEngine.V2.name,
+            )
+        }.getOrDefault(AutomixEngine.V2)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
         outputPcmMode.value = runCatching {
             OutputPcmMode.valueOf(
@@ -802,6 +833,7 @@ object AppSettings {
         loudnessOffOnSpeaker.value = prefs.getBoolean(KEY_LOUDNESS_OFF_ON_SPEAKER, true)
         dolbyAtmos.value = prefs.getBoolean(KEY_DOLBY_ATMOS, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
+        singLevel.value = prefs.getFloat(KEY_SING_LEVEL, 0f).coerceIn(0f, 1f)
         equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
         equalizerMode.value = runCatching {
             EqualizerMode.valueOf(prefs.getString(KEY_EQ_MODE, null) ?: EqualizerMode.DYNAMIC.name)
@@ -816,6 +848,13 @@ object AppSettings {
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
+        appUi.value = runCatching {
+            AppUi.valueOf(prefs.getString(KEY_APP_UI, null) ?: "BITCHORD")
+        }.getOrDefault(AppUi.BITCHORD)
+        classipodColorway.value = prefs.getString(KEY_CLASSIPOD_COLORWAY, "Silver").orEmpty()
+            .ifBlank { "Silver" }
+        classipodClicks.value = prefs.getBoolean(KEY_CLASSIPOD_CLICKS, true)
+        classipodWheelSteps.value = prefs.getInt(KEY_CLASSIPOD_WHEEL_STEPS, 36).coerceIn(12, 72)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
         shuffleEnabled.value = prefs.getBoolean(KEY_SHUFFLE_ENABLED, false)
         repeatMode.value = prefs.getInt(KEY_REPEAT_MODE, Player.REPEAT_MODE_OFF)
@@ -1083,6 +1122,11 @@ object AppSettings {
         prefs.edit().putString(KEY_AUTOMIX_PERFORMANCE_MODE, value.name).apply()
     }
 
+    fun setAutomixEngine(value: AutomixEngine) {
+        automixEngine.value = value
+        prefs.edit().putString(KEY_AUTOMIX_ENGINE, value.name).apply()
+    }
+
     fun setSkipSilence(value: Boolean) {
         skipSilence.value = value
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, value).apply()
@@ -1096,6 +1140,12 @@ object AppSettings {
     fun setSpatialAudio(value: Boolean) {
         spatialAudio.value = value
         prefs.edit().putBoolean(KEY_SPATIAL_AUDIO, value).apply()
+    }
+
+    fun setSingLevel(value: Float) {
+        val coerced = value.coerceIn(0f, 1f)
+        singLevel.value = coerced
+        prefs.edit().putFloat(KEY_SING_LEVEL, coerced).apply()
     }
 
     fun setEqualizerEnabled(value: Boolean) {
@@ -1175,6 +1225,37 @@ object AppSettings {
     fun setThemeMode(value: ThemeMode) {
         themeMode.value = value
         prefs.edit().putString(KEY_THEME, value.name).apply()
+    }
+
+    fun setAppUi(value: AppUi) {
+        appUi.value = value
+        prefs.edit().putString(KEY_APP_UI, value.name).apply()
+    }
+
+    // ── Classipod ─────────────────────────────────────────────────────────
+
+    /** iPod faceplate colorway, one of ClassipodTheme.COLORWAYS keys. */
+    val classipodColorway = MutableStateFlow("Silver")
+
+    /** Click sounds on wheel actions. */
+    val classipodClicks = MutableStateFlow(true)
+
+    /** Rotary steps per full wheel turn: Calm 24, Normal 36, Twitchy 48. */
+    val classipodWheelSteps = MutableStateFlow(36)
+
+    fun setClassipodColorway(value: String) {
+        classipodColorway.value = value
+        prefs.edit().putString(KEY_CLASSIPOD_COLORWAY, value).apply()
+    }
+
+    fun setClassipodClicks(value: Boolean) {
+        classipodClicks.value = value
+        prefs.edit().putBoolean(KEY_CLASSIPOD_CLICKS, value).apply()
+    }
+
+    fun setClassipodWheelSteps(value: Int) {
+        classipodWheelSteps.value = value.coerceIn(12, 72)
+        prefs.edit().putInt(KEY_CLASSIPOD_WHEEL_STEPS, classipodWheelSteps.value).apply()
     }
 
     fun setReduceAnimation(value: Boolean) {
@@ -1927,6 +2008,7 @@ object AppSettings {
     private const val KEY_CROSSFADE = "crossfade_seconds"
     private const val KEY_SMART_FADE = "smart_fade_enabled"
     private const val KEY_AUTOMIX_PERFORMANCE_MODE = "automix_performance_mode"
+    private const val KEY_AUTOMIX_ENGINE = "automix_engine"
     private const val KEY_SKIP_SILENCE = "skip_silence"
     private const val KEY_OUTPUT_PCM_MODE = "output_pcm_mode"
     private const val KEY_PREFER_USB_DAC = "prefer_usb_dac"
@@ -1934,6 +2016,7 @@ object AppSettings {
     private const val KEY_LOUDNESS_OFF_ON_SPEAKER = "loudness_off_on_speaker"
     private const val KEY_DOLBY_ATMOS = "dolby_atmos"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
+    private const val KEY_SING_LEVEL = "sing_level"
     private const val KEY_EQ_ENABLED = "equalizer_enabled"
     private const val KEY_EQ_MODE = "equalizer_mode"
     private const val KEY_EQ_TONE_X = "equalizer_tone_x"
@@ -1943,6 +2026,10 @@ object AppSettings {
     private const val KEY_EQ_BANDS = "equalizer_bands"
     private const val KEY_SPEED = "playback_speed"
     private const val KEY_THEME = "theme_mode"
+    private const val KEY_APP_UI = "app_ui"
+    private const val KEY_CLASSIPOD_COLORWAY = "classipod_colorway"
+    private const val KEY_CLASSIPOD_CLICKS = "classipod_clicks"
+    private const val KEY_CLASSIPOD_WHEEL_STEPS = "classipod_wheel_steps"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"
     private const val KEY_REPEAT_MODE = "repeat_mode"

@@ -200,4 +200,8 @@
     <string name="search_library_empty">Cari lagu di folder Musik Lokal Anda.</string>
     <string name="search_library_hint">Lagu, Artis, dan Album</string>
     <string name="search_library_no_results">Tidak ada di Musik Lokal yang cocok dengan “%1$s”.</string>
+    <string name="sing_lyrics_button">Sing along, with vocals lowered</string>
+    <string name="spatial_audio_title">Spatial audio</string>
+    <string name="spatial_audio_on_subtitle">Stereo widening is on</string>
+    <string name="spatial_audio_off_subtitle">Widen stereo tracks for a more immersive feel</string>
 </resources>

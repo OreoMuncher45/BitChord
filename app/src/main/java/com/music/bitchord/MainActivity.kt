@@ -45,6 +45,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -146,6 +148,7 @@ import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.components.SingSheet
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
@@ -266,6 +269,8 @@ import com.music.bitchord.ui.player.NowPlayingScreen
 import com.music.bitchord.ui.player.PlayerSheetMotion
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
@@ -595,6 +600,7 @@ private fun BitChordApp(
     var discordDialog by remember { mutableStateOf<DiscordDialog?>(null) }
     var songActions by remember { mutableStateOf<Song?>(null) }
     var showLyricsOffset by remember { mutableStateOf(false) }
+    var showSing by remember { mutableStateOf(false) }
     /**
      * Whether the track menu that is up was opened from the player.
      *
@@ -681,6 +687,22 @@ private fun BitChordApp(
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
+    // Flow: unlock gate + temp playlist + tuner.
+    var showFlow by remember { mutableStateOf(false) }
+    val flowStatus by viewModel.flowStatus.collectAsStateWithLifecycle()
+    val flowQueueState by viewModel.flowQueue.collectAsStateWithLifecycle()
+    val flowLoading by viewModel.flowLoading.collectAsStateWithLifecycle()
+    val flowSaved by viewModel.flowSaved.collectAsStateWithLifecycle()
+    val flowSaveNotice by viewModel.flowSaveNotice.collectAsStateWithLifecycle()
+    val flowMood by com.music.bitchord.data.flow.FlowStore.mood.collectAsStateWithLifecycle()
+    val flowTuner by com.music.bitchord.data.flow.FlowStore.tuner.collectAsStateWithLifecycle()
+    val flowBanned by com.music.bitchord.data.flow.FlowStore.bannedIds.collectAsStateWithLifecycle()
+    val flowListState = rememberLazyListState()
+    var showFlowSave by remember { mutableStateOf(false) }
+    var flowSaveName by remember { mutableStateOf("") }
+    // Home Flow entry: synthetic shelf on top once unlocked (homeWithFlow is
+    // derived below, once history/library state exist to borrow artwork
+    // from — the shelf carries no cover of its own).
 
     // The top bar's icon is the quiet, always-there nudge; this is the
     // once-per-launch popup version of the same news. `updateDialogShown`
@@ -701,6 +723,12 @@ private fun BitChordApp(
         if (updateNotice != null && !updateDialogShown) {
             updateDialogShown = true
             showUpdateDialog = true
+        }
+    }
+    LaunchedEffect(flowSaveNotice) {
+        flowSaveNotice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.consumeFlowSaveNotice()
         }
     }
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -732,6 +760,7 @@ private fun BitChordApp(
         showSources = false
         showEqualizer = false
         showHistory = false
+        showFlow = false
         showDiscord = false
         showSpotify = false
         libraryShowAll = null
@@ -753,6 +782,30 @@ private fun BitChordApp(
     val activeAccountId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     val historyState by viewModel.history.collectAsStateWithLifecycle()
+    // The Flow card wears the mix's own first cover: it is literally what
+    // is playing, not a borrowed album, and a blank captioned tile is what
+    // reads as broken. Empty queue, empty art, same tile as before.
+    val flowArt = (flowQueueState as? UiState.Success)?.data?.firstOrNull()?.thumbnailUrl
+    val homeWithFlow by remember(homeState, flowStatus, flowArt) {
+        derivedStateOf {
+            val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
+            if (!flowStatus.unlocked) return@derivedStateOf homeState
+            val flowShelf = HomeShelf(
+                title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
+                items = listOf(
+                    ShelfItem(
+                        title = "Flow",
+                        subtitle = "Your personal soundtrack · endless",
+                        thumbnailUrl = flowArt,
+                        videoId = null,
+                        browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+                    ),
+                ),
+            )
+            if (base.any { it.title == flowShelf.title }) homeState
+            else UiState.Success(listOf(flowShelf) + base)
+        }
+    }
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
     val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
@@ -1483,6 +1536,57 @@ private fun BitChordApp(
                 Toast.makeText(
                     context,
                     context.getString(R.string.radio_started, song.title),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+    /**
+     * Starts Deezer-style Flow: endless personalized mix from favorites,
+     * history, skips/bans and fresh recommendations.
+     * Same replace-queue pattern as [startRadio]: load first, then swap.
+     */
+    val startFlow: (shuffled: Boolean) -> Unit = { shuffled ->
+        val originalController = controller
+        if (originalController != null && !refusedByHost()) {
+            val request = ++playRequestGeneration
+            val originalManualQueue = (0 until originalController.mediaItemCount)
+                .map { originalController.getMediaItemAt(it) }
+                .filterNot { it.fromAutoplay }
+                .map { it.mediaId }
+            scope.launch {
+                // One build per session: the screen shows this same list,
+                // so what plays is never a different mix.
+                val built = viewModel.ensureFlowTracks()
+                val tracks = if (shuffled) built.shuffled() else built
+                if (tracks.isEmpty()) {
+                    if (request == playRequestGeneration) {
+                        Toast.makeText(context, R.string.couldnt_load_tracks, Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                val activeController = controller
+                val activeManualQueue = (0 until activeController.mediaItemCount)
+                    .map { activeController.getMediaItemAt(it) }
+                    .filterNot { it.fromAutoplay }
+                    .map { it.mediaId }
+                if (request != playRequestGeneration || activeManualQueue != originalManualQueue) {
+                    return@launch
+                }
+                // Same mix already queued: resume it, never restart from the
+                // top. Pressing Flow while Flow plays keeps its place.
+                if (activeManualQueue.isNotEmpty() &&
+                    activeManualQueue.toSet() == tracks.map { it.videoId }.toSet()
+                ) {
+                    if (request == playRequestGeneration) activeController.play()
+                    return@launch
+                }
+                activeController.beginRadioQueue()
+                activeController.playSongs(tracks, 0)
+                activeController.commitRadioQueue()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.flow_started),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -2366,6 +2470,7 @@ private fun BitChordApp(
                 showReplay = false
                 settingsSubScreen = null
                 showHistory = false
+                showFlow = false
                 showDiscord = false
                 showSpotify = false
                 libraryShowAll = null
@@ -2389,7 +2494,11 @@ private fun BitChordApp(
                         replayLandingPage = ReplayStoryPage.INTRO
                         showReplay = true
                     }
-                    PlaybackSourceType.EXPLORE -> selectedTab = TAB_EXPLORE
+                    PlaybackSourceType.EXPLORE -> if (sourceId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID) {
+                        showFlow = true
+                    } else {
+                        selectedTab = TAB_EXPLORE
+                    }
                     PlaybackSourceType.SHARED_LINK -> {
                         val id = sourceId ?: return@openSource
                         context.startActivity(
@@ -2410,6 +2519,10 @@ private fun BitChordApp(
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
             lyricsOffsetOpen = showLyricsOffset,
             onDismissLyricsOffset = { showLyricsOffset = false },
+            onOpenSing = { showSing = true },
+            singActive = AppSettings.singLevel.collectAsStateWithLifecycle().value > 0.001f,
+            spatialAudioOn = AppSettings.spatialAudio.collectAsStateWithLifecycle().value,
+            onToggleSpatial = { AppSettings.setSpatialAudio(!AppSettings.spatialAudio.value) },
             onListenTogether = {
                 // The player is a sheet over the page, so it has to come down
                 // for the page to be read at all.
@@ -2501,11 +2614,42 @@ private fun BitChordApp(
         BackHandler(enabled = editingSource != null) { editingSource = null }
         BackHandler(enabled = editingPartyServer) { editingPartyServer = false }
         BackHandler(enabled = showHistory) { showHistory = false }
+        BackHandler(enabled = showFlow) { showFlow = false }
         // Disabled while a detail page is open over the grid: that one's own
         // BackHandler below has to close first, or back would skip past it
         // straight to Library. See [onLibraryItemClick].
         BackHandler(enabled = libraryShowAll != null && detail == null) { libraryShowAll = null }
         BackHandler(enabled = detailActiveShelf != null) { detailActiveShelf = null }
+
+        // The Classipod shell replaces tabs, bars and player sheets wholesale:
+        // same viewModel, same controller, same stores — only the chrome
+        // differs. Switching back lives in both shells' settings.
+        val appUi by com.music.bitchord.data.settings.AppSettings.appUi.collectAsStateWithLifecycle()
+        if (appUi == com.music.bitchord.data.settings.AppUi.CLASSIPOD) {
+            com.music.bitchord.ui.classipod.ClassipodHost(
+                darkTheme = darkTheme,
+                viewModel = viewModel,
+                player = player,
+                controller = controller,
+                onPlaySongs = { songs, index, source -> playFrom(songs, index, source) },
+                onStartFlow = { startFlow(false) },
+                onQueueSongs = addSongsToQueue,
+                onPlayNext = playSongsNext,
+                onDownloadSong = downloadSong,
+                onOpenAccount = { showAccountScrobbling = true },
+                onOpenDiscord = { showDiscord = true },
+                onOpenDiscordLogin = { showDiscordLogin = true },
+                onOpenEqualizer = { showEqualizer = true },
+                onOpenLyricsSources = { showLyricsSources = true },
+                onOpenTranslationLanguage = { showTranslationLanguage = true },
+                onOpenAppLanguage = { showAppLanguage = true },
+                onOpenReplay = { showReplay = true },
+                onOpenListenTogether = { showListenTogether = true },
+                onOpenDownloads = { showDownloadManager = true },
+                queueNotice = queueNotice,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
 
         // On a tablet the page and the player stand side by side rather than
         // one over the other: everything a phone stacks in a single column —
@@ -2519,6 +2663,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> "spotify"
                         showDiscord -> "discord"
                         showHistory -> "history"
+                        showFlow -> "flow"
                         // `&& detail == null`: a card opened from the grid
                         // stacks a detail page over it exactly as one opened
                         // from the Library tab does — see
@@ -2607,7 +2752,7 @@ private fun BitChordApp(
                     // the identical copy fading in behind it.
                     val live = detailStack.lastOrNull()?.takeIf {
                         it.browseId == key && key != "settings" && key != "account_scrobbling" &&
-                            key != "discord" && key != "replay" && key != "history" &&
+                            key != "discord" && key != "replay" && key != "history" && key != "flow" &&
                             key != "library_show_all"
                     }
                     // Held for the same reason, one step further on: a popped
@@ -2637,6 +2782,64 @@ private fun BitChordApp(
                             onSongSwipe = onSongSwipe,
                             onRetry = viewModel::loadHistory,
                             contentPadding = listPadding,
+                        )
+                    } else if (key == "flow") {
+                        com.music.bitchord.ui.screens.FlowScreen(
+                            tracksState = flowQueueState,
+                            mood = flowMood,
+                            tuner = flowTuner,
+                            status = flowStatus,
+                            bannedIds = flowBanned,
+                            isSaved = flowSaved,
+                            isGrowing = !flowSaved,
+                            rebuilding = flowLoading,
+                            listState = flowListState,
+                            onPlay = { startFlow(false) },
+                            onShuffle = { startFlow(true) },
+                            onNewMix = { viewModel.newFlowMix() },
+                            onToggleLike = {
+                                player.song?.let { viewModel.toggleLike(it.videoId) }
+                            },
+                            currentLiked = player.song?.let {
+                                likeStatuses[it.videoId] == LikeStatus.LIKE
+                            } == true,
+                            onSave = {
+                                flowSaveName = if (flowMood == com.music.bitchord.data.flow.FlowMood.FLOW) {
+                                    "My Flow"
+                                } else {
+                                    "Flow · ${flowMood.label}"
+                                }
+                                showFlowSave = true
+                            },
+                            onApply = { mood, discovery, memory, excluded ->
+                                viewModel.applyFlowConfig(mood, discovery, memory, excluded)
+                            },
+                            onUnban = { viewModel.unbanFromFlow(it) },
+                            onBan = { song ->
+                                viewModel.banFromFlow(song.videoId)
+                                viewModel.refreshFlow()
+                            },
+                            onSongClick = { songs, index ->
+                                // Skipped-over Flow tracks train the mix.
+                                val cur = player.song
+                                if (cur != null && songs.any { it.videoId == cur.videoId }) {
+                                    val curIdx = songs.indexOfFirst { it.videoId == cur.videoId }
+                                    if (curIdx in 0 until index) {
+                                        viewModel.recordFlowSkip(
+                                            cur.videoId,
+                                            player.position.positionMs,
+                                            player.durationMs,
+                                        )
+                                    }
+                                }
+                                playFrom(songs, index, QueueSource("Flow", PlaybackSourceType.EXPLORE))
+                                if (index >= songs.size - 5) viewModel.growFlow()
+                            },
+                            onSongLongPress = openSongMenu,
+                            onRetry = { viewModel.refreshFlow() },
+                            contentPadding = listPadding,
+                            currentSong = player.song,
+                            isPlaying = player.isPlaying,
                         )
                     } else if (key == "library_show_all") {
                         libraryShowAll?.let { shelf ->
@@ -2982,7 +3185,7 @@ private fun BitChordApp(
                         )
                     } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
                         TAB_HOME -> HomeScreen(
-                            state = homeState,
+                            state = homeWithFlow,
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -2996,6 +3199,14 @@ private fun BitChordApp(
                                 // property declared in another module.
                                 val browseId = item.browseId
                                 when {
+                                    browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
+                                        // Flow tap: open the session mix and play it —
+                                        // resuming, never rebuilding. BACK + tap
+                                        // returns to this same mix; New mix
+                                        // (on the Flow page) is the only reset.
+                                        showFlow = true
+                                        startFlow(false)
+                                    }
                                     song != null -> playRadio(
                                         song,
                                         QueueSource(shelfTitle, PlaybackSourceType.HOME),
@@ -3383,7 +3594,7 @@ private fun BitChordApp(
                     (detail.type == BrowseType.ALBUM ||
                         detail.type == BrowseType.PLAYLIST ||
                         detail.type == BrowseType.ARTIST) &&
-                    !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
+                    !isLocalDetail && !showDiscord && !showHistory && !showFlow && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer && !showReplay
                 val chromePageColor = if (isDetailVisible) {
                     detailPalette.background
@@ -3425,6 +3636,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
                         showHistory -> stringResource(R.string.history)
+                        showFlow -> stringResource(R.string.flow)
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
                         showSources -> stringResource(R.string.sources)
@@ -3450,7 +3662,7 @@ private fun BitChordApp(
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
-                            showDiscord || showHistory ||
+                            showDiscord || showHistory || showFlow ||
                             (libraryShowAll != null && detail == null) ||
                             (detail != null && detailActiveShelf != null) ||
                             selectedMoodGenre != null -> true
@@ -3466,6 +3678,7 @@ private fun BitChordApp(
                         showSpotify && detail == null -> ({ showSpotify = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
+                        showFlow -> ({ showFlow = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
                         showAccountScrobbling -> ({ showAccountScrobbling = false })
                         showSources -> ({ showSources = false })
@@ -3485,7 +3698,7 @@ private fun BitChordApp(
                         selectedTab == TAB_SEARCH && detail == null && selectedMoodGenre == null &&
                         libraryShowAll == null && !showSettings && !showAccountScrobbling &&
                         !showSources && !showListenTogether && !showEqualizer && !showDiscord &&
-                        !showHistory && !showReplay
+                        !showHistory && !showFlow && !showReplay
                     ) {
                         {
                             // The search field lives up here in the bar, beside the
@@ -3739,6 +3952,7 @@ private fun BitChordApp(
                     showReplay = false
                     settingsSubScreen = null
                     showHistory = false
+                    showFlow = false
                     libraryShowAll = null
                     selectedTab = index
 
@@ -4006,6 +4220,11 @@ private fun BitChordApp(
             }
         }
 
+        } // end else: everything above is one shell or the other; everything
+        // below is overlays (menus, pickers, notices, dialogs) shared by both.
+        // The iPod used to return before reaching them, which is why its
+        // three-dot menu set state nothing rendered.
+
         // ---- Album / playlist detail ----
         // ---- Long-press track actions ----
         // One body for both presentations of the track menu: the sheet the ⋮
@@ -4271,6 +4490,27 @@ private fun BitChordApp(
                 // drops it for a local file via `isOffline`, this catches
                 // the rest.
                 onShare = share.takeIf { song.videoId.isNotBlank() },
+                onSaveArtwork = {
+                    songActions = null
+                    scope.launch {
+                        com.music.bitchord.data.artwork.ArtworkDownload.save(context, song).fold(
+                            onSuccess = { name ->
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.cover_saved, name),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                            onFailure = {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.cover_save_failed),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    }
+                },
                 onCopyLog = if (fromPlayer) {
                     {
                         songActions = null
@@ -4300,6 +4540,32 @@ private fun BitChordApp(
                         songActions = null
                         showLyricsOffset = true
                     }
+                } else {
+                    null
+                },
+                onOpenSing = if (fromPlayer) {
+                    {
+                        songActions = null
+                        showSing = true
+                    }
+                } else {
+                    null
+                },
+                onOpenReplay = if (fromPlayer) {
+                    {
+                        songActions = null
+                        showReplay = true
+                    }
+                } else {
+                    null
+                },
+                spatialAudioOn = if (fromPlayer) {
+                    AppSettings.spatialAudio.collectAsStateWithLifecycle().value
+                } else {
+                    null
+                },
+                onToggleSpatialAudio = if (fromPlayer) {
+                    { AppSettings.setSpatialAudio(!AppSettings.spatialAudio.value) }
                 } else {
                     null
                 },
@@ -4337,6 +4603,17 @@ private fun BitChordApp(
         // — the ⋮, the player — starts from the sheet.
         LaunchedEffect(songActions == null) {
             if (songActions == null) songMenuOrigin = null
+        }
+        // Flow save asks for a name instead of stamping "Flow — Flow".
+        if (showFlowSave) {
+            com.music.bitchord.ui.screens.FlowSaveDialog(
+                initial = flowSaveName,
+                onDismiss = { showFlowSave = false },
+                onConfirm = { name ->
+                    showFlowSave = false
+                    viewModel.saveFlow(name)
+                },
+            )
         }
 
         // ---- Download manager ----
@@ -4979,6 +5256,20 @@ private fun BitChordApp(
                 },
                 onDismiss = { showWebDavEditor = false },
             )
+        }
+
+        // ---- Sing vocal-level sheet ----
+        // Opened from the player's ⋯ menu or the lyrics panel's mic button.
+        // A plain bottom sheet: the slider writes AppSettings.singLevel
+        // live, so the mix follows the finger with no apply step.
+        if (showSing) {
+            BackHandler { showSing = false }
+            ModalBottomSheet(
+                onDismissRequest = { showSing = false },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                SingSheet(onDismiss = { showSing = false })
+            }
         }
 
         if (showSmbEditor) {

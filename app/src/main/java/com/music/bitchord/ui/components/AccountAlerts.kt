@@ -314,6 +314,8 @@ data class EditorField(
     val placeholder: String,
     val keyboardType: KeyboardType = KeyboardType.Text,
     val isPassword: Boolean = false,
+    /** Small instruction line under the field, when the caller has one. */
+    val help: String = "",
 )
 
 /**
@@ -382,6 +384,14 @@ fun ServerEditorAlert(
                         onDone = { if (canSubmit && !testing) onSave() },
                     ),
                 )
+                if (field.help.isNotBlank()) {
+                    Text(
+                        text = field.help,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp),
+                    )
+                }
             }
         }
         AlertRule()
@@ -554,6 +564,12 @@ fun AddonEditorAlert(
      */
     removeLabel: String? = null,
     onDismiss: () -> Unit,
+    /**
+     * Credential fields the caller's addon declares, rendered under the
+     * address. Empty by default, so every existing caller shows exactly what
+     * it showed before.
+     */
+    extraFields: List<EditorField> = emptyList(),
 ) {
     ServerEditorAlert(
         hazeState = hazeState,
@@ -566,7 +582,7 @@ fun AddonEditorAlert(
                 placeholder = urlPlaceholder,
                 keyboardType = KeyboardType.Uri,
             ),
-        ),
+        ) + extraFields,
         status = status,
         statusIsGood = statusIsGood,
         testing = testing,
@@ -807,7 +823,7 @@ private fun ChoiceRow(
 /** The scrim + frosted card frame shared by every UIAlertController-style dialog. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
-internal fun AlertScaffold(
+fun AlertScaffold(
     hazeState: HazeState,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,

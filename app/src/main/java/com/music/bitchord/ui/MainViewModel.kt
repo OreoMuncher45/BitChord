@@ -87,6 +87,13 @@ import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.StreamChoice
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.matchesSearch
+import com.music.bitchord.data.flow.FlowStore
+import com.music.bitchord.data.flow.FlowConfig
+import com.music.bitchord.data.flow.FlowMood
+import com.music.bitchord.data.flow.FlowRules
+import com.music.bitchord.data.flow.FlowStatus
+import com.music.bitchord.data.flow.FlowEngine
+import com.music.bitchord.data.stats.ArtistFacts
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -3226,6 +3233,212 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ownershipInFlight.clear()
         _songMenu.value = null
         loadHome()
+    }
+
+    // ---- Flow (Deezer-inspired endless personal mix) -------------------------
+
+    /**
+     * Flow unlock status, derived from favorites.
+     * Unlocks at 16 fav tracks+artists total, or 10 artists alone.
+     */
+    val flowStatus: StateFlow<FlowStatus> =
+        combine(_library, likeStatuses) { library, likes ->
+            val favTracks = likes.count { it.value == LikeStatus.LIKE }
+            val shelves = (library as? UiState.Success)?.data?.shelves.orEmpty()
+            val artists = shelves.firstOrNull { it.title.equals("Artists", true) }?.items?.size ?: 0
+            val subs = shelves.firstOrNull { it.title.equals("Subscriptions", true) }?.items?.size ?: 0
+            val favArtists = maxOf(artists, subs)
+            FlowStatus(
+                unlocked = FlowRules.isUnlocked(favTracks, favArtists),
+                favTrackCount = favTracks,
+                favArtistCount = favArtists,
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, FlowStatus(false, 0, 0))
+
+    private val _flowQueue = MutableStateFlow<UiState<List<Song>>>(UiState.Success(emptyList()))
+    val flowQueue: StateFlow<UiState<List<Song>>> = _flowQueue.asStateFlow()
+
+    // Yesterday's mix, restored: Flow opens resumed, never re-rolled, until
+    // the snapshot is a day old — at which point the next use rebuilds.
+    init {
+        FlowStore.readSnapshot()?.let { (songs, builtAt) ->
+            if (System.currentTimeMillis() - builtAt < FlowStore.FLOW_TTL_MS) {
+                _flowQueue.value = UiState.Success(songs)
+            }
+        }
+    }
+
+    private val _flowLoading = MutableStateFlow(false)
+    val flowLoading: StateFlow<Boolean> = _flowLoading.asStateFlow()
+
+    fun setFlowMood(mood: FlowMood) = FlowStore.setMood(mood)
+    fun setFlowDiscovery(value: Float) = FlowStore.setDiscovery(value)
+    fun setFlowMemory(value: Float) = FlowStore.setMemory(value)
+    fun toggleFlowGenre(genre: String, enabled: Boolean) = FlowStore.toggleGenre(genre, enabled)
+    fun setFlowExcludedGenres(genres: Set<String>) = FlowStore.setExcludedGenres(genres)
+
+    /** Commits a batched tuner edit (mood + sliders + genres) and rebuilds once. */
+    fun applyFlowConfig(mood: FlowMood, discovery: Float, memory: Float, excludedGenres: Set<String>) {
+        FlowStore.setMood(mood)
+        FlowStore.setDiscovery(discovery)
+        FlowStore.setMemory(memory)
+        FlowStore.setExcludedGenres(excludedGenres)
+        refreshFlow()
+    }
+    fun banFromFlow(videoId: String) = FlowStore.ban(videoId)
+    fun unbanFromFlow(videoId: String) = FlowStore.unban(videoId)
+
+    /** Skip signal for Flow training: quick skip counts, full listen forgives. */
+    fun recordFlowSkip(videoId: String, playedMs: Long, durationMs: Long) {
+        if (videoId.isBlank()) return
+        val quickSkip = playedMs < 30_000 || (durationMs > 0 && playedMs < durationMs * 0.4)
+        if (quickSkip) FlowStore.recordSkip(videoId) else FlowStore.recordFullListen(videoId)
+    }
+
+    fun flowGenreOf(artist: String): List<String> =
+        runCatching { ArtistFacts.genresFor(artist) }.getOrDefault(emptyList())
+
+    /**
+     * Build the Flow opening queue from library + history + recommendations.
+     * Returns tagged Flow tracks ready for playSongs().
+     */
+    suspend fun buildFlowQueue(limit: Int = FlowEngine.INITIAL_TRACKS): List<Song> {
+        val lib = (_library.value as? UiState.Success)?.data
+        val favorites = lib?.likedSongs.orEmpty() + lib?.librarySongs.orEmpty()
+        val history = (_history.value as? UiState.Success)?.data
+            ?: YtMusicRepository.history().getOrNull().orEmpty()
+        val exclude = (favorites.map { it.videoId } + history.map { it.videoId }).toSet()
+        val quickPicks = YtMusicRepository.quickPicks(exclude).getOrNull().orEmpty()
+        return FlowEngine.buildInitialQueue(
+            seeds = FlowEngine.SeedPool(favorites, history, quickPicks),
+            likeStatuses = likeStatuses.value,
+            bannedIds = FlowStore.bannedIds.value,
+            skipCounts = FlowStore.skipCounts.value,
+            config = FlowStore.config,
+            limit = limit,
+            genreOf = ::flowGenreOf,
+        )
+    }
+
+    fun refreshFlow(limit: Int = FlowEngine.INITIAL_TRACKS) {
+        if (_flowLoading.value) return
+        viewModelScope.launch {
+            _flowLoading.value = true
+            _flowQueue.value = UiState.Loading
+            runCatching { buildFlowQueue(limit) }.fold(
+                onSuccess = {
+                    _flowQueue.value = UiState.Success(it)
+                    FlowStore.saveSnapshot(it)
+                },
+                onFailure = { _flowQueue.value = UiState.Error(it.friendly()) },
+            )
+            _flowLoading.value = false
+        }
+    }
+
+    // ---- Flow temporary playlist (grows unless saved) -----------------------
+
+    /** True once the current Flow temp playlist has been saved. Reset on each new session. */
+    private val _flowSaved = MutableStateFlow(false)
+    val flowSaved: StateFlow<Boolean> = _flowSaved.asStateFlow()
+
+    private val _flowSaveNotice = MutableStateFlow<String?>(null)
+    val flowSaveNotice: StateFlow<String?> = _flowSaveNotice.asStateFlow()
+    fun consumeFlowSaveNotice() { _flowSaveNotice.value = null }
+
+    /**
+     * The session's mix, building it only once. The screen and the player
+     * both read this same list — building twice (once to show, once to
+     * play) is how two different "flows" used to disagree with each other.
+     * BACK never rebuilds: reopening resumes this list until New mix.
+     */
+    suspend fun ensureFlowTracks(limit: Int = FlowEngine.INITIAL_TRACKS): List<Song> {
+        ((_flowQueue.value as? UiState.Success)?.data?.takeIf { it.isNotEmpty() })?.let { return it }
+        val built = buildFlowQueue(limit)
+        _flowQueue.value = UiState.Success(built)
+        _flowSaved.value = false
+        FlowStore.saveSnapshot(built)
+        return built
+    }
+
+    /** Explicit new mix: the only path that throws the session away. */
+    fun newFlowMix(limit: Int = FlowEngine.INITIAL_TRACKS) {
+        if (_flowLoading.value) return
+        viewModelScope.launch {
+            _flowLoading.value = true
+            _flowQueue.value = UiState.Loading
+            runCatching { buildFlowQueue(limit) }.fold(
+                onSuccess = {
+                    _flowQueue.value = UiState.Success(it)
+                    _flowSaved.value = false
+                    FlowStore.saveSnapshot(it)
+                },
+                onFailure = { _flowQueue.value = UiState.Error(it.friendly()) },
+            )
+            _flowLoading.value = false
+        }
+    }
+
+    /**
+     * Grow the temp playlist while it stays unsaved: fetch radio on the tail
+     * and append fresh tracks. Called when the list nears its end and by the
+     * endless top-up path. No-op once saved — a saved playlist is frozen.
+     */
+    fun growFlow(limit: Int = FlowEngine.TOPUP_TRACKS) {
+        if (_flowSaved.value || _flowLoading.value) return
+        val current = (_flowQueue.value as? UiState.Success)?.data.orEmpty()
+        if (current.isEmpty()) {
+            refreshFlow()
+            return
+        }
+        viewModelScope.launch {
+            _flowLoading.value = true
+            runCatching {
+                val tail = current.takeLast(3)
+                val out = current.toMutableList()
+                for (seed in tail) {
+                    if (out.size >= current.size + limit) break
+                    val related = YtMusicRepository.radio(seed.videoId).getOrNull().orEmpty()
+                        .filterNot { c ->
+                            FlowEngine.isExcluded(
+                                c, FlowStore.bannedIds.value, likeStatuses.value,
+                                FlowStore.skipCounts.value, FlowStore.config.tuner, ::flowGenreOf,
+                            )
+                        }
+                    val extra = com.music.bitchord.playback.QueueBuilder.extend(out, related, limit)
+                    out += FlowEngine.tagFlow(extra).filter { c -> out.none { it.videoId == c.videoId } }
+                    FlowStore.advanceSeedCursor()
+                }
+                out.distinctBy { it.videoId }
+            }.fold(
+                onSuccess = {
+                    _flowQueue.value = UiState.Success(it)
+                    FlowStore.saveSnapshot(it)
+                },
+                onFailure = { /* keep current list; growing is best-effort */ },
+            )
+            _flowLoading.value = false
+        }
+    }
+
+    /** Persist the temp playlist to YouTube Music; freezes growing. */
+    fun saveFlow(title: String = "My Flow") {
+        val tracks = (_flowQueue.value as? UiState.Success)?.data.orEmpty()
+        if (tracks.isEmpty() || _flowSaved.value) return
+        viewModelScope.launch {
+            YtMusicRepository.createPlaylist(
+                title = title,
+                privacy = com.music.bitchord.data.model.PlaylistPrivacy.PRIVATE,
+                videoIds = tracks.map { it.videoId },
+            ).fold(
+                onSuccess = {
+                    _flowSaved.value = true
+                    libraryStale = true
+                    _flowSaveNotice.value = text(R.string.flow_saved)
+                },
+                onFailure = { _flowSaveNotice.value = text(R.string.flow_save_failed) },
+            )
+        }
     }
 
     private fun Throwable.friendly(): String = when {

@@ -200,4 +200,8 @@
     <string name="search_library_empty">Cerca i brani nella cartella Musica locale.</string>
     <string name="search_library_hint">Brani, artisti e album</string>
     <string name="search_library_no_results">Nulla in Musica locale corrisponde a «%1$s».</string>
+    <string name="sing_lyrics_button">Sing along, with vocals lowered</string>
+    <string name="spatial_audio_title">Spatial audio</string>
+    <string name="spatial_audio_on_subtitle">Stereo widening is on</string>
+    <string name="spatial_audio_off_subtitle">Widen stereo tracks for a more immersive feel</string>
 </resources>

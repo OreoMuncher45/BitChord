@@ -200,4 +200,8 @@
     <string name="search_library_empty">Recherche les titres de votre dossier Musique locale.</string>
     <string name="search_library_hint">Titres, artistes et albums</string>
     <string name="search_library_no_results">Rien dans Musique locale ne correspond à « %1$s ».</string>
+    <string name="sing_lyrics_button">Sing along, with vocals lowered</string>
+    <string name="spatial_audio_title">Spatial audio</string>
+    <string name="spatial_audio_on_subtitle">Stereo widening is on</string>
+    <string name="spatial_audio_off_subtitle">Widen stereo tracks for a more immersive feel</string>
 </resources>

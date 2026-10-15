@@ -592,6 +592,14 @@ class PlaybackService : MediaLibraryService() {
     private val loudnessB = LoudnessProcessor().apply { gainFor = ::loudnessGainFor }
     private var loudnessRetryJob: Job? = null
 
+    /**
+     * Karaoke (Sing) processors — one per player so the vocal level is
+     * preserved across handoffs. The processor is cheap (single IIR notch
+     * at ~2 kHz) so the overhead is negligible when disabled.
+     */
+    private val singProcessorA = VocalCutProcessor()
+    private val singProcessorB = VocalCutProcessor()
+
     /** The platform audio session currently advertised to system audio tools. */
     private var advertisedAudioEffectSessionId: Int = C.AUDIO_SESSION_ID_UNSET
 
@@ -1582,6 +1590,7 @@ class PlaybackService : MediaLibraryService() {
 
         configuredFloatOutput = shouldEnableFloatOutput()
         val exoPlayer = buildPlayer(
+            singProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
             transitionFilterA,
@@ -1589,6 +1598,7 @@ class PlaybackService : MediaLibraryService() {
             ownsSession = true,
         )
         val sparePlayer = buildPlayer(
+            singProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
             transitionFilterB,
@@ -2672,13 +2682,14 @@ class PlaybackService : MediaLibraryService() {
      * re-resolving a stream URL for audio that is already local.
      */
     private fun buildPlayer(
+        sing: VocalCutProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
         filter: TransitionFilterProcessor,
         loudness: LoudnessProcessor,
         ownsSession: Boolean,
     ): ExoPlayer = ExoPlayer.Builder(this)
-        .setRenderersFactory(silenceSkippingRenderers(spatial, equalizer, filter, loudness))
+        .setRenderersFactory(silenceSkippingRenderers(sing, spatial, equalizer, filter, loudness))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setLoadControl(farBufferingLoadControl())
         .setAudioAttributes(AUDIO_ATTRIBUTES, /* handleAudioFocus = */ ownsSession)
@@ -5489,6 +5500,7 @@ class PlaybackService : MediaLibraryService() {
      * `skipSilenceEnabled` keeps driving it as before.
      */
     private fun silenceSkippingRenderers(
+        sing: VocalCutProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
         transition: TransitionFilterProcessor,
@@ -5603,7 +5615,7 @@ class PlaybackService : MediaLibraryService() {
             // them for the same reason: it belongs to the listener and
             // the whole session, while the transition filter belongs to
             // one handoff and has to have the last word on it.
-            val dspChain = DspChain(spatial, equalizer, transition, loudness)
+            val dspChain = DspChain(sing, spatial, equalizer, transition, loudness)
             return PrecisionAudioSink(
                 delegate = defaultSink,
                 dspChain = dspChain,
@@ -5849,6 +5861,7 @@ class PlaybackService : MediaLibraryService() {
         activeFilter = transitionFilterA
         spareFilter = transitionFilterB
         val newActive = buildPlayer(
+            singProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
             transitionFilterA,
@@ -5856,6 +5869,7 @@ class PlaybackService : MediaLibraryService() {
             ownsSession = true,
         )
         val newSpare = buildPlayer(
+            singProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
             transitionFilterB,
@@ -5995,6 +6009,9 @@ class PlaybackService : MediaLibraryService() {
             AppSettings.spatialAudio.collect { applySpatialAudioEnabled() }
         }
         scope.launch {
+            AppSettings.singLevel.collect { applySingLevel() }
+        }
+        scope.launch {
             AppSettings.loudnessNormalization.collect {
                 setupLoudness(player?.currentMediaItem?.mediaId)
             }
@@ -6068,6 +6085,12 @@ class PlaybackService : MediaLibraryService() {
         val enabled = AppSettings.spatialAudio.value && !activeTrackIsDolbyAtmos
         spatialAudioProcessorA.enabled = enabled
         spatialAudioProcessorB.enabled = enabled
+    }
+
+        private fun applySingLevel() {
+        val level = AppSettings.singLevel.value
+        singProcessorA.level = level
+        singProcessorB.level = level
     }
 
     /**

@@ -11,6 +11,9 @@ import com.music.bitchord.data.settings.permits
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.data.sources.addon.AddonException
 import com.music.bitchord.data.sources.addon.DetectedFormat
+import com.music.bitchord.data.tidal.TidalApi
+import com.music.bitchord.data.tidal.TidalInstances
+import com.music.bitchord.data.octave.OctaveApi
 import com.music.bitchord.data.sources.addon.SourceFormats
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.playback.audio.LosslessOutput
@@ -39,6 +42,16 @@ data class SourceConfig(
     /** JioSaavn is opt-in because catalogue matches can select the wrong recording. */
     val enabled: Boolean = kind != SourceKind.JIOSAAVN,
     /**
+     * Values the user entered for this addon's own settings, by setting key.
+     *
+     * Only credentials are editable — see the source editor — so in practice
+     * this holds keys, not preferences. Blank means unset and is not stored:
+     * the editor drops blank entries on save and the client falls back to the
+     * manifest default. Absent for every config written before this existed,
+     * which decode as empty and behave exactly as before.
+     */
+    val settings: Map<String, String> = emptyMap(),
+    /**
      * The addon's `allowDownloads`, as its manifest last said. Stored rather
      * than asked each time so the answer is there without a request — see
      * [checkValidLossless] for why that matters.
@@ -62,10 +75,17 @@ data class SourceConfig(
 
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
-        get() = label.ifBlank {
-            baseUrl.takeIf { it.isNotBlank() }
-                ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                ?: kind.label
+        get() {
+            if (ProprietarySources.isProprietary(baseUrl, label)) return ProprietarySources.DISPLAY_NAME
+            // The bundled lossless source is a sealed appliance: one brand,
+            // no address anywhere in the UI. Toggle on/off is the only control.
+            if (kind == SourceKind.TIDAL) return SourceRegistry.TIDAL_DISPLAY_NAME
+            if (kind == SourceKind.HIRES) return SourceRegistry.HIRES_DISPLAY_NAME
+            return label.ifBlank {
+                baseUrl.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                    ?: kind.label
+            }
         }
 
     /** Whether this has enough filled in to be worth contacting at all. */
@@ -139,11 +159,29 @@ object SourceRegistry {
     ): List<SourceConfig> {
         // Seeded rather than persisted-on-first-write, so a build adding a new
         // built-in kind picks it up for existing installs too. SourceConfig's
-        // default is the policy: JioSaavn off, YouTube on.
+        // default is the policy: JioSaavn off, everything else on. Tidal
+        // arrives with the first bundled instance as its primary so it works
+        // with zero setup — the toggle is the off switch.
         val seeded = stored + BUILT_IN_KINDS
             .filter { kind -> stored.none { it.kind == kind } }
-            .map { SourceConfig(kind = it) }
+            .map { kind ->
+                SourceConfig(
+                    kind = kind,
+                    baseUrl = when (kind) {
+                        SourceKind.TIDAL -> TidalInstances.BUNDLED.first().url
+                        SourceKind.OCTAVE -> OctaveApi.DEFAULT_BASE
+                        else -> ""
+                    },
+                    // Octave without a key answers nothing, so it arrives
+                    // off: pasting the key plus the toggle is the setup.
+                    enabled = kind != SourceKind.JIOSAAVN && kind != SourceKind.OCTAVE,
+                )
+            }
 
+        // No Octave seed: its reference deployment is gone (404), and a
+        // dead seed only guarantees a "No manifest" dead end. Octave is
+        // added by pasting its URL like any addon; masking plus the key
+        // field below make it first-class from there.
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
         return seeded
@@ -378,13 +416,40 @@ object SourceRegistry {
      * its on/off state; a new source gets a fresh config.
      */
     suspend fun identify(url: String, existing: SourceConfig? = null): Result<SourceConfig> {
+        // Octave first: its hostname is the whole identification — no manifest
+        // to fetch, no probe that could leak anything. Anything else falls
+        // through untouched.
+        OctaveApi.baseOf(url)?.let { base ->
+            return Result.success(
+                (existing ?: SourceConfig(kind = SourceKind.OCTAVE)).copy(
+                    kind = SourceKind.OCTAVE,
+                    baseUrl = base,
+                ),
+            )
+        }
+        // Tidal first: its root answers a version document no other format
+        // shapes, and the probe is one cheap GET. Anything else falls through
+        // to the addon/module detection untouched.
+        TidalApi.probeBestEffort(url)?.let { version ->
+            val base = TidalApi.normalize(url) ?: url.trim().trimEnd('/')
+            val host = runCatching { android.net.Uri.parse(base).host }.getOrNull()
+            return Result.success(
+                (existing ?: SourceConfig(kind = SourceKind.TIDAL)).copy(
+                    kind = SourceKind.TIDAL,
+                    baseUrl = base,
+                    label = existing?.label.orEmpty().ifBlank {
+                        host?.takeIf { it.isNotBlank() } ?: SourceKind.TIDAL.label
+                    },
+                ),
+            )
+        }
         val detected = SourceFormats.identify(url).getOrElse { return Result.failure(it) }
         return when (detected) {
             is DetectedFormat.Addon -> Result.success(
                 (existing ?: SourceConfig(kind = SourceKind.ADDON)).copy(
                     kind = SourceKind.ADDON,
                     baseUrl = detected.baseUrl,
-                    label = detected.manifest.displayName,
+                    label = ProprietarySources.maskLabel(detected.baseUrl, detected.manifest.displayName),
                     allowDownloads = detected.manifest.downloadsAllowed,
                     checkValidLossless = detected.manifest.requiresLosslessOutput,
                 ),
@@ -452,11 +517,14 @@ object SourceRegistry {
     suspend fun probeCandidate(config: SourceConfig): SourceHealth = build(config).health()
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
+        SourceKind.OCTAVE -> OctaveSource(config)
         SourceKind.ADDON -> AddonSource(config)
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
+        SourceKind.TIDAL -> TidalSource(config)
+        SourceKind.HIRES -> HiresDirectSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
 
@@ -501,7 +569,13 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
+    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.OCTAVE, SourceKind.HIRES, SourceKind.YOUTUBE)
+
+    /** The branded name of the sealed lossless source. */
+    const val TIDAL_DISPLAY_NAME = "BitChord NEXT Addon"
+
+    /** The branded name of the community Hi-Res source. */
+    const val HIRES_DISPLAY_NAME = "BitChord Hi-Res Lossless Addon"
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

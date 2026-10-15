@@ -200,4 +200,8 @@
     <string name="search_library_empty">Szukaj utworów w folderze muzyki lokalnej.</string>
     <string name="search_library_hint">Utwory, wykonawcy i albumy</string>
     <string name="search_library_no_results">NIC w muzyce lokalnej nie pasuje do „%1$s”.</string>
+    <string name="sing_lyrics_button">Sing along, with vocals lowered</string>
+    <string name="spatial_audio_title">Spatial audio</string>
+    <string name="spatial_audio_on_subtitle">Stereo widening is on</string>
+    <string name="spatial_audio_off_subtitle">Widen stereo tracks for a more immersive feel</string>
 </resources>

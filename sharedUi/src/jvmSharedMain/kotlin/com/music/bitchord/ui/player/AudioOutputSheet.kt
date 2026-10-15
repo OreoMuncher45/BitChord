@@ -84,6 +84,9 @@ internal fun AudioOutputSheet(
     onDismiss: () -> Unit,
     onOpenPipeline: () -> Unit,
     onOpenCast: () -> Unit,
+    /** Current spatial-audio state; the toggle row hides without a setter. */
+    spatialOn: Boolean = false,
+    onToggleSpatial: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val outputs = rememberAudioOutputs()
@@ -120,7 +123,85 @@ internal fun AudioOutputSheet(
         VolumeRow(routeKey = outputs)
 
         Spacer(Modifier.height(6.dp))
+        // Spatial lives here rather than in Settings because this is where
+        // the listener is already thinking about how the music sounds — the
+        // output, its volume, its pipeline, and now its width, in one place.
+        onToggleSpatial?.let { toggle ->
+            SpatialToggleRow(on = spatialOn, onClick = toggle)
+            Spacer(Modifier.height(6.dp))
+        }
         AudioPipelineRow(onClick = onOpenPipeline)
+    }
+}
+
+/**
+ * The widening effect's on/off switch, in the same row language as the
+ * pipeline row below it. Lit when engaged; Dolby Atmos tracks force it off
+ * upstream, and the row then reads as off rather than vanishing.
+ */
+@Composable
+private fun SpatialToggleRow(on: Boolean, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ROW_SHAPE)
+            .background(Color.White.copy(alpha = if (on) 0.10f else 0.05f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptics.play(Haptic.Select)
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (on) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.GraphicEq,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = if (on) 1f else 0.7f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.spatial_audio_title),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = if (on) 1f else 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(
+                    if (on) Res.string.spatial_audio_on_subtitle
+                    else Res.string.spatial_audio_off_subtitle,
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (on) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

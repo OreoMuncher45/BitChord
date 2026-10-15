@@ -1205,4 +1205,13 @@
     <string name="spotify_library_subtitle">Danh sách phát Spotify của bạn</string>
     <string name="spotify_sign_in">Đăng nhập bằng Spotify</string>
     <string name="spotify_track_unavailable">Không tìm thấy bài hát đó trên YouTube Music</string>
+    <string name="sing">Sing</string>
+    <string name="sing_title">Sing</string>
+    <string name="sing_subtitle">Turn the lead vocal down and sing over the track</string>
+    <string name="sing_level_percent">Vocals at %1$d%%</string>
+    <string name="sing_full_vocals">Full vocals</string>
+    <string name="sing_no_vocals">No vocals</string>
+    <string name="sing_duet_note">Halfway down keeps the backing vocals while the lead steps back — that middle is the duet mix.</string>
+    <string name="sing_turn_off">Turn off</string>
+    <string name="on">On</string>
 </resources>

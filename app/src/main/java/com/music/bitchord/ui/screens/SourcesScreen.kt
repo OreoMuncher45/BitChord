@@ -5,8 +5,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.lifecycle.Lifecycle
+import android.widget.Toast
+import com.music.bitchord.data.TrackLog
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.Lifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -26,7 +28,29 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
+import com.music.bitchord.data.octave.OctaveApi
+import com.music.bitchord.data.sources.addon.AddonClient
+import com.music.bitchord.data.sources.addon.AddonSetting
+import com.music.bitchord.ui.components.EditorField
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -35,6 +59,7 @@ import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
@@ -57,12 +82,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,8 +102,8 @@ import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.components.AddonEditorAlert
 import dev.chrisbanes.haze.HazeState
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -247,7 +270,13 @@ fun SourcesScreen(
                         // Anything the user configured is theirs to edit or
                         // delete. JioSaavn and YouTube have no address to
                         // change, so a tap on them would open an empty editor.
-                        onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
+                        // The lossless source is sealed: branded row, toggle
+                        // only, no editor and no address anywhere.
+                        onClick = if (config.kind.needsServer && config.kind != SourceKind.TIDAL) {
+                            ({ onEditSource(config) })
+                        } else {
+                            null
+                        },
                         // YouTube gets no switch at all — see
                         // [SourceRegistry.setEnabled] for why one would be a lie.
                         onToggle = if (config.kind == SourceKind.YOUTUBE) {
@@ -293,6 +322,12 @@ fun SourcesScreen(
             AddSourceRow(
                 onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
             )
+            // Community instances rot, so the pool refreshes itself daily from
+            // a curated list — off, and only the primary URL is ever touched.
+            if (configs.any { it.kind == SourceKind.TIDAL }) {
+                RowDivider()
+                TidalAutoUpdateRow()
+            }
         }
 
         // A personal library rather than a catalogue in the order above: it
@@ -629,6 +664,41 @@ private const val SWAP_THRESHOLD = 0.6f
  * put another one in here".
  */
 @Composable
+private fun TidalAutoUpdateRow() {
+    val autoUpdate by com.music.bitchord.data.tidal.TidalInstances.autoUpdate
+        .collectAsStateWithLifecycle()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = ROW_INSET, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.tidal_auto_update),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = stringResource(R.string.tidal_auto_update_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = autoUpdate,
+            onCheckedChange = {
+                com.music.bitchord.data.tidal.TidalInstances.setAutoUpdate(it)
+            },
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedBorderColor = MaterialTheme.colorScheme.primary,
+            ),
+        )
+    }
+}
+
+@Composable
 private fun AddSourceRow(onClick: () -> Unit) {
     Row(
         modifier = Modifier
@@ -794,6 +864,9 @@ private fun SourceRow(
                 SourceKind.CUSTOM_MODULE -> Icons.Rounded.Extension
                 SourceKind.MODULE -> Icons.Rounded.Extension
                 SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq // or some other icon
+                SourceKind.TIDAL -> Icons.Rounded.MusicNote
+                SourceKind.HIRES -> Icons.Rounded.MusicNote
+                SourceKind.OCTAVE -> Icons.Rounded.Album
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },
             contentDescription = null,
@@ -938,6 +1011,50 @@ internal fun SourceEditorAlert(
     val alreadyAdded = stringResource(R.string.source_already_added)
 
     /**
+     * Credential settings this addon declares (today: the Octave account key),
+     * and the values typed for them.
+     *
+     * The schema comes from the manifest, so an addon declaring nothing secret
+     * shows no extra field and behaves exactly as before. Values are stored in
+     * the config and travel as query parameters — see
+     * [AddonClient.settingsFor] — and are cleared the moment the address is
+     * edited, so a key is never sent to a server it was not entered for.
+     */
+    var secretSettings by remember { mutableStateOf(emptyList<AddonSetting>()) }
+    val secretValues = remember {
+        mutableStateMapOf<String, String>().apply { putAll(config.settings) }
+    }
+
+    /**
+     * The secret settings of the server at [base], or empty when it says
+     * nothing usable — a server without a manifest is still a working addon,
+     * just one with nothing to fill in.
+     */
+    suspend fun loadSecrets(base: String): List<AddonSetting> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                AddonClient(base.trim()).manifest().getOrNull()
+                    ?.settings.orEmpty()
+                    .filter { it.secret && it.key.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+
+    // Seed the fields when editing a source that already holds values, so a
+    // stored key is not hidden until Test is pressed. When the manifest is
+    // unreachable the schema is unknown — fall back to one row per stored
+    // key, named by the key itself, so there is always a way to see, edit,
+    // or clear what is saved.
+    LaunchedEffect(config.id) {
+        if (baseUrl.isBlank() && config.settings.isEmpty()) return@LaunchedEffect
+        val fromManifest = if (baseUrl.isBlank()) emptyList() else loadSecrets(baseUrl)
+        secretSettings = fromManifest.ifEmpty {
+            config.settings.keys.filter { it.isNotBlank() }.map { key ->
+                AddonSetting(key = key, label = key, secret = true)
+            }
+        }
+    }
+
+    /**
      * Identify what is at the URL, then say so.
      *
      * Both buttons run this — the only difference is whether a success is then
@@ -994,13 +1111,19 @@ internal fun SourceEditorAlert(
                 is SourceHealth.Unreachable -> health.reason
             }
             busy = false
+            // The secret schema belongs to the server just identified, not to
+            // whatever address was there before it.
+            secretSettings = loadSecrets(found.baseUrl)
 
             // Saved even when the probe came back unhappy, but only once the
             // format is known: a server that is asleep is still worth storing —
             // that was true before and is why Test was never mandatory — while
             // a URL nothing can be made of is not.
             if (thenSave) {
-                if (isNew) SourceRegistry.add(found) else SourceRegistry.update(found)
+                // A blank entry means "not set" and falls back to the
+                // manifest default rather than sending an empty parameter.
+                val toStore = found.copy(settings = secretValues.filterValues { it.isNotBlank() })
+                if (isNew) SourceRegistry.add(toStore) else SourceRegistry.update(toStore)
                 onSaved()
             }
         }
@@ -1013,13 +1136,23 @@ internal fun SourceEditorAlert(
         } else {
             config.displayName
         },
-        description = stringResource(R.string.addon_url_description),
+        description = stringResource(
+            when (config.kind) {
+                SourceKind.TIDAL -> R.string.tidal_url_description
+                SourceKind.OCTAVE -> R.string.octave_url_description
+                else -> R.string.addon_url_description
+            },
+        ),
         urlValue = baseUrl,
         // A result describes the address it was run against, so the moment that
         // address is edited it stops being true and is cleared. Left up, it
         // would report "Connected" over a URL nobody has tried.
-        onUrlChange = { baseUrl = it; status = null },
-        urlPlaceholder = "https://my-addon.example.com",
+        onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
+        urlPlaceholder = when (config.kind) {
+            SourceKind.TIDAL -> "https://lossless.example.com"
+            SourceKind.OCTAVE -> "https://api.octavestreaming.com"
+            else -> "https://my-addon.example.com"
+        },
         status = status,
         statusIsGood = statusIsGood,
         testing = busy,
@@ -1028,5 +1161,34 @@ internal fun SourceEditorAlert(
         onSave = { run(thenSave = true) },
         onRemove = if (isNew) null else onDelete,
         onDismiss = onDismiss,
+        // Octave always offers its account-key field, manifest or not:
+        // without the key there is nothing to stream, and waiting on a
+        // schema to show the field is how keys became un-enterable.
+        extraFields = buildList {
+            if (config.kind == SourceKind.OCTAVE) {
+                add(
+                    EditorField(
+                        value = secretValues[OctaveApi.ACCOUNT_KEY].orEmpty(),
+                        onChange = { secretValues[OctaveApi.ACCOUNT_KEY] = it },
+                        placeholder = stringResource(R.string.octave_key_label),
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true,
+                        help = stringResource(R.string.octave_key_help),
+                    ),
+                )
+            }
+            secretSettings
+                .filter { it.key != OctaveApi.ACCOUNT_KEY }
+                .mapTo(this) { setting ->
+                    EditorField(
+                        value = secretValues[setting.key].orEmpty(),
+                        onChange = { secretValues[setting.key] = it },
+                        placeholder = setting.label.ifBlank { setting.key },
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true,
+                        help = setting.help,
+                    )
+                }
+        },
     )
 }
