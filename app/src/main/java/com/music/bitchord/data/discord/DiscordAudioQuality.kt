@@ -23,7 +23,7 @@ fun discordAudioQualityLine(stats: NerdStats.Snapshot?): String? {
     // Lossless prints the PCM decode rate, never the container's momentary
     // compressed figure — same rule as the player readout, so Discord and
     // the app can never disagree again.
-    val rate = if (stats.isLossless) stats.pcmDataRateKbps ?: stats.bitrateKbps else stats.bitrateKbps
+    val rate = stats.displayBitrateKbps()
     return buildList {
         add(quality)
         NerdStats.codecLabel(stats.mimeType)?.let(::add)

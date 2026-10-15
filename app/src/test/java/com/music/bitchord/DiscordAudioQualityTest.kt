@@ -16,6 +16,7 @@ class DiscordAudioQualityTest {
             sampleRateHz = 96000,
             channels = 2,
             bitDepth = 24,
+            pcmDataRateKbps = 4608,
         )
 
         assertEquals(
@@ -32,6 +33,7 @@ class DiscordAudioQualityTest {
             sampleRateHz = 44100,
             channels = null,
             bitDepth = 16,
+            pcmDataRateKbps = 1411,
         )
 
         assertEquals(
@@ -83,5 +85,38 @@ class DiscordAudioQualityTest {
         )
         assertEquals("45.1584 MHz", NerdStats.megahertzLabel(45_158_400))
         assertNull(NerdStats.megahertzLabel(192_000))
+    }
+
+    @Test
+    fun `lossless ignores bogus container bitrate in favour of pcm rate`() {
+        val stats = NerdStats.Snapshot(
+            mimeType = "audio/flac",
+            bitrateKbps = 171,
+            sampleRateHz = 44100,
+            channels = 2,
+            bitDepth = 16,
+            pcmDataRateKbps = 1411,
+        )
+
+        assertEquals(
+            "Lossless · FLAC · 1411 kbps · 16-bit · 44.1 kHz · Stereo",
+            discordAudioQualityLine(stats),
+        )
+    }
+
+    @Test
+    fun `lossless with unknown pcm prints no bitrate rather than a wrong one`() {
+        val stats = NerdStats.Snapshot(
+            mimeType = "audio/flac",
+            bitrateKbps = 171,
+            sampleRateHz = 44100,
+            channels = 2,
+            bitDepth = 16,
+        )
+
+        assertEquals(
+            "Lossless · FLAC · 16-bit · 44.1 kHz · Stereo",
+            discordAudioQualityLine(stats),
+        )
     }
 }

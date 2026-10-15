@@ -29,9 +29,13 @@ import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.SourceResolver
+import com.music.bitchord.data.sources.StreamRequest
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.download.Downloads
+import com.music.bitchord.download.isLosslessDownload
 import com.music.bitchord.ui.rememberIsForeground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -548,7 +552,30 @@ private fun Song.matchQuery(): String = buildString {
     if (isVideo) append("&m=1")
 }
 
-fun Song.toMediaItem(): MediaItem {
+/**
+ * Whether a downloaded track plays as a stream even though its file is on
+ * disk: the network is up and the file is not already everything the
+ * settings ask for.
+ *
+ * A lossless file under a lossless ceiling stays a file — re-fetching it
+ * spends data to stand still. Everything else streams: a lossy download
+ * under any ceiling, and any download whose badge is unknown, because "I
+ * could not tell" is not "it already matches". Offline always keeps the
+ * file; it is the only thing that can play.
+ */
+internal fun shouldPreferStream(online: Boolean, losslessCeiling: Boolean, savedBadge: String?): Boolean {
+    if (!online) return false
+    if (losslessCeiling && isLosslessDownload(savedBadge)) return false
+    return true
+}
+
+private fun shouldPreferStream(videoId: String): Boolean = shouldPreferStream(
+    online = AppSettings.meteredConnection.value != null,
+    losslessCeiling = SourceResolver.requestForNow() is StreamRequest.Lossless,
+    savedBadge = Downloads.savedFormat(videoId),
+)
+
+fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
     // A row from search or a playlist carries no file of its own, but the track
     // may still be on disk from a download — see [Downloads.saved].
@@ -576,7 +603,14 @@ fun Song.toMediaItem(): MediaItem {
     // leaves that path unguarded.
     val offlineUri = localUri?.takeUnless(Downloads::isMissingLocalFile)
         ?: Downloads.verifiedSavedUri(videoId)
-    val uriString = offlineUri ?: when {
+    // Downloads used to win unconditionally here, so a lossy file kept
+    // playing as a lossy file with the network up and a better copy one
+    // lookup away. Online, the settings ceiling outranks the disk — the
+    // file remains the offline path and the failure fallback (see
+    // [fallbackOnlineStreamToFile]).
+    val playFile = offlineUri != null && (forceFile || !shouldPreferStream(videoId))
+    val playUri = offlineUri?.takeIf { playFile }
+    val uriString = playUri ?: when {
         videoId.startsWith("content://") || videoId.startsWith("file://") -> videoId
         // Title, artist and runtime ride along in the URI because they are what
         // a cross-source match is made on, and the resolver runs on ExoPlayer's
@@ -658,7 +692,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_PLAYBACK_SOURCE to playbackSource,
                             EXTRA_PLAYBACK_SOURCE_TYPE to playbackSourceType?.name,
                             EXTRA_PLAYBACK_SOURCE_ID to playbackSourceId,
-                            EXTRA_LOCAL_URI to offlineUri,
+                            EXTRA_LOCAL_URI to playUri,
                             EXTRA_LOCAL_PATH to localPath,
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,

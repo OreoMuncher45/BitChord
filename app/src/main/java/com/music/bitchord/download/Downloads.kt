@@ -297,6 +297,14 @@ object Downloads {
         return null
     }
 
+    /**
+     * The quality badge recorded when [videoId] was saved ("FLAC",
+     * "AAC · 320 kbps", …), or null when unknown. Synchronous for
+     * [Song.toMediaItem][com.music.bitchord.playback.toMediaItem], which
+     * decides file-vs-stream on the calling thread.
+     */
+    fun savedFormat(videoId: String): String? = _savedMetadata.value[videoId]?.downloadFormat
+
     /** Delete the file saved for [videoId] and forget it. */
     suspend fun delete(context: Context, videoId: String): Boolean = withContext(Dispatchers.IO) {
         val uri = _saved.value[videoId]?.toUri() ?: return@withContext false
@@ -307,6 +315,12 @@ object Downloads {
 
     private fun forget(videoId: String) {
         record(saved = { it - videoId }, meta = { it - videoId })
+        // The generation just moved, so a stale cache cannot survive this —
+        // patch the rows and re-stamp rather than pay a rescan for one id.
+        // Called for aliases too, so only the named id leaves; the scan that
+        // found a file missing rebuilds the rest on its own pass.
+        val cached = allSongsCache ?: return
+        allSongsCache = listingGeneration to cached.second.filterNot { it.videoId == videoId }
     }
 
     /**
@@ -510,6 +524,7 @@ object Downloads {
     }
 
     private fun recordCollections(update: (Map<String, SavedCollection>) -> Map<String, SavedCollection>) {
+        listingGeneration++
         synchronized(collectionLock) {
             val map = update(_collections.value)
             _collections.value = map
@@ -594,6 +609,38 @@ object Downloads {
                 it + mapOf(asked.videoId to metaAsked, fetched.videoId to metaFetched)
             },
         )
+        patchCacheFor(asked.videoId, fetched.videoId)
+    }
+
+    /**
+     * Folds freshly recorded ids into the memoized listing without a rescan.
+     *
+     * The file was just written by this device, so no existence check is
+     * owed: the row is built from the record exactly as the verifier would
+     * build it. New ids land at the end, matching date-added order.
+     */
+    private fun patchCacheFor(vararg videoIds: String) {
+        val cached = allSongsCache ?: return
+        val metaMap = _savedMetadata.value
+        val rows = videoIds.mapNotNull { id ->
+            metaMap[id]?.let { meta ->
+                Song(
+                    videoId = meta.videoId,
+                    title = meta.title,
+                    artist = meta.artist,
+                    thumbnailUrl = meta.thumbnailUrl,
+                    durationText = meta.durationText,
+                    albumName = meta.albumName,
+                    localUri = meta.uri,
+                    downloadFormat = meta.downloadFormat,
+                    localDateAddedSeconds = meta.dateAddedSeconds,
+                    localDateModifiedSeconds = null,
+                )
+            }
+        }.associateBy { it.videoId }
+        if (rows.isEmpty()) return
+        allSongsCache = listingGeneration to
+            (cached.second.filterNot { it.videoId in rows } + rows.values)
     }
 
     /**
@@ -610,6 +657,7 @@ object Downloads {
         saved: (Map<String, String>) -> Map<String, String>,
         meta: (Map<String, SavedSongMetadata>) -> Map<String, SavedSongMetadata>,
     ) {
+        listingGeneration++
         val savedMap = _saved.updateAndGet(saved)
         val metaMap = _savedMetadata.updateAndGet(meta)
         if (!::prefs.isInitialized) return
@@ -623,8 +671,63 @@ object Downloads {
 
     private val recordLock = Any()
 
+    /**
+     * Mutation counter for everything below that reads the disk. Verifying
+     * every recorded file means opening every one of them — a 1,600-track
+     * folder costs ten seconds of file opens — so verified listings are
+     * memoized per generation: reopening is instant, and any mutation
+     * (save, delete, prune) transparently rebuilds on next read. Single-song
+     * mutations additionally patch the cache in place (see [remember] and
+     * [forget]) so one new like never costs a rescan.
+     */
+    private var listingGeneration = 0
+    private var allSongsCache: Pair<Int, List<Song>>? = null
+    private val collectionSongsCache = HashMap<String, Pair<Int, List<Song>>>()
+
+    /** Chunk size for progressive verification; see [verifiedDownloadedSongs]. */
+    private const val VERIFY_CHUNK_SIZE = 200
+
     /** Returns all downloaded songs whose files still exist on disk. */
     suspend fun getDownloadedSongs(context: Context): List<Song> = withContext(Dispatchers.IO) {
+        val gen = listingGeneration
+        allSongsCache?.takeIf { it.first == gen }?.let { return@withContext it.second }
+        verifiedDownloadedSongs(context).also { allSongsCache = listingGeneration to it }
+    }
+
+    /**
+     * Rows straight from the record, no disk I/O.
+     *
+     * Instant on any size of library — including a cold start, where the
+     * record is already on disk from the last session. A file deleted behind
+     * the app's back can linger here until the background verification pass
+     * corrects it; that pass runs on every cold open, so the window is one
+     * screen, not one session.
+     */
+    fun snapshotSongs(): List<Song> {
+        val metaMap = _savedMetadata.value
+        val seenUris = mutableSetOf<String>()
+        return metaMap.values.mapNotNull { meta ->
+            if (!seenUris.add(meta.uri)) return@mapNotNull null
+            Song(
+                videoId = meta.videoId,
+                title = meta.title,
+                artist = meta.artist,
+                thumbnailUrl = meta.thumbnailUrl,
+                durationText = meta.durationText,
+                albumName = meta.albumName,
+                localUri = meta.uri,
+                downloadFormat = meta.downloadFormat,
+                localDateAddedSeconds = meta.dateAddedSeconds,
+                localDateModifiedSeconds = null,
+            )
+        }
+    }
+
+    private suspend fun verifiedDownloadedSongs(
+        context: Context,
+        onChunk: ((List<Song>) -> Unit)? = null,
+    ): List<Song> = withContext(Dispatchers.IO) {
+        var sinceChunk = 0
         val metaMap = _savedMetadata.value
         val result = mutableListOf<Song>()
         val seenUris = mutableSetOf<String>()
@@ -674,7 +777,12 @@ object Downloads {
                 // still exists.
                 metaMap.filterValues { it.uri == meta.uri }.keys.forEach(::forget)
             }
+            if (++sinceChunk >= VERIFY_CHUNK_SIZE) {
+                sinceChunk = 0
+                onChunk?.invoke(result.toList())
+            }
         }
+        onChunk?.invoke(result.toList())
         if (migratedAddedByUri.isNotEmpty() || migratedFormatByUri.isNotEmpty()) {
             record(
                 saved = { it },
@@ -705,6 +813,16 @@ object Downloads {
      * files can belong here, so only those files need to be verified.
      */
     suspend fun getCollectionSongs(context: Context, collectionId: String): List<Song> =
+        withContext(Dispatchers.IO) {
+            val gen = listingGeneration
+            collectionSongsCache[collectionId]?.takeIf { it.first == gen }
+                ?.let { return@withContext it.second }
+            verifiedCollectionSongs(context, collectionId).also {
+                collectionSongsCache[collectionId] = listingGeneration to it
+            }
+        }
+
+    private suspend fun verifiedCollectionSongs(context: Context, collectionId: String): List<Song> =
         withContext(Dispatchers.IO) {
             val record = _collections.value[collectionId] ?: return@withContext emptyList()
             val metadata = _savedMetadata.value
@@ -1360,6 +1478,19 @@ internal fun resolvedDownloadDates(
     val modifiedSeconds = fileModifiedMillis?.takeIf { it > 0 }?.div(1_000)
     return (persistedAddedSeconds ?: modifiedSeconds) to modifiedSeconds
 }
+
+/**
+ * Whether a recorded download badge names a lossless file. Dolby is premium
+ * but not bit-exact, so it stays on disk: substituting stereo FLAC for an
+ * Atmos mix would change the music, not just the quality. Null (unknown)
+ * also keeps the file — "I could not tell" is not "it is lossy".
+ */
+internal fun isLosslessDownload(badge: String?): Boolean =
+    badge?.let { b ->
+        !b.contains("dolby", ignoreCase = true) &&
+            listOf("flac", "alac", "wav", "aiff", "ape", "wv", "dsf", "dff", "lossless")
+                .any { b.contains(it, ignoreCase = true) }
+    } == true
 
 /** Premium source labels used in BitChord's Downloads list. */
 private fun StreamFormat.downloadBadge(): String? = when {

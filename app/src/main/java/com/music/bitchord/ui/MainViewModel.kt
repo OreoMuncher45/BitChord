@@ -2509,6 +2509,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 browseId == "local:downloads" -> {
                     val context = getApplication<Application>()
+                    // Snapshot first (record rows, no disk I/O), verified
+                    // replaces it below — same pattern as [onDevice] above.
+                    // A 1,600-track verify costs seconds; the snapshot is free.
+                    Downloads.snapshotSongs().takeIf { it.isNotEmpty() }?.let { snap ->
+                        _detailStack.value = _detailStack.value.map {
+                            if (it.browseId == browseId && it.songs is UiState.Loading) {
+                                it.copy(songs = UiState.Success(snap))
+                            } else it
+                        }
+                    }
                     val songs = Downloads.getDownloadedSongs(context)
                     if (songs.isEmpty()) UiState.Error("No downloaded tracks")
                     else UiState.Success(songs)
@@ -2708,6 +2718,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else UiState.Success(songs)
                 }
                 browseId == "local:downloads" -> {
+                    Downloads.snapshotSongs().takeIf { it.isNotEmpty() }?.let { snap ->
+                        _detailStack.value = _detailStack.value.map {
+                            if (it.browseId == browseId) it.copy(songs = UiState.Success(snap)) else it
+                        }
+                    }
                     val songs = Downloads.getDownloadedSongs(context)
                     if (songs.isEmpty()) UiState.Error("No downloaded tracks")
                     else UiState.Success(songs)

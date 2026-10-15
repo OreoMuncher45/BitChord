@@ -153,6 +153,20 @@ object NerdStats {
          */
         val isLowQuality: Boolean
             get() = !isLossless && (bitrateKbps ?: 0) in 1..LOW_QUALITY_MAX_KBPS
+
+        /**
+         * The bitrate worth printing.
+         *
+         * Lossless prints the PCM decode rate (1411 for CD, 4608 for
+         * 24/96) — never the container's compressed figure, which says how
+         * compressible the recording was, not what plays. A FLAC header
+         * claiming 171 kbps is exactly the lie this suppresses: unknown PCM
+         * prints no rate at all rather than a wrong one. DSD keeps its
+         * encoded rate — 1 bit × 2.8 MHz × 2 ch is exact by format, not an
+         * estimate. Lossy prints the encoded rate, the only one it has.
+         */
+        fun displayBitrateKbps(): Int? =
+            if (isLossless && !isDsdMime(mimeType)) pcmDataRateKbps else bitrateKbps
     }
 
     /**
@@ -192,6 +206,9 @@ object NerdStats {
 
     fun isRawPcm(mimeType: String?): Boolean =
         mimeType != null && (mimeType == "audio/raw" || mimeType.endsWith("wav", ignoreCase = true) || mimeType == "audio/x-wav")
+
+    fun isDsdMime(mimeType: String?): Boolean =
+        mimeType?.startsWith("audio/dsd") == true
 
     /**
      * The upper bound in kbps for a low-bitrate / data-saver lossy stream.

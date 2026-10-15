@@ -3354,6 +3354,9 @@ class PlaybackService : MediaLibraryService() {
                 val player = this@PlaybackService.player ?: return@withContext
                 if (player.currentMediaItem?.mediaId != mediaId) return@withContext
                 TrackLog.d("BitChord", "retrying $mediaId from ${position}ms")
+                // First failure only: a downloaded track that was playing as
+                // a stream gets its file before the same dead URL is retried.
+                if (attempts == 1 && fallbackOnlineStreamToFile(player, mediaId, position)) return@withContext
                 // Claimed before the seek, so the transition it may fire is
                 // recognised as this retry rather than read as a fresh start and
                 // handed a fresh attempt budget.
@@ -3406,6 +3409,40 @@ class PlaybackService : MediaLibraryService() {
                 live.prepare()
             }
         }
+        return true
+    }
+
+    /**
+     * Swaps a track whose stream failed back onto its downloaded file, in
+     * place and at the same position.
+     *
+     * The mirror of [restreamMissingLocalFile] for the online-upgrade path:
+     * a download plays as a stream while the network is up (see
+     * [Song.toMediaItem][com.music.bitchord.playback.toMediaItem]), so a
+     * dead stream must not strand a track whose file is sitting on disk.
+     * First failure only — a file that itself fails goes through
+     * [restreamMissingLocalFile] and the ordinary retry budget from there,
+     * so the two can never ping-pong.
+     */
+    private fun fallbackOnlineStreamToFile(player: ExoPlayer, mediaId: String, position: Long): Boolean {
+        val index = player.currentMediaItemIndex
+        val current = player.currentMediaItem ?: return false
+        if (current.mediaId != mediaId) return false
+        val scheme = current.localConfiguration?.uri?.scheme
+        if (scheme == "file" || scheme == "content") return false
+        if (Downloads.verifiedSavedUri(mediaId) == null) return false
+        val fileItem = current.toSong().copy(localUri = null, localPath = null).toMediaItem(forceFile = true)
+        val fileScheme = fileItem.localConfiguration?.uri?.scheme
+        if (fileScheme != "file" && fileScheme != "content") return false
+        TrackLog.w(
+            "BitChord",
+            "$mediaId stream failed while the file is on disk; playing the file",
+            about = mediaId,
+        )
+        swappingMediaId = mediaId
+        player.replaceMediaItem(index, fileItem)
+        player.seekTo(index, position)
+        player.prepare()
         return true
     }
 

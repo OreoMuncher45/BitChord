@@ -1719,7 +1719,9 @@ private fun NerdStats.Snapshot.describe(): String? {
         codecLabel(mimeType)?.let(::add)
         bitDepth?.let { add(stringResource(Res.string.bit_depth, it)) }
         sampleRateHz?.let { add(NerdStats.megahertzLabel(it) ?: "%.1f kHz".format(Locale.ROOT, it / 1000f)) }
-        bitrateKbps?.let { add("$it kbps") }
+        // See [NerdStats.Snapshot.displayBitrateKbps]: PCM rate for
+        // lossless, nothing when unknown, encoded rate otherwise.
+        displayBitrateKbps()?.let { add("$it kbps") }
         channels?.let {
             add(
                 when (it) {
