@@ -1,0 +1,44 @@
+name: Flow Debug APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - run: chmod +x gradlew
+
+      - name: Unit tests (Flow + queue)
+        run: ./gradlew :app:testDevDebugUnitTest --tests "com.music.bitchord.FlowTest" --tests "com.music.bitchord.QueueBuilderTest"
+
+      # Minified release runtime (R8 per app/build.gradle.kts: unoptimized
+      # debug Compose runs measurably slower) signed with the fork's stable
+      # key so updates keep installing. Still a dev build, not prod.
+      - name: Stable fork signing
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > bitchord-fork.jks
+          {
+            echo "storeFile=bitchord-fork.jks"
+            echo "storePassword=android"
+            echo "keyAlias=forkdebug"
+            echo "keyPassword=android"
+          } > keystore.properties
+
+      - name: Build minified APK
+        run: ./gradlew :app:assembleDevRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-next-release
+          path: app/build/outputs/apk/dev/release/*.apk
