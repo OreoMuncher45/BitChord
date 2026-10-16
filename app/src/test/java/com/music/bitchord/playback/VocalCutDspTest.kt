@@ -129,6 +129,45 @@ class VocalCutDspTest {
     }
 
     @Test
+    fun `side makeup lifts the backing without touching bass`() {
+        // Half scale: full scale plus boost would (correctly) meet the
+        // limiter, hiding the makeup being measured here.
+        val buf = sine(1000.0, 2.0) { t -> (0.5f * sin(t)).toFloat() to (-0.5f * sin(t)).toFloat() }
+        val ratio = tailResidual(buf, 1f)
+        // 1.5 dB on the mid-band sides (~1.41 energy). Crossover phase
+        // rotation lets a little high-band residue add constructively, so
+        // the bound is generous: the point is lift, not an exact figure.
+        assertTrue("makeup ratio=$ratio", ratio > 1.25 && ratio < 1.75)
+    }
+
+    @Test
+    fun `limiter never clips a boosted mix`() {
+        val n = sr * 2
+        val buf = FloatArray(n * 2) { i ->
+            val t = 2.0 * PI * 220.0 * (i / 2) / sr
+            (0.9f * sin(t)).toFloat()
+        }
+        VocalCutDsp().apply { configure(sr) }.processSpan(buf, buf.size, 1f)
+        assertTrue(buf.all { it in -1.0f..1.0f })
+    }
+
+    @Test
+    fun `unvoiced noise passes through, voiced tone does not`() {
+        // Deterministic white noise, dead center: no pitch for the voice
+        // gate to hold onto, so it must open back up and let it pass.
+        var seed = 12345L
+        fun rnd(): Float {
+            seed = (seed * 1664525L + 1013904223L) and 0xFFFFFFFFL
+            return (seed.toDouble() / 4294967296.0 * 2.0 - 1.0).toFloat()
+        }
+        val n = sr * 2
+        val noise = FloatArray(n * 2) { rnd() * 0.5f }
+        val tone = sine(440.0, 2.0) { t -> sin(t).toFloat() to sin(t).toFloat() }
+        assertTrue("noise residual=${tailResidual(noise, 1f)}", tailResidual(noise, 1f) > 0.6)
+        assertTrue("tone residual=${tailResidual(tone, 1f)}", tailResidual(tone, 1f) < 0.08)
+    }
+
+    @Test
     fun `reset clears the transient latch`() {
         val dsp = VocalCutDsp()
         dsp.configure(sr)
