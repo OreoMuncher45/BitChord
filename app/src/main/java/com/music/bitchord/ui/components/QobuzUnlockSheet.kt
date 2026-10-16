@@ -239,44 +239,66 @@ private fun ritual(): String =
  */
 private const val CLICK_DRIVER = """
 (function(){
-  function done(o){ QobuzUnlock.onResult(JSON.stringify(o)); }
-  function txt(el){ return ((el.innerText||el.textContent)||'').trim(); }
-  function findClick(rx){
-    var els = document.querySelectorAll('a,button,[role="button"]');
-    for (var i=0;i<els.length;i++){
-      var t = txt(els[i]);
-      if (t && rx.test(t) && els[i].offsetParent !== null) return els[i];
-    }
-    return null;
-  }
-  function waitFor(rx, ms){
-    return new Promise(function(res){
-      var t0 = Date.now();
-      var iv = setInterval(function(){
-        var el = null;
-        try { el = findClick(rx); } catch(e){}
-        if (el){ clearInterval(iv); res(el); }
-        else if (Date.now()-t0 > ms){ clearInterval(iv); res(null); }
-      }, 1000);
-    });
-  }
-  (async function(){
+  var bridged=false;
+  function done(o){ if(bridged) return; bridged=true; QobuzUnlock.onResult(JSON.stringify(o)); }
+  async function ritualOnce(){
     try {
-      var first = await waitFor(/descargar|download/i, 30000);
-      if (!first){ done({error:'no-descargar'}); return; }
-      first.click();
-      await new Promise(function(r){ setTimeout(r, 8000); });
-      var q = await waitFor(/flac|lossless|24-bit|16-bit|mp3|320|calidad|quality/i, 45000);
-      if (!q){ done({error:'no-quality'}); return; }
-      q.click();
-      await new Promise(function(r){ setTimeout(r, 10000); });
       var sp=''; try{sp=localStorage.getItem('fd_sp')||'';}catch(e){}
       if(sp){
         var o=await fetch('/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sp:sp})});
-        if(o.ok){var l=await o.json(); if(l&&l.t){ done({t:l.t,sp:(l.sp||sp)}); return; } }
+        if(o.ok){var l=await o.json(); if(l&&l.t){ if(l.sp){try{localStorage.setItem('fd_sp',l.sp);}catch(e){}} return {t:l.t,sp:(l.sp||sp)}; } }
       }
-      done({error:'manual'});
-    }catch(e){ done({error:String((e&&e.message)||e)}); }
+      var t=''; try{ if(window.turnstile){ try{t=window.turnstile.getResponse()||'';}catch(e){} } }catch(e){}
+      if(t){
+        var n=await fetch('/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cf:t})});
+        if(n.ok){var i=await n.json(); if(i&&i.t){ if(i.sp){try{localStorage.setItem('fd_sp',i.sp);}catch(e){}} return {t:i.t,sp:(i.sp||'')} } }
+      }
+    }catch(e){}
+    return null;
+  }
+  // Continuous watch from page load: whoever mints the token — these
+  // clicks or the listener tapping faster — is caught within seconds.
+  // Nothing waits for any loop to finish; the browser closes on first token.
+  var watch=setInterval(async function(){
+    var r=null; try{ r=await ritualOnce(); }catch(e){}
+    if(r){ clearInterval(watch); clearTimeout(fuse); done(r); }
+  }, 3000);
+  ritualOnce().then(function(r){ if(r){ clearInterval(watch); clearTimeout(fuse); done(r); } });
+  var fuse=setTimeout(function(){ clearInterval(watch); done({error:'manual'}); }, 240000);
+  function visible(el){ return !!(el && el.offsetParent !== null); }
+  function txt(el){ return ((el.innerText||el.textContent)||'').trim(); }
+  function findBtn(sel, rx){
+    var els=document.querySelectorAll(sel);
+    for(var i=0;i<els.length;i++){ var t=txt(els[i]); if(t&&rx.test(t)&&visible(els[i])) return els[i]; }
+    return null;
+  }
+  function waitFor(sel, rx, ms){
+    return new Promise(function(res){
+      var t0=Date.now();
+      var iv=setInterval(function(){
+        var el=null;
+        try{ el=findBtn(sel, rx); }catch(e){}
+        if(el){ clearInterval(iv); res(el); }
+        else if(Date.now()-t0>ms){ clearInterval(iv); res(null); }
+      }, 1000);
+    });
+  }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  (async function drive(){
+    try {
+      // Stage 1: the track row's download anchor (exact site class).
+      var d=await waitFor('a.btn-download', /descargar|download/i, 25000);
+      if(!d||bridged) return;
+      d.click();
+      await sleep(8000); if(bridged) return;
+      // Stage 2: quality rows are icon-only circular buttons, so match the
+      // row's text instead — FLAC first, else whatever quality is offered.
+      var q=findBtn('button.group', /flac/i) || await waitFor('button.group', /mp3|320|128|lossless|calidad|quality/i, 40000);
+      if(!q||bridged) return;
+      q.click();
+      // The download view's loading state mints the session; the watch
+      // above catches it. Nothing more to drive.
+    }catch(e){}
   })();
 })();
 """
