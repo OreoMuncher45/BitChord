@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -62,9 +64,20 @@ fun QobuzUnlockSheet(
     onUnlocked: (sp: String, token: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var status by remember { mutableStateOf<UnlockStatus>(UnlockStatus.Waiting) }
+    var status by remember { mutableStateOf<UnlockStatus>(UnlockStatus.Auto) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    val context = LocalContext.current
     val currentOnUnlocked = rememberUpdatedState(onUnlocked)
+    // Silent first: most unlocks need no browser at all, and the sheet
+    // only becomes a browser when headless cannot pass. One attempt per
+    // opening; the throttle lives in the unlocker itself.
+    LaunchedEffect(config.id) {
+        when (val outcome = com.music.bitchord.data.qobuz.QobuzSilentUnlock.unlock(context)) {
+            is com.music.bitchord.data.qobuz.QobuzSilentUnlock.Outcome.Unlocked ->
+                currentOnUnlocked.value(outcome.session.sp, outcome.session.token)
+            else -> status = UnlockStatus.Waiting
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -83,6 +96,7 @@ fun QobuzUnlockSheet(
             Text(
                 text = when (status) {
                     UnlockStatus.Waiting -> stringResource(R.string.qobuz_unlock_waiting)
+                    UnlockStatus.Auto -> stringResource(R.string.qobuz_unlock_auto)
                     UnlockStatus.Checking -> stringResource(R.string.qobuz_unlock_checking)
                     is UnlockStatus.Error -> (status as UnlockStatus.Error).message
                 },
@@ -94,7 +108,7 @@ fun QobuzUnlockSheet(
                 Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Button(onClick = {
                         status = UnlockStatus.Checking
-                        webView?.evaluateJavascript(UNLOCK_RITUAL, null)
+                        webView?.evaluateJavascript(ritual(), null)
                     }) {
                         Icon(Icons.Rounded.Refresh, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -131,7 +145,7 @@ fun QobuzUnlockSheet(
                                     status = UnlockStatus.Checking
                                     // The widget renders on load; give it a
                                     // beat before reading the response.
-                                    postDelayed({ view?.evaluateJavascript(UNLOCK_RITUAL, null) }, 4000)
+                                    postDelayed({ view?.evaluateJavascript(ritual(), null) }, 4000)
                                 }
                             }
                             webView = this
@@ -147,6 +161,7 @@ fun QobuzUnlockSheet(
 
 private sealed interface UnlockStatus {
     data object Waiting : UnlockStatus
+    data object Auto : UnlockStatus
     data object Checking : UnlockStatus
     data class Error(val message: String) : UnlockStatus
 }
@@ -188,35 +203,11 @@ private fun handleUnlockResult(
  * The site's own `Ao()` ritual, minus the React state: resume `fd_sp`,
  * else Turnstile response → `POST /prepare`, bridge `{t, sp}` out.
  * Runs in page context so cookies, storage and origin all match a real visit.
+ *
+ * Single copy lives in [QobuzSilentUnlock][com.music.bitchord.data.qobuz.QobuzSilentUnlock];
+ * the headless unlocker runs this same text with its own bridge name.
  */
 private const val BRIDGE = "QobuzUnlock"
 
-private const val UNLOCK_RITUAL = """
-(function(){
-  function done(o){ QobuzUnlock.onResult(JSON.stringify(o)); }
-  (async function(){
-    try {
-      var sp=''; try{sp=localStorage.getItem('fd_sp')||'';}catch(e){}
-      if(sp){
-        var o=await fetch('/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sp:sp})});
-        if(o.ok){var l=await o.json(); if(l&&l.t){ if(l.sp){try{localStorage.setItem('fd_sp',l.sp);}catch(e){}} done({t:l.t,sp:(l.sp||sp)}); return; } }
-        try{localStorage.removeItem('fd_sp');}catch(e){}
-      }
-      var t=await new Promise(function(res){
-        var fin=false; function ok(v){if(!fin){fin=true;res(v);}}
-        function attempt(){ try{ if(window.turnstile){ var r=null; try{r=window.turnstile.getResponse();}catch(e){} if(r){ok(r);return true;} } }catch(e){} return false; }
-        if(attempt())return;
-        var iv=setInterval(function(){ if(attempt()){clearInterval(iv);} },1500);
-        setTimeout(function(){clearInterval(iv);ok('');},115000);
-      });
-      if(!t){done({error:'challenge-timeout'});return;}
-      var n=await fetch('/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cf:t})});
-      if(!n.ok){done({error:'challenge:'+n.status});return;}
-      var i=await n.json();
-      if(!i||!i.t){done({error:'token'});return;}
-      if(i.sp){try{localStorage.setItem('fd_sp',i.sp);}catch(e){}}
-      done({t:i.t,sp:i.sp||''});
-    }catch(e){ done({error:String((e&&e.message)||e)}); }
-  })();
-})();
-"""
+private fun ritual(): String =
+    com.music.bitchord.data.qobuz.QobuzSilentUnlock.ritualJs(BRIDGE)

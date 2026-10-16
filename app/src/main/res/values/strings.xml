@@ -1175,6 +1175,7 @@
     <string name="tidal_auto_update">Auto-update instance list</string>
     <string name="qobuz_unlock_title">Unlock Qobuz conversions</string>
     <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
+    <string name="qobuz_unlock_auto">Trying automatic unlock…</string>
     <string name="qobuz_unlock_checking">Running the browser check…</string>
     <string name="qobuz_unlock_retry">Try again</string>
     <string name="support">Support</string>

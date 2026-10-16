@@ -718,6 +718,25 @@ private fun BitChordApp(
             showSupportPopup = true
         }
     }
+    // Qobuz session housekeeping, once per launch and fully silent: an
+    // enabled addon with no session renews itself in the background while
+    // the UI comes up. Failures stay invisible — the row still offers the
+    // sheet, which retries silently before showing any browser.
+    LaunchedEffect(Unit) {
+        val qobuz = com.music.bitchord.data.sources.SourceRegistry.configs.value.firstOrNull {
+            it.kind == SourceKind.QOBUZ && it.enabled &&
+                it.settings[com.music.bitchord.data.sources.QobuzQueueSource.SP_KEY].isNullOrBlank()
+        } ?: return@LaunchedEffect
+        when (val outcome = com.music.bitchord.data.qobuz.QobuzSilentUnlock.unlock(context)) {
+            is com.music.bitchord.data.qobuz.QobuzSilentUnlock.Outcome.Unlocked -> {
+                val next = qobuz.settings.toMutableMap()
+                next[com.music.bitchord.data.sources.QobuzQueueSource.SP_KEY] = outcome.session.sp
+                next[com.music.bitchord.data.sources.QobuzQueueSource.TOKEN_KEY] = outcome.session.token
+                com.music.bitchord.data.sources.SourceRegistry.update(qobuz.copy(settings = next))
+            }
+            else -> Unit
+        }
+    }
     val updateAvailable by viewModel.updateAvailable.collectAsStateWithLifecycle()
 
     /**
