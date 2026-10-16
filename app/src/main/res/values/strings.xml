@@ -409,7 +409,9 @@
     <string name="discord">Discord</string>
     <string name="discord_account">Discord account</string>
     <string name="discord_button_variables">{song_name}, {artist_name} and {album_name} are replaced with the current track.</string>
-    <string name="discord_buttons_footer">{song_name}, {artist_name} and {album_name} are replaced with the track. The first button opens the song on YouTube Music and the second opens this project.</string>
+    <string name="discord_buttons_footer">{song_name}, {artist_name} and {album_name} are replaced with the track. Empty text keeps the default label; empty link keeps the default page. Buttons only render on desktop Discord — mobile never shows them, however they are set.</string>
+    <string name="discord_button_link">Link (empty keeps the default page)</string>
+    <string name="discord_button_link_placeholder">https://…</string>
     <string name="discord_presence_footer">The card updates when the track, position or playback state changes. It clears when playback stops.</string>
     <string name="discord_show_audio_quality">Show audio quality</string>
     <string name="discord_show_audio_quality_subtitle">Hi-Res, lossless and Dolby specs on the presence card</string>
@@ -1176,6 +1178,7 @@
     <string name="qobuz_unlock_title">Unlock Qobuz conversions</string>
     <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
     <string name="qobuz_unlock_auto">Trying automatic unlock…</string>
+    <string name="qobuz_unlock_auto_clicks">Starting a download automatically to unlock…</string>
     <string name="qobuz_unlock_checking">Running the browser check…</string>
     <string name="qobuz_unlock_retry">Try again</string>
     <string name="support">Support</string>

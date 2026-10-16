@@ -47,6 +47,7 @@ object QobuzQueueApi {
     var baseOverride: String? = null
     fun resetForTests() {
         baseOverride = null
+        synchronized(jobMemoLock) { jobMemo.clear() }
     }
 
     private val base: String get() = baseOverride?.trimEnd('/') ?: BASE
@@ -301,6 +302,28 @@ object QobuzQueueApi {
     fun originOf(packedId: String): Origin? = origins[packedId]
 
     fun packId(qobuzId: Long): String = "qobuz:$qobuzId"
+
+    /**
+     * Conversion jobs already minted, by track + format. A poll that runs
+     * out of budget leaves the job here instead of losing it: the next
+     * round re-polls the same job rather than minting a second conversion
+     * of the same track. Cleared when the job resolves either way.
+     */
+    private val jobMemoLock = Any()
+    private val jobMemo = mutableMapOf<String, String>()
+
+    private fun jobKey(packedId: String, formatId: Int) = "$packedId::$formatId"
+
+    fun memoizeJob(packedId: String, formatId: Int, jobId: String) {
+        synchronized(jobMemoLock) { jobMemo[jobKey(packedId, formatId)] = jobId }
+    }
+
+    fun jobOf(packedId: String, formatId: Int): String? =
+        synchronized(jobMemoLock) { jobMemo[jobKey(packedId, formatId)] }
+
+    fun forgetJob(packedId: String, formatId: Int) {
+        synchronized(jobMemoLock) { jobMemo.remove(jobKey(packedId, formatId)) }
+    }
 
     fun unpackId(packedId: String): Long? =
         packedId.removePrefix("qobuz:").toLongOrNull()

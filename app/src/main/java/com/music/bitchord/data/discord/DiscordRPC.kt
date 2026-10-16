@@ -62,8 +62,10 @@ class DiscordRPC(
         status: String = "online",
         button1Text: String = "",
         button1Visible: Boolean = true,
+        button1Url: String = "",
         button2Text: String = "",
         button2Visible: Boolean = true,
+        button2Url: String = "",
         activityType: String = "listening",
         activityName: String = "",
         audioQuality: String? = null,
@@ -84,18 +86,16 @@ class DiscordRPC(
 
         val buttonsList = mutableListOf<Pair<String, String>>()
         if (button1Visible) {
-            val resolvedText = resolveVariables(
-                button1Text.ifEmpty { DEFAULT_BUTTON_1 },
-                song,
+            val resolvedText = buttonLabel(
+                resolveVariables(button1Text.ifEmpty { DEFAULT_BUTTON_1 }, song),
             )
-            buttonsList.add(resolvedText to watchUrl(song))
+            buttonsList.add(resolvedText to buttonUrl(button1Url, watchUrl(song)))
         }
         if (button2Visible) {
-            val resolvedText = resolveVariables(
-                button2Text.ifEmpty { DEFAULT_BUTTON_2 },
-                song,
+            val resolvedText = buttonLabel(
+                resolveVariables(button2Text.ifEmpty { DEFAULT_BUTTON_2 }, song),
             )
-            buttonsList.add(resolvedText to PROJECT_URL)
+            buttonsList.add(resolvedText to buttonUrl(button2Url, PROJECT_URL))
         }
 
         val type = when (activityType) {
@@ -187,6 +187,34 @@ class DiscordRPC(
 
         fun watchUrl(song: Song): String =
             "https://music.youtube.com/watch?v=${song.videoId}"
+
+        /**
+         * Discord renders at most two buttons and silently drops the pair
+         * when one label breaks its rules — so an overlong custom label
+         * truncates here instead of taking the working button down with it.
+         */
+        const val MAX_BUTTON_LABEL = 32
+
+        fun buttonLabel(text: String): String =
+            if (text.length <= MAX_BUTTON_LABEL) text else text.take(MAX_BUTTON_LABEL)
+
+        /**
+         * A custom link wins when it is a usable https URL, with the scheme
+         * added when the listener typed a bare host. Anything else falls
+         * back to the default, because a button that opens nowhere is worse
+         * than the standard one.
+         */
+        fun buttonUrl(custom: String, default: String): String {
+            val trimmed = custom.trim()
+            if (trimmed.isEmpty()) return default
+            val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
+            return withScheme.takeIf {
+                runCatching {
+                    val url = java.net.URI(it)
+                    (url.scheme == "https" || url.scheme == "http") && !url.host.isNullOrBlank()
+                }.getOrDefault(false)
+            } ?: default
+        }
 
         /**
          * Resolves template variables in text.

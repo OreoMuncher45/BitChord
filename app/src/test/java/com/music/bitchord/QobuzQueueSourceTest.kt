@@ -28,13 +28,16 @@ class QobuzQueueSourceTest {
 
     private lateinit var server: MockWebServer
     private val routes = mutableMapOf<String, MockResponse>()
+    private val queuePosts = mutableListOf<RecordedRequest>()
 
     @Before
     fun setUp() {
         server = MockWebServer()
+        queuePosts.clear()
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.requestUrl?.encodedPath.orEmpty()
+                if (path == "/api/qobuz/queue") synchronized(queuePosts) { queuePosts += request }
                 return routes[path] ?: MockResponse().setResponseCode(404)
             }
         }
@@ -134,6 +137,45 @@ class QobuzQueueSourceTest {
         // Locked: no token, session resume challenged.
         route("/prepare", """{"error":"challenge_failed"}""", 403)
         assertNull(src.stream(trackId, StreamRequest.Lossless))
+    }
+
+    @Test
+    fun `slow conversion misses a bounded round then completes from the memo`() = runBlocking {
+        route("/api/qobuz/search", searchJson())
+        route("/api/qobuz/queue", """{"id":"slow1"}""")
+        route("/api/qobuz/jobs/slow1", """{"status":"queued"}""")
+        val src = unlocked()
+        src.roundBudgetMs = 4_000L
+        val trackId = SourceRegistry.parseTrackKey(
+            src.search("adele hello", limit = 5).single().videoId,
+        )?.second ?: error("no key")
+        // Round one: conversion still running. Must miss FAST — the old
+        // code hung the whole race on a 150s poll here.
+        val t0 = System.currentTimeMillis()
+        assertNull(src.stream(trackId, StreamRequest.Lossless))
+        val roundMs = System.currentTimeMillis() - t0
+        assertTrue("round took ${roundMs}ms", roundMs < 20_000L)
+        // The job is now done server-side. Round two must reuse the
+        // memoized job — exactly one queue POST across both rounds.
+        route(
+            "/api/qobuz/jobs/slow1",
+            """{"status":"done","file":"h.flac","pretty_name":"Adele - Hello.flac"}""",
+        )
+        val stream = src.stream(trackId, StreamRequest.Lossless)
+        assertNotNull(stream)
+        assertTrue(stream!!.url.contains("/qobuz/files/h.flac"))
+        assertEquals(1, queuePosts.size)
+    }
+
+    @Test
+    fun `health never writes the session back`() = runBlocking {
+        route("/prepare", """{"t":"tok2","sp":"sp-rotated"}""")
+        val src = unlocked()
+        val before = src.config.settings.toMap()
+        assertTrue(src.health() is SourceHealth.Ok)
+        // Read-only health: a probe that republished the config on every
+        // rotation kept the Sources screen re-probing in a loop.
+        assertEquals(before, src.config.settings)
     }
 
     @Test

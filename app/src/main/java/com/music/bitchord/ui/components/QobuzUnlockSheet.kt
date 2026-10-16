@@ -68,14 +68,18 @@ fun QobuzUnlockSheet(
     var webView by remember { mutableStateOf<WebView?>(null) }
     val context = LocalContext.current
     val currentOnUnlocked = rememberUpdatedState(onUnlocked)
-    // Silent first: most unlocks need no browser at all, and the sheet
-    // only becomes a browser when headless cannot pass. One attempt per
-    // opening; the throttle lives in the unlocker itself.
+    // Silent first, click-driver second, hands last: most unlocks need no
+    // browser at all; when headless cannot pass, the sheet drives the
+    // charts page itself (first Descargar, then a quality button) before
+    // asking the listener to tap anything. One attempt each per opening.
     LaunchedEffect(config.id) {
         when (val outcome = com.music.bitchord.data.qobuz.QobuzSilentUnlock.unlock(context)) {
             is com.music.bitchord.data.qobuz.QobuzSilentUnlock.Outcome.Unlocked ->
                 currentOnUnlocked.value(outcome.session.sp, outcome.session.token)
-            else -> status = UnlockStatus.Waiting
+            else -> {
+                status = UnlockStatus.AutoClicks
+                webView?.evaluateJavascript(CLICK_DRIVER, null)
+            }
         }
     }
 
@@ -97,6 +101,7 @@ fun QobuzUnlockSheet(
                 text = when (status) {
                     UnlockStatus.Waiting -> stringResource(R.string.qobuz_unlock_waiting)
                     UnlockStatus.Auto -> stringResource(R.string.qobuz_unlock_auto)
+                    UnlockStatus.AutoClicks -> stringResource(R.string.qobuz_unlock_auto_clicks)
                     UnlockStatus.Checking -> stringResource(R.string.qobuz_unlock_checking)
                     is UnlockStatus.Error -> (status as UnlockStatus.Error).message
                 },
@@ -142,14 +147,20 @@ fun QobuzUnlockSheet(
                             )
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
-                                    status = UnlockStatus.Checking
-                                    // The widget renders on load; give it a
-                                    // beat before reading the response.
-                                    postDelayed({ view?.evaluateJavascript(ritual(), null) }, 4000)
+                                    // The charts page is where a download (and
+                                    // its session) starts; the silent attempt
+                                    // runs headless in parallel, so landing
+                                    // here first costs nothing.
+                                    if (status == UnlockStatus.AutoClicks) {
+                                        postDelayed({ view?.evaluateJavascript(CLICK_DRIVER, null) }, 4000)
+                                    } else if (status != UnlockStatus.Auto) {
+                                        status = UnlockStatus.Checking
+                                        postDelayed({ view?.evaluateJavascript(ritual(), null) }, 4000)
+                                    }
                                 }
                             }
                             webView = this
-                            loadUrl("https://flacdownloader.com/")
+                            loadUrl("https://flacdownloader.com/top")
                         }
                     },
                 )
@@ -162,6 +173,7 @@ fun QobuzUnlockSheet(
 private sealed interface UnlockStatus {
     data object Waiting : UnlockStatus
     data object Auto : UnlockStatus
+    data object AutoClicks : UnlockStatus
     data object Checking : UnlockStatus
     data class Error(val message: String) : UnlockStatus
 }
@@ -192,6 +204,12 @@ private fun handleUnlockResult(
                 error == "token" -> "The site issued no token. Retry in a moment."
                 error.startsWith("challenge-timeout") ->
                     "The check timed out. Retry — it usually passes on the second attempt."
+                error == "no-descargar" ->
+                    "No download button found on the charts page — the site may have changed. Tap through yourself."
+                error == "no-quality" ->
+                    "No quality button appeared after opening the track. Tap a quality yourself, then retry."
+                error == "manual" ->
+                    "Automatic taps didn't mint a session. Tap a download yourself, then retry."
                 else -> "Unlock failed ($error). Retry."
             },
         ),
@@ -211,3 +229,54 @@ private const val BRIDGE = "QobuzUnlock"
 
 private fun ritual(): String =
     com.music.bitchord.data.qobuz.QobuzSilentUnlock.ritualJs(BRIDGE)
+
+/**
+ * Click-through fallback for when the silent ritual cannot pass: drives
+ * the charts page the way a listener would — first Descargar, then a
+ * quality button — then runs the session ritual and bridges the result.
+ * Text-matched in Spanish and English, bounded (~2 min), and always
+ * bridges something: a hang here would strand the sheet with no way out.
+ */
+private const val CLICK_DRIVER = """
+(function(){
+  function done(o){ QobuzUnlock.onResult(JSON.stringify(o)); }
+  function txt(el){ return ((el.innerText||el.textContent)||'').trim(); }
+  function findClick(rx){
+    var els = document.querySelectorAll('a,button,[role="button"]');
+    for (var i=0;i<els.length;i++){
+      var t = txt(els[i]);
+      if (t && rx.test(t) && els[i].offsetParent !== null) return els[i];
+    }
+    return null;
+  }
+  function waitFor(rx, ms){
+    return new Promise(function(res){
+      var t0 = Date.now();
+      var iv = setInterval(function(){
+        var el = null;
+        try { el = findClick(rx); } catch(e){}
+        if (el){ clearInterval(iv); res(el); }
+        else if (Date.now()-t0 > ms){ clearInterval(iv); res(null); }
+      }, 1000);
+    });
+  }
+  (async function(){
+    try {
+      var first = await waitFor(/descargar|download/i, 30000);
+      if (!first){ done({error:'no-descargar'}); return; }
+      first.click();
+      await new Promise(function(r){ setTimeout(r, 8000); });
+      var q = await waitFor(/flac|lossless|24-bit|16-bit|mp3|320|calidad|quality/i, 45000);
+      if (!q){ done({error:'no-quality'}); return; }
+      q.click();
+      await new Promise(function(r){ setTimeout(r, 10000); });
+      var sp=''; try{sp=localStorage.getItem('fd_sp')||'';}catch(e){}
+      if(sp){
+        var o=await fetch('/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sp:sp})});
+        if(o.ok){var l=await o.json(); if(l&&l.t){ done({t:l.t,sp:(l.sp||sp)}); return; } }
+      }
+      done({error:'manual'});
+    }catch(e){ done({error:String((e&&e.message)||e)}); }
+  })();
+})();
+"""

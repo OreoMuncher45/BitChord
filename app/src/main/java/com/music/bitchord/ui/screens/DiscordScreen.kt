@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -63,8 +64,12 @@ import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.components.AlertAction
+import com.music.bitchord.ui.components.AlertRule
+import com.music.bitchord.ui.components.AlertScaffold
 import com.music.bitchord.ui.components.ChoiceAlert
 import com.music.bitchord.ui.components.DiscordTokenAlert
+import com.music.bitchord.ui.components.PillTextField
 import com.music.bitchord.ui.components.TextValueAlert
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.my.kizzy.rpc.KizzyRPC
@@ -177,8 +182,10 @@ fun DiscordScreen(
     val activityName by AppSettings.discordActivityName.collectAsStateWithLifecycle()
     val button1Text by AppSettings.discordButton1Text.collectAsStateWithLifecycle()
     val button1Visible by AppSettings.discordButton1Visible.collectAsStateWithLifecycle()
+    val button1Url by AppSettings.discordButton1Url.collectAsStateWithLifecycle()
     val button2Text by AppSettings.discordButton2Text.collectAsStateWithLifecycle()
     val button2Visible by AppSettings.discordButton2Visible.collectAsStateWithLifecycle()
+    val button2Url by AppSettings.discordButton2Url.collectAsStateWithLifecycle()
     val infoDismissed by AppSettings.discordInfoDismissed.collectAsStateWithLifecycle()
     val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
 
@@ -361,7 +368,7 @@ fun DiscordScreen(
                     SettingsRow(
                         icon = Icons.Rounded.SmartButton,
                         title = stringResource(R.string.first_button),
-                        subtitle = button1Text.ifEmpty { DiscordRPC.DEFAULT_BUTTON_1 },
+                        subtitle = button1Url.ifBlank { null } ?: button1Text.ifEmpty { DiscordRPC.DEFAULT_BUTTON_1 },
                         trailing = {
                             Switch(
                                 checked = button1Visible,
@@ -378,7 +385,7 @@ fun DiscordScreen(
                     SettingsRow(
                         icon = Icons.Rounded.SmartButton,
                         title = stringResource(R.string.second_button),
-                        subtitle = button2Text.ifEmpty { DiscordRPC.DEFAULT_BUTTON_2 },
+                        subtitle = button2Url.ifBlank { null } ?: button2Text.ifEmpty { DiscordRPC.DEFAULT_BUTTON_2 },
                         trailing = {
                             Switch(
                                 checked = button2Visible,
@@ -409,8 +416,10 @@ fun DiscordScreen(
                 audioQuality = discordAudioQualityLine(nerdStats).takeIf { showAudioQuality },
                 button1Text = button1Text,
                 button1Visible = button1Visible,
+                button1Url = button1Url,
                 button2Text = button2Text,
                 button2Visible = button2Visible,
+                button2Url = button2Url,
             )
         }
 
@@ -578,8 +587,10 @@ private fun RichPresencePreview(
     audioQuality: String?,
     button1Text: String,
     button1Visible: Boolean,
+    button1Url: String,
     button2Text: String,
     button2Visible: Boolean,
+    button2Url: String,
 ) {
     val context = LocalContext.current
     val title = song?.title ?: stringResource(R.string.widget_preview_title)
@@ -659,7 +670,10 @@ private fun RichPresencePreview(
                 onClick = {
                     song?.let {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, DiscordRPC.watchUrl(it).toUri()),
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                DiscordRPC.buttonUrl(button1Url, DiscordRPC.watchUrl(it)).toUri(),
+                            ),
                         )
                     }
                 },
@@ -672,7 +686,10 @@ private fun RichPresencePreview(
                 enabled = true,
                 onClick = {
                     context.startActivity(
-                        Intent(Intent.ACTION_VIEW, DiscordRPC.PROJECT_URL.toUri()),
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            DiscordRPC.buttonUrl(button2Url, DiscordRPC.PROJECT_URL).toUri(),
+                        ),
                     )
                 },
             )
@@ -867,29 +884,89 @@ fun DiscordDialogHost(
         }
 
         DiscordDialog.BUTTON_1, DiscordDialog.BUTTON_2 -> {
-            val first = which == DiscordDialog.BUTTON_1
-            val flow = if (first) AppSettings.discordButton1Text else AppSettings.discordButton2Text
-            val current by flow.collectAsStateWithLifecycle()
-            var input by remember { mutableStateOf(current) }
-            TextValueAlert(
+            ButtonEditorAlert(
                 hazeState = hazeState,
-                title = if (first) stringResource(R.string.first_button)
-                else stringResource(R.string.second_button),
-                message = stringResource(R.string.discord_button_variables),
-                placeholder = if (first) DiscordRPC.DEFAULT_BUTTON_1 else DiscordRPC.DEFAULT_BUTTON_2,
-                value = input,
-                onValueChange = { input = it },
-                onSave = {
-                    if (first) {
-                        AppSettings.setDiscordButton1Text(input.trim())
-                    } else {
-                        AppSettings.setDiscordButton2Text(input.trim())
-                    }
-                    onDismiss()
-                },
+                first = which == DiscordDialog.BUTTON_1,
                 onDismiss = onDismiss,
             )
         }
+    }
+}
+
+/**
+ * Label + link editor for one presence button. Discord draws at most two
+ * buttons, so custom ones replace the defaults rather than adding a third:
+ * empty text keeps the default label, empty link keeps the default page.
+ */
+@Composable
+private fun ButtonEditorAlert(
+    hazeState: HazeState,
+    first: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val textFlow = if (first) AppSettings.discordButton1Text else AppSettings.discordButton2Text
+    val urlFlow = if (first) AppSettings.discordButton1Url else AppSettings.discordButton2Url
+    val currentText by textFlow.collectAsStateWithLifecycle()
+    val currentUrl by urlFlow.collectAsStateWithLifecycle()
+    var label by remember { mutableStateOf(currentText) }
+    var link by remember { mutableStateOf(currentUrl) }
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = if (first) stringResource(R.string.first_button)
+                else stringResource(R.string.second_button),
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(R.string.discord_button_variables),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            PillTextField(
+                value = label,
+                onValueChange = { label = it },
+                placeholder = if (first) DiscordRPC.DEFAULT_BUTTON_1 else DiscordRPC.DEFAULT_BUTTON_2,
+            )
+            Spacer(Modifier.height(10.dp))
+            PillTextField(
+                value = link,
+                onValueChange = { link = it },
+                placeholder = stringResource(R.string.discord_button_link_placeholder),
+            )
+            Text(
+                text = stringResource(R.string.discord_button_link),
+                modifier = Modifier.padding(top = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.save),
+            emphasised = true,
+            onClick = {
+                if (first) {
+                    AppSettings.setDiscordButton1Text(label.trim())
+                    AppSettings.setDiscordButton1Url(link.trim())
+                } else {
+                    AppSettings.setDiscordButton2Text(label.trim())
+                    AppSettings.setDiscordButton2Url(link.trim())
+                }
+                onDismiss()
+            },
+        )
+        AlertRule()
+        AlertAction(label = stringResource(R.string.cancel), emphasised = false, onClick = onDismiss)
     }
 }
 

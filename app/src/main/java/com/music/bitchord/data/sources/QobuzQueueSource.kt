@@ -34,36 +34,53 @@ class QobuzQueueSource(
     override val kind: SourceKind get() = SourceKind.QOBUZ
     override val displayName: String get() = config.label.ifBlank { SourceKind.QOBUZ.label }
 
+    /**
+     * Budget for one stream() round, shared across format attempts.
+     * Mutable for tests; production value keeps a slow conversion from
+     * stalling the upgrade race past half a minute.
+     */
+    internal var roundBudgetMs = 30_000L
+
     companion object {
         const val SP_KEY = "qobuz_sp"
         const val TOKEN_KEY = "qobuz_token"
 
         /** Provenance label, shown in stats-for-nerds. */
         const val BACKEND_QUEUE = "Qobuz conversion"
-
-        /** Shared poll budget across format attempts — a job, not a URL. */
-        private const val POLL_BUDGET_MS = 150_000L
     }
 
     private fun sp(): String = config.settings[SP_KEY].orEmpty()
     private fun token(): String = config.settings[TOKEN_KEY].orEmpty()
 
+    /**
+     * Writes a rotated session back to the config — only when something
+     * actually changed. An unconditional write republishes the config list
+     * on every stream, and the Sources screen re-probes on every publish,
+     * which is how one playing track kept every addon manifest churning.
+     */
     private fun persistSession(sp: String?, token: String?) {
-        if (sp.isNullOrBlank() && token.isNullOrBlank()) return
         val next = config.settings.toMutableMap()
-        if (!sp.isNullOrBlank()) next[SP_KEY] = sp
-        if (!token.isNullOrBlank()) next[TOKEN_KEY] = token
-        runCatching { SourceRegistry.update(config.copy(settings = next)) }
+        var changed = false
+        if (!sp.isNullOrBlank() && next[SP_KEY] != sp) {
+            next[SP_KEY] = sp
+            changed = true
+        }
+        if (!token.isNullOrBlank() && next[TOKEN_KEY] != token) {
+            next[TOKEN_KEY] = token
+            changed = true
+        }
+        if (changed) runCatching { SourceRegistry.update(config.copy(settings = next)) }
     }
 
     override suspend fun health(): SourceHealth {
         if (sp().isBlank()) return SourceHealth.Rejected("Tap to unlock — one browser check, then it stays")
+        // Read-only: persisting here republished the config on every probe,
+        // and the probe reruns on every publish. Rotation is recorded on
+        // successful streams instead, where it is earned.
         return try {
             when (val verdict = QobuzQueueApi.prepare(sp())) {
-                is QobuzQueueApi.TokenOutcome.Ready -> {
-                    persistSession(verdict.sp, verdict.token)
+                is QobuzQueueApi.TokenOutcome.Ready ->
                     SourceHealth.Ok("Unlocked")
-                }
                 QobuzQueueApi.TokenOutcome.Challenge ->
                     SourceHealth.Rejected("Unlock expired — tap to renew")
                 is QobuzQueueApi.TokenOutcome.Failed ->
@@ -140,10 +157,16 @@ class QobuzQueueSource(
             is StreamRequest.Best -> listOf(QobuzQueueApi.FORMAT_MP3_320)
         }
         var token = token().ifBlank { null }
-        val deadline = System.currentTimeMillis() + POLL_BUDGET_MS
+        // One round budget shared across formats: a conversion is a job
+        // that routinely outlives any single race, so a round that waits
+        // for it holds the whole upgrade hostage. Time out fast, memo the
+        // job, and let the next round re-poll the same job to completion.
+        val deadline = System.currentTimeMillis() + roundBudgetMs
         for (formatId in formats) {
             if (System.currentTimeMillis() >= deadline) break
-            var attempt = tryQueue(track, formatId, token)
+            var attempt = QobuzQueueApi.jobOf(packed, formatId)?.let {
+                QobuzQueueApi.QueueOutcome.Job(it)
+            } ?: tryQueue(trackId, track, formatId, token)
             if (attempt is QobuzQueueApi.QueueOutcome.TokenDead || (attempt == null && token != null)) {
                 // One resume and one retry: a rotated session mints a fresh
                 // token without the browser. Anything beyond that is the
@@ -152,15 +175,17 @@ class QobuzQueueSource(
                     noteUnlock()
                     return null
                 }
-                attempt = tryQueue(track, formatId, token)
+                attempt = tryQueue(trackId, track, formatId, token)
             }
             when (attempt) {
                 is QobuzQueueApi.QueueOutcome.Job -> {
+                    QobuzQueueApi.memoizeJob(packed, formatId, attempt.jobId)
                     val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
                     when (val job = QobuzQueueApi.pollJob(attempt.jobId, formatId, budgetMs = remaining)) {
                         is QobuzQueueApi.JobOutcome.Done -> {
+                            QobuzQueueApi.forgetJob(packed, formatId)
                             val file = job.file
-                            TrackLog.d(TAG, "  ✓ qobuz ${file.container} ${file.url.take(96)}")
+                            TrackLog.d(TAG, "  ✓ qobuz ${file.container} ${file.url.take(96)}", about = trackId)
                             return SourceStream(
                                 url = file.url,
                                 format = StreamFormat(
@@ -176,18 +201,19 @@ class QobuzQueueSource(
                             )
                         }
                         is QobuzQueueApi.JobOutcome.Failed -> {
-                            TrackLog.d(TAG, "  ✗ qobuz job failed: ${job.reason}")
+                            QobuzQueueApi.forgetJob(packed, formatId)
+                            TrackLog.d(TAG, "  ✗ qobuz job failed: ${job.reason}", about = trackId)
                             continue
                         }
                         QobuzQueueApi.JobOutcome.Timeout -> {
-                            TrackLog.d(TAG, "  ✗ qobuz job timed out ($formatId)")
+                            TrackLog.d(TAG, "  ✗ qobuz job timed out ($formatId)", about = trackId)
                             continue
                         }
                     }
                 }
                 QobuzQueueApi.QueueOutcome.ConverterDown -> {
                     NerdStats.noteRefusal(QobuzQueueApi.BASE_HOST, "converter down")
-                    TrackLog.d(TAG, "  ✗ qobuz converter down")
+                    TrackLog.d(TAG, "  ✗ qobuz converter down", about = trackId)
                     return null
                 }
                 QobuzQueueApi.QueueOutcome.TokenDead -> {
@@ -195,7 +221,7 @@ class QobuzQueueSource(
                     return null
                 }
                 is QobuzQueueApi.QueueOutcome.Failed -> {
-                    TrackLog.d(TAG, "  ✗ qobuz queue failed: ${attempt.reason}")
+                    TrackLog.d(TAG, "  ✗ qobuz queue failed: ${attempt.reason}", about = trackId)
                     continue
                 }
                 null -> continue
@@ -205,6 +231,7 @@ class QobuzQueueSource(
     }
 
     private suspend fun tryQueue(
+        trackId: String,
         track: QobuzQueueApi.QobuzTrack,
         formatId: Int,
         token: String?,
@@ -213,7 +240,7 @@ class QobuzQueueSource(
         return try {
             QobuzQueueApi.queue(track, formatId, token)
         } catch (e: Exception) {
-            TrackLog.d(TAG, "  ✗ qobuz queue threw: ${e.message}")
+            TrackLog.d(TAG, "  ✗ qobuz queue threw: ${e.message}", about = trackId)
             null
         }
     }
