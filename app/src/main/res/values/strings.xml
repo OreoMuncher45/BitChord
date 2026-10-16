@@ -1177,6 +1177,14 @@
     <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
     <string name="qobuz_unlock_checking">Running the browser check…</string>
     <string name="qobuz_unlock_retry">Try again</string>
+    <string name="support">Support</string>
+    <string name="support_popup_title">BitChord Next is free</string>
+    <string name="support_popup_body">Built on BitChord by kushagra — credit for the app goes to him. This fork adds Flow, Classipod, lossless addons and more, and is maintained by OreoMuncher45. Donations keep the project alive:</string>
+    <string name="support_kushagra_kofi">Tip kushagra on Ko-fi</string>
+    <string name="support_kushagra_subtitle">The author of BitChord, which this app is built on</string>
+    <string name="support_donate_subtitle">Tap an address to copy it</string>
+    <string name="copy_address">Copy address</string>
+    <string name="address_copied">Address copied</string>
     <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 
     <!-- Octave (account key, free lossless) -->

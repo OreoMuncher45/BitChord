@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.FilterAlt
@@ -127,7 +128,9 @@ import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import com.music.bitchord.ui.components.isGlassSupported
 import com.music.bitchord.ui.components.languageDisplayNameRes
+import com.music.bitchord.ui.components.DonationRow
 import com.music.bitchord.ui.components.MessageState
+import com.music.bitchord.ui.components.SupportDonations
 import com.music.bitchord.ui.components.SearchField
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.icons.BitChordIcons
@@ -1423,6 +1426,30 @@ fun SettingsScreen(
         // what makes this an accurate "nothing here" rather than a guess.
         if (!search.anyMatch) {
             MessageState(stringResource(R.string.settings_search_empty, searchQuery))
+        }
+
+        SearchableSettingsGroup(search, header = stringResource(R.string.support)) {
+            row("donate", "donation", "crypto", "support", "tip", "money") {
+                SettingsRow(
+                    icon = Icons.Rounded.Favorite,
+                    title = stringResource(R.string.support),
+                    subtitle = stringResource(R.string.support_donate_subtitle),
+                    onClick = null,
+                )
+            }
+            SupportDonations.rails.forEach { rail ->
+                row(rail.label, "donate", "donation", "crypto", "address", "copy") {
+                    DonationRow(rail)
+                }
+            }
+            row("ko-fi", "kofi", "kushagra", "donate", "upstream", "author") {
+                SettingsRow(
+                    icon = Icons.Rounded.Favorite,
+                    title = stringResource(R.string.support_kushagra_kofi),
+                    subtitle = stringResource(R.string.support_kushagra_subtitle),
+                    onClick = { SupportDonations.openKoFi(context) },
+                )
+            }
         }
 
         // The version line is the page's colophon, not a setting: it belongs to

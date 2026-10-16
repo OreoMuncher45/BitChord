@@ -711,6 +711,13 @@ private fun BitChordApp(
     // doesn't bring it back — only a fresh launch does.
     var updateDialogShown by rememberSaveable { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    // Free-app credit popup: once ever, reopenable from Settings → Support.
+    var showSupportPopup by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!com.music.bitchord.ui.components.SupportDonations.isSeen(context)) {
+            showSupportPopup = true
+        }
+    }
     val updateAvailable by viewModel.updateAvailable.collectAsStateWithLifecycle()
 
     /**
@@ -5069,6 +5076,16 @@ private fun BitChordApp(
                     )
                 }
             }
+        }
+
+        // ---- Support popup (once ever) ----
+        if (showSupportPopup) {
+            com.music.bitchord.ui.components.SupportPopup(
+                onDismiss = {
+                    com.music.bitchord.ui.components.SupportDonations.markSeen(context)
+                    showSupportPopup = false
+                },
+            )
         }
 
         // ---- Update available (once per launch) ----
