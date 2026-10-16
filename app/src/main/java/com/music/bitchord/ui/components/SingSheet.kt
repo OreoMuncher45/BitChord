@@ -33,8 +33,8 @@ import kotlin.math.roundToInt
  * right now.
  *
  * Dragging it down pulls the center-mixed lead vocal out of the mix via
- * [com.music.bitchord.playback.VocalCutProcessor] — the classic center-cut
- * karaoke trick, live in ExoPlayer's pipeline. Backing vocals mixed off
+ * [com.music.bitchord.playback.VocalCutProcessor] — a band-limited cut that
+ * spares bass, air and drum transients, live in ExoPlayer's pipeline. Backing vocals mixed off
  * center survive longer than the lead, which is what makes a mid-slider
  * position read as a duet rather than as everything getting quieter.
  */

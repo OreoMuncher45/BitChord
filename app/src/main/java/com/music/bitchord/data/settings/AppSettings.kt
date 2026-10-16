@@ -315,8 +315,8 @@ object AppSettings {
 
     /**
      * Apple Music Sing equivalent: how much of the center-mixed lead vocal to
-     * remove, 0..1. 0 is off (bit-exact passthrough); 1 is a full center-cut
-     * karaoke mix. Applied inside ExoPlayer's pipeline by
+     * remove, 0..1. 0 is off (bit-exact passthrough); 1 is a full
+     * band-limited vocal cut. Applied inside ExoPlayer's pipeline by
      * [com.music.bitchord.playback.VocalCutProcessor], first in the chain so
      * the widening, EQ and levelling stages shape what's left rather than
      * fighting the removal.
