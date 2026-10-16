@@ -88,6 +88,7 @@ import com.music.bitchord.playback.StreamChoice
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.matchesSearch
 import com.music.bitchord.data.flow.FlowStore
+import com.music.bitchord.data.liked.LikedCache
 import com.music.bitchord.data.flow.FlowConfig
 import com.music.bitchord.data.flow.FlowMood
 import com.music.bitchord.data.flow.FlowRules
@@ -647,6 +648,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // Liked Music is now out of date either way.
                     libraryStale = true
                     if (status != LikeStatus.LIKE) dropFromLikedLists(videoId)
+                    else prependLikedRow()
                     // Clearing the heart means forgetting the song, not
                     // demoting it — see [forgetFromLibrary].
                     val unliked = previous == LikeStatus.LIKE &&
@@ -700,6 +702,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * into a list that YouTube orders for itself; the next fetch places it.
      */
     private fun dropFromLikedLists(videoId: String) {
+        LikedCache.drop(listenerKey(), videoId)
         val library = (_library.value as? UiState.Success)?.data
         if (library != null && library.likedSongs.any { it.videoId == videoId }) {
             _library.value = UiState.Success(
@@ -713,6 +716,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 page.copy(songs = UiState.Success(songs.filterNot { it.videoId == videoId }))
             }
+        }
+    }
+
+    /**
+     * A fresh like lands on top without a refetch: one first-page read,
+     * merged into the cache, the open Liked page and the library list.
+     * Next library load would place it anyway; this just skips the wait.
+     */
+    private suspend fun prependLikedRow() {
+        val fresh = YtMusicRepository.browseSongs(YtMusicRepository.LIKED_MUSIC)
+            .getOrNull()?.songs.orEmpty()
+        if (fresh.isEmpty()) return
+        LikedCache.mergeTop(listenerKey(), fresh)
+        _detailStack.value = _detailStack.value.map { page ->
+            if (page.browseId != YtMusicRepository.LIKED_MUSIC) return@map page
+            val songs = (page.songs as? UiState.Success)?.data.orEmpty()
+            val known = songs.mapTo(HashSet()) { it.videoId }
+            page.copy(songs = UiState.Success(fresh.filter { known.add(it.videoId) } + songs))
+        }
+        val library = (_library.value as? UiState.Success)?.data ?: return
+        val knownLib = library.likedSongs.mapTo(HashSet()) { it.videoId }
+        val top = fresh.filter { knownLib.add(it.videoId) }
+        if (top.isNotEmpty()) {
+            _library.value = UiState.Success(library.copy(likedSongs = top + library.likedSongs))
         }
     }
 
@@ -1740,12 +1767,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun fetchLibrary(identity: String?) {
+        // Hearts before bytes: the persistent liked list seeds LikeState
+        // instantly, so nothing waits on the network to read as liked.
+        identity?.let { id ->
+            LikedCache.read(id)?.let { cached ->
+                LikeState.seedLiked(cached.mapTo(HashSet()) { it.videoId })
+            }
+        }
         val next = YtMusicRepository.library().fold(
             onSuccess = { page ->
                 // Liked Music is published with just its first page on the tab;
                 // the rest of the collection is synced into LikeState here, in
                 // this ViewModel's scope, so it is cancelled with the screen and
                 // a liked track past the first page still reads as liked.
+                // The cache takes the first page now; the walk below appends
+                // the rest as it lands, so a force-stop never loses the list.
+                identity?.let { id -> LikedCache.write(id, page.likedSongs) }
                 page.likedContinuation?.let { token -> syncLikedMusic(identity, token) }
                 if (page.isEmpty) UiState.Error(text(R.string.library_empty))
                 else UiState.Success(page.copy(likedContinuation = null))
@@ -1772,7 +1809,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         likedSyncJob?.cancel()
         likedSyncJob = viewModelScope.launch {
             YtMusicRepository.syncLikedMusic(token) { next ->
-                if (identity != listenerKey()) null else YtMusicRepository.moreSongs(next).getOrNull()
+                if (identity != listenerKey()) {
+                    null
+                } else {
+                    YtMusicRepository.moreSongs(next).getOrNull()?.also { page ->
+                        identity?.let { id -> LikedCache.mergeBottom(id, page.songs) }
+                    }
+                }
             }
         }
     }
@@ -2554,6 +2597,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 else -> {
+                    // Liked paints from its persistent cache instantly — a
+                    // 1,600-track walk costs a minute of continuations, the
+                    // snapshot is free. The fetch below replaces it.
+                    if (browseId == YtMusicRepository.LIKED_MUSIC) {
+                        LikedCache.read(listenerKey())?.takeIf { it.isNotEmpty() }?.let { cached ->
+                            _detailStack.value = _detailStack.value.map {
+                                if (it.browseId == browseId && it.songs is UiState.Loading) {
+                                    it.copy(songs = UiState.Success(cached))
+                                } else it
+                            }
+                        }
+                    }
                     YtMusicRepository.browseSongs(browseId).fold(
                         onSuccess = { page ->
                             // Free here — the page that returned these rows is
@@ -2819,6 +2874,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val added = fetched.songs
                     .filter { known.add(it.videoId) }
                     .withArtwork(artworkFallback)
+                if (browseId == YtMusicRepository.LIKED_MUSIC && added.isNotEmpty()) {
+                    LikedCache.mergeBottom(listenerKey(), added)
+                }
                 // Suggestions can arrive on a later page than the real
                 // tracks, once the playlist's own continuation runs dry —
                 // see parsePlaylistShelf — so they're tracked separately

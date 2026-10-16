@@ -1479,18 +1479,6 @@ internal fun resolvedDownloadDates(
     return (persistedAddedSeconds ?: modifiedSeconds) to modifiedSeconds
 }
 
-/**
- * Whether a recorded download badge names a lossless file. Dolby is premium
- * but not bit-exact, so it stays on disk: substituting stereo FLAC for an
- * Atmos mix would change the music, not just the quality. Null (unknown)
- * also keeps the file — "I could not tell" is not "it is lossy".
- */
-internal fun isLosslessDownload(badge: String?): Boolean =
-    badge?.let { b ->
-        !b.contains("dolby", ignoreCase = true) &&
-            listOf("flac", "alac", "wav", "aiff", "ape", "wv", "dsf", "dff", "lossless")
-                .any { b.contains(it, ignoreCase = true) }
-    } == true
 
 /** Premium source labels used in BitChord's Downloads list. */
 private fun StreamFormat.downloadBadge(): String? = when {

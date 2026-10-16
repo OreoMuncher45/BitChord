@@ -31,11 +31,8 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.SourceRegistry
-import com.music.bitchord.data.sources.SourceResolver
-import com.music.bitchord.data.sources.StreamRequest
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.download.Downloads
-import com.music.bitchord.download.isLosslessDownload
 import com.music.bitchord.ui.rememberIsForeground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -554,26 +551,15 @@ private fun Song.matchQuery(): String = buildString {
 
 /**
  * Whether a downloaded track plays as a stream even though its file is on
- * disk: the network is up and the file is not already everything the
- * settings ask for.
- *
- * A lossless file under a lossless ceiling stays a file — re-fetching it
- * spends data to stand still. Everything else streams: a lossy download
- * under any ceiling, and any download whose badge is unknown, because "I
- * could not tell" is not "it already matches". Offline always keeps the
- * file; it is the only thing that can play.
+ * disk: the network is up, full stop. Local files rank last — FLAC sources
+ * first, YouTube next, the disk only when nothing else can play (offline,
+ * or a failed stream falling back). Offline always keeps the file; it is
+ * the only thing that can play.
  */
-internal fun shouldPreferStream(online: Boolean, losslessCeiling: Boolean, savedBadge: String?): Boolean {
-    if (!online) return false
-    if (losslessCeiling && isLosslessDownload(savedBadge)) return false
-    return true
-}
+internal fun shouldPreferStream(online: Boolean): Boolean = online
 
-private fun shouldPreferStream(videoId: String): Boolean = shouldPreferStream(
-    online = AppSettings.meteredConnection.value != null,
-    losslessCeiling = SourceResolver.requestForNow() is StreamRequest.Lossless,
-    savedBadge = Downloads.savedFormat(videoId),
-)
+private fun shouldPreferStream(videoId: String): Boolean =
+    shouldPreferStream(online = AppSettings.meteredConnection.value != null)
 
 fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)

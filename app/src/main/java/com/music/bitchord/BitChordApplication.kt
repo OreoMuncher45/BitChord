@@ -13,6 +13,7 @@ import coil3.request.crossfade
 import com.music.bitchord.auth.AuthStore
 import com.music.bitchord.data.DebugLog
 import com.music.bitchord.data.flow.FlowStore
+import com.music.bitchord.data.liked.LikedCache
 import com.music.bitchord.data.lyrics.LyricsTranslation
 import androidx.appcompat.app.AppCompatDelegate
 import com.music.bitchord.ui.player.AndroidPlayerHost
@@ -128,6 +129,8 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // "Flow deletes on restart" bug: every save and restore silently
         // no-ops until prefs are opened, and nothing opened them.
         FlowStore.init(this)
+        // The Liked list's persistent rows — painted before any fetch.
+        LikedCache.init(this)
         // The device's own listening record. Opened here rather than in
         // PlaybackService because the Replay page reads it from the UI side and
         // both live in this process — one owner, one directory.

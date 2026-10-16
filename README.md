@@ -60,10 +60,12 @@ Everything upstream BitChord ships — search, playback, downloads, lyrics, Disc
 
 Extra sources under Sources, each with health checks and honest failure states:
 
-- **BitChord NEXT** — Tidal Hi-Fi FLAC via community instances with automatic failover and daily list refresh.
+- **BitChord NEXT** — genuine Hi-Fi FLAC via community instances with automatic failover and daily list refresh.
 - **BitChord Hi-Res** — direct measured FLAC files, no converter, no account, no waiting.
-- **BitChord Qobuz** — Qobuz catalogue search plus queued FLAC conversions up to 24/192. One in-app-browser unlock mints a resuming session; the row tells you when it needs renewing or the converter is down.
+- **BitChord Qobuz** — catalogue search plus queued FLAC conversions up to 24/192. One in-app-browser unlock mints a resuming session; the row tells you when it needs renewing or the converter is down.
 - Stream refusals report themselves on the Sources rows instead of failing silently.
+
+> **Why no provider names?** The backends behind these addons are volunteers' servers and free tiers. Naming them draws traffic, and traffic gets things rate-limited or shut down — so the app shows only its own addon names. Nothing is hidden from you technically: every endpoint, ritual and fallback lives in the source, in plain sight, for anyone who knows where to look.
 
 </div>
 
@@ -108,8 +110,6 @@ u1z9k30yyvy63f5w0jypt02kvvw6dcpcgprlhzmsgc57mw6qc8rtuc5tfd9ny4atqhr448udexhkuc8x
 ```
 
 </details>
-
-> **Why crypto only?** GitHub Sponsors doesn't pay out in Pakistan, and most conventional payment processors won't either — crypto is just what works.
 
 The upstream author takes tips on [Ko-fi](https://ko-fi.com/kushagrasinghx) — without his BitChord, none of this exists.
 
