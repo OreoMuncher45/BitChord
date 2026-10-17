@@ -2,6 +2,7 @@ package com.music.bitchord.data.settings
 
 import com.music.bitchord.data.webdav.update
 import android.content.Context
+import android.os.SystemClock
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
@@ -15,6 +16,8 @@ import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 
 /**
@@ -751,6 +754,22 @@ object AppSettings {
      */
     val smartTransitionWindow = MutableStateFlow<TransitionWindow?>(null)
 
+    /**
+     * Whether a stream can be started right now.
+     *
+     * Starts `true` and is only taken down after [NETWORK_LOST_GRACE_MS] with
+     * no network, because the question it answers is *which copy of a track to
+     * play*, and the two failure modes are not symmetric. Streaming when the
+     * network is actually gone is recoverable — the player's stream fallback
+     * swaps in the downloaded file and playback carries on. Playing a stale
+     * local copy when the network was there is not recoverable and is not even
+     * visible: it just sounds like the quality upgrade that never happened.
+     */
+    /** How long a network may be gone before the player stops streaming. */
+    private const val NETWORK_LOST_GRACE_MS = 750L
+    private val streamingAvailableFlow = MutableStateFlow(true)
+    val streamingAvailable: StateFlow<Boolean> = streamingAvailableFlow.asStateFlow()
+
     /** The ceiling that applies to a stream started right now. */
     val effectiveAudioQuality: AudioQuality
         get() = if (meteredConnection.value == true) {
@@ -1047,7 +1066,23 @@ object AppSettings {
      */
     private fun watchConnection(context: Context) {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+        var lostAt = 0L
         val refresh = {
+            val up = runCatching { manager.activeNetwork != null }.getOrDefault(false)
+            // Believed immediately when a network is there, and only after a
+            // grace period when one has gone. `activeNetwork` is null for a
+            // moment on every handover, and the player reads this to decide
+            // between a downloaded file and a stream — a verdict that flickers
+            // for 200ms mid-switch is how one queue came out as files and the
+            // next as streams.
+            if (up) {
+                lostAt = 0L
+                streamingAvailableFlow.value = true
+            } else {
+                if (lostAt == 0L) lostAt = SystemClock.elapsedRealtime()
+                streamingAvailableFlow.value =
+                    SystemClock.elapsedRealtime() - lostAt >= NETWORK_LOST_GRACE_MS
+            }
             meteredConnection.value = runCatching {
                 if (manager.activeNetwork == null) null else manager.isActiveNetworkMetered
             }.getOrNull()

@@ -18,24 +18,25 @@ import org.junit.Test
 class StreamPreferenceTest {
 
     @Test
-    fun `a downloaded file plays, with or without a network`() {
-        assertTrue(shouldPlayLocalFile(hasLocalFile = true))
+    fun `with a network up, the file is not what plays`() {
+        assertFalse(shouldPlayLocalFile(hasLocalFile = true, canStream = true))
     }
 
     @Test
-    fun `no file means no local playback, whatever the network is doing`() {
-        assertFalse(shouldPlayLocalFile(hasLocalFile = false))
+    fun `with no network, the file is all there is`() {
+        assertTrue(shouldPlayLocalFile(hasLocalFile = true, canStream = false))
     }
 
     @Test
-    fun `connectivity is not an input to the decision`() {
-        // The old signature took `online` and ignored connectivity exactly once
-        // — at the call site, where it read a value that starts null and flaps.
-        // Asserting the call shape keeps a `meteredConnection` read from being
-        // reintroduced here, where it cannot be reasoned about.
-        val calls = buildList {
-            repeat(3) { add(shouldPlayLocalFile(hasLocalFile = true)) }
-        }
-        assertTrue(calls.all { it })
+    fun `no file means no local playback either way`() {
+        assertFalse(shouldPlayLocalFile(hasLocalFile = false, canStream = true))
+        assertFalse(shouldPlayLocalFile(hasLocalFile = false, canStream = false))
+    }
+
+    @Test
+    fun `a stream that failed can still be handed the file`() {
+        // The fallback rebuilds the item after a stream has already failed. It
+        // must not be possible for that rebuild to come back as a stream again.
+        assertTrue(shouldPlayLocalFile(hasLocalFile = true, canStream = false))
     }
 }

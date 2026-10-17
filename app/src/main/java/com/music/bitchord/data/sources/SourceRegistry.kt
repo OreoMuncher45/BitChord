@@ -69,6 +69,24 @@ data class SourceConfig(
     val awaitsLosslessOutput: Boolean
         get() = checkValidLossless && !LosslessOutput.capable
 
+    /**
+     * Why [awaitsLosslessOutput] is a notice and not an exclusion.
+     *
+     * This used to keep a lossless addon out of the walk entirely while the
+     * connected output could not carry lossless — a Bluetooth codec, usually.
+     * The listener's ceiling is a *preference about the stream*, and the
+     * device is a fact about the *output*; Android re-encodes on the way out
+     * either way. So the addon went silent, YouTube became the only source in
+     * the list, and `canSubstituteForYouTube` correctly reported that there
+     * was nothing better to ask — which is the whole of "it never upgrades
+     * when I'm on headphones". The setting said lossless, an addon that can
+     * serve lossless was turned on, and it was never asked.
+     *
+     * The sources screen still shows this state, now as the explanation it is.
+     */
+    val losslessOutputMissing: Boolean
+        get() = awaitsLosslessOutput
+
     /** The two manifest switches, without the parts of the config the user set. */
     internal fun withPolicyOf(other: SourceConfig) =
         copy(allowDownloads = other.allowDownloads, checkValidLossless = other.checkValidLossless)
@@ -227,10 +245,6 @@ object SourceRegistry {
      */
     fun active(): List<MusicSource> =
         enabledConfigs(configs.value)
-            // Not in the walk at all while it would be refused anyway: an addon
-            // that asked for a lossless output costs nothing — not even a timed
-            // out search — while there isn't one. See [SourceConfig.checkValidLossless].
-            .filterNot { it.awaitsLosslessOutput }
             .sortedBy { it.kind.rank }
             .mapNotNull { instances[it.id] }
 

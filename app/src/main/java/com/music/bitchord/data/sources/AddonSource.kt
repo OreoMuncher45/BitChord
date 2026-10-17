@@ -67,20 +67,26 @@ class AddonSource(
     private val live: SourceConfig get() = SourceRegistry.config(config.id) ?: config
 
     /**
-     * True while this addon asked for a lossless output (`checkValidLossless`)
-     * and none is connected. Checked before every request this class makes —
-     * [SourceRegistry.active] already leaves the addon out of the walks, but a
-     * queued track names its source directly and arrives here regardless.
+     * Whether this addon can answer at all.
+     *
+     * It used to also refuse while `checkValidLossless` was set and the
+     * connected output could not carry lossless. That made a turned-on lossless
+     * addon unreachable on any Bluetooth device, leaving YouTube as the only
+     * source in the walk — see [SourceConfig.losslessOutputMissing] for why that
+     * is the wrong trade. It is asked regardless now, and the output device
+     * does what it does with the bytes.
+     *
+     * Disabled addons are still refused, which is what this has to be for.
      */
     private fun shutOut(what: String): Boolean {
-        if (!live.awaitsLosslessOutput) return false
-        TrackLog.d(TAG, "${config.displayName}: no lossless output connected; not asking it for $what")
+        if (live.enabled) return false
+        TrackLog.d(TAG, "${config.displayName}: switched off; not asking it for $what")
         return true
     }
 
     /**
      * [shutOut], then the manifest's current answer, then [shutOut] again — so
-     * an addon that has just turned the switch on is stopped before the request
+     * an addon that has just been switched off is stopped before the request
      * rather than after it. The manifest is the client's shared, cached copy,
      * which the request was about to read for its settings anyway.
      */

@@ -91,3 +91,44 @@ class AddonPolicyTest {
         assertEquals(LosslessOutput.State(), LosslessOutput.decide(setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER), null))
     }
 }
+
+/**
+ * The output device must not decide which sources exist.
+ *
+ * `checkValidLossless` used to remove a lossless addon from
+ * [com.music.bitchord.data.sources.SourceRegistry.active] outright whenever the
+ * connected output could not carry lossless. On any Bluetooth device that is
+ * every device but the wired ones, so a turned-on lossless addon went silent,
+ * YouTube became the only source in the walk, and
+ * [com.music.bitchord.data.sources.SourceResolver.canSubstituteForYouTube]
+ * correctly reported there was nothing better to ask.
+ *
+ * That is the whole of "it never upgrades when I'm on headphones": the setting
+ * said lossless, a source that could serve lossless was switched on, and it
+ * was never asked. The listener's ceiling is a preference about the stream; the
+ * codec is a fact about the output, and Android re-encodes on the way out
+ * either way.
+ */
+class LosslessOutputDoesNotShunAddonsTest {
+
+    @Test
+    fun `a bluetooth codec is still reported as not carrying lossless`() {
+        // The fact itself stays true and is still shown: what must not happen is
+        // the fact removing the source from the walk.
+        val state = LosslessOutput.decide(
+            setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
+            "AAC",
+        )
+        assertFalse(state.capable)
+        assertEquals("AAC", state.bluetoothCodec)
+    }
+
+    @Test
+    fun `a cable keeps qualifying, so the two states are distinguishable`() {
+        val wired = LosslessOutput.decide(
+            setOf(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
+            "SBC",
+        )
+        assertTrue(wired.capable)
+    }
+}

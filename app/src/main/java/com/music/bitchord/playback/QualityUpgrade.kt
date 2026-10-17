@@ -277,9 +277,19 @@ object QualityUpgrade {
      * entry and the settings; nothing here touches the network.
      */
     fun couldStillUpgrade(mediaId: String, uri: Uri?): Boolean {
-        if (uri == null || uri.getQueryParameter("v") == null ||
-            uri.getQueryParameter("m") == "1"
-        ) return false
+        if (uri == null || uri.getQueryParameter("m") == "1") return false
+        // A file on the device is final. There is nothing better than the copy
+        // the user already has, and no amount of looking will change it — which
+        // is why this used to be decided earlier and further away, in
+        // [PlayerConnection.shouldPlayLocalFile], where a downloaded track was
+        // routed to its file before it could ever be asked. With streaming
+        // preferred while a network is up, the case arrives here instead, and
+        // it is decided on the scheme rather than on the presence of a `v`
+        // parameter: an addon hands back a plain https url with no `v` in it,
+        // so requiring one meant a track served by an addon could never be
+        // looked at again — the better copy was available and permanently
+        // ineligible.
+        if (uri.scheme == "file" || uri.scheme == "content") return false
         // Already upgraded: this *is* the better copy. Except when the listener
         // has asked by hand, where the marker is on a *reverted* item and
         // saying "this is the copy that was chosen" is the very thing being

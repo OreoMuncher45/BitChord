@@ -3431,8 +3431,11 @@ class PlaybackService : MediaLibraryService() {
         val scheme = current.localConfiguration?.uri?.scheme
         if (scheme == "file" || scheme == "content") return false
         if (Downloads.verifiedSavedUri(mediaId) == null) return false
-                // forceFile is gone: the disk is authoritative, so a rebuilt item with
-        // a file on it plays that file without being told to.
+        // Built with no local URI of its own, so the item can only come out as
+        // a stream unless [shouldPlayLocalFile] says the network is gone. This
+        // path is reached *after* a stream has already failed, and it checks
+        // [Downloads.verifiedSavedUri] itself, so it does not depend on that
+        // verdict having been true when the item was first built.
         val fileItem = current.toSong().copy(localUri = null, localPath = null).toMediaItem()
         val fileScheme = fileItem.localConfiguration?.uri?.scheme
         if (fileScheme != "file" && fileScheme != "content") return false

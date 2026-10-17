@@ -3,12 +3,8 @@ package com.music.bitchord.data.liked
 import android.content.Context
 import android.content.SharedPreferences
 import com.music.bitchord.data.model.Song
-import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import com.music.bitchord.download.CoalescingWriter
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -66,38 +62,34 @@ object LikedCache {
      * async write that a kill discards buys nothing for a save that happens on
      * a background thread anyway.
      */
-    private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val pending = AtomicReference<Pair<String, String>?>(null)
-    private var writing = false
-
-    private fun store(account: String, rows: String, withAccount: Boolean) {
-        pending.set(account to rows)
-        if (writing) return
-        writing = true
-        writeScope.launch {
-            try {
-                while (true) {
-                    val next = pending.getAndSet(null) ?: break
-                    val editor = prefs.edit()
-                    if (withAccount) editor.putString(KEY_ACCOUNT, next.first)
-                    editor.putString(KEY_ROWS, next.second).commit()
-                }
-            } finally {
-                writing = false
-                if (pending.get() != null) store(nextAccount(), nextRows(), withAccount = true)
-            }
-        }
+    /**
+     * Off the main thread, committed, and coalesced — see [CoalescingWriter].
+     *
+     * The payload is a complete key/value set, so there is no longer a flag
+     * that decides whether the account key is written with it. That flag was
+     * the bug: it was read from whichever call started the drain while the
+     * bytes came from whichever call last set the pending slot, so a `write`
+     * immediately followed by a `mergeBottom` left rows on disk with no account
+     * beside them — and [read] gates on that key, so the cache read back as
+     * "not yours" forever. The Liked page sat on its loading skeleton after
+     * every cold start, with no error and no spinner that would ever stop.
+     *
+     * Sharing the writer also means the account is written on every flush by
+     * construction rather than by remembering to.
+     */
+    private val writer = CoalescingWriter { payload ->
+        prefs.edit().apply {
+            payload.forEach { (key, value) -> putString(key, value) }
+        }.commit()
     }
 
-    // read back synchronously when the writer is preempted mid-flush; the
-    // payload is still in memory at that point, so nothing is lost
-    private fun nextAccount(): String = pending.get()?.first.orEmpty()
-    private fun nextRows(): String = pending.get()?.second.orEmpty()
+    private fun store(account: String, rows: String) =
+        writer.submit(mapOf(KEY_ACCOUNT to account, KEY_ROWS to rows))
 
     /** Full replace — the end of a successful fetch or background walk. */
     fun write(account: String?, songs: List<Song>) {
         if (!this::prefs.isInitialized || account.isNullOrBlank()) return
-        store(account, encodeLikedRows(songs), withAccount = true)
+        store(account, encodeLikedRows(songs))
         _generation.value += 1
     }
 
@@ -111,7 +103,7 @@ object LikedCache {
         }
         val known = current.mapTo(HashSet()) { it.videoId }
         val merged = (rows.filter { known.add(it.videoId) } + current).take(MAX_ROWS)
-        store(account, encodeLikedRows(merged), withAccount = false)
+        store(account, encodeLikedRows(merged))
         _generation.value += 1
     }
 
@@ -125,7 +117,7 @@ object LikedCache {
         val current = read(account).orEmpty()
         val known = current.mapTo(HashSet()) { it.videoId }
         val merged = (current + rows.filter { known.add(it.videoId) }).take(MAX_ROWS)
-        store(account, encodeLikedRows(merged), withAccount = false)
+        store(account, encodeLikedRows(merged))
         _generation.value += 1
     }
 
@@ -134,7 +126,7 @@ object LikedCache {
         if (!this::prefs.isInitialized || account.isNullOrBlank() || videoId.isBlank()) return
         val current = read(account) ?: return
         if (current.none { it.videoId == videoId }) return
-        store(account, encodeLikedRows(current.filterNot { it.videoId == videoId }), withAccount = false)
+        store(account, encodeLikedRows(current.filterNot { it.videoId == videoId }))
         _generation.value += 1
     }
 }

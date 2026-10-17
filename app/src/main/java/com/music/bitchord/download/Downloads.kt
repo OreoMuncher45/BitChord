@@ -1043,6 +1043,44 @@ object Downloads {
      * every recorded id.  The collection record already says exactly which
      * files can belong here, so only those files need to be verified.
      */
+    /**
+     * One collection, straight from the record, no disk I/O.
+     *
+     * The Downloads page opens instantly because [snapshotSongs] exists. A
+     * downloaded *playlist* had no equivalent, so opening one waited on
+     * [getCollectionSongs] — a content-resolver open per track, for every
+     * track in the collection — before it painted anything at all. On a big
+     * collection that is the minute-long wait, and it repeated on every cold
+     * start because the memo behind that path is in memory only: backing out
+     * and in again was instant, which is exactly the difference between the
+     * first open and every later one.
+     *
+     * Same trade as [snapshotSongs] and for the same reason — the record is a
+     * claim about files, and the verified pass that follows this settles it.
+     * Rows whose file has since been deleted come off the list when it lands.
+     */
+    fun snapshotCollectionSongs(collectionId: String): List<Song> {
+        val record = _collections.value[collectionId] ?: return emptyList()
+        val meta = _savedMetadata.value
+        val seen = HashSet<String>()
+        return record.videoIds.mapNotNull { videoId ->
+            val row = meta[videoId] ?: return@mapNotNull null
+            if (!seen.add(row.uri)) return@mapNotNull null
+            Song(
+                videoId = row.videoId,
+                title = row.title,
+                artist = row.artist,
+                thumbnailUrl = row.thumbnailUrl,
+                durationText = row.durationText,
+                albumName = row.albumName,
+                localUri = row.uri,
+                downloadFormat = row.downloadFormat,
+                localDateAddedSeconds = row.dateAddedSeconds,
+                localDateModifiedSeconds = null,
+            )
+        }
+    }
+
     suspend fun getCollectionSongs(context: Context, collectionId: String): List<Song> =
         withContext(Dispatchers.IO) {
             val gen = listingGeneration.get()

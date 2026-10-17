@@ -567,21 +567,33 @@ private fun Song.matchQuery(): String = buildString {
 /**
  * Whether a track plays from its downloaded file.
  *
- * The disk wins. This used to answer `online` — the network outranked the
- * file, the disk was the offline path and the failure fallback — which made
- * the answer depend on connectivity at the instant the item was built, and
- * froze into [MediaItem.uri] for the rest of the session. Since
- * `AppSettings.meteredConnection` starts `null` and flaps across
- * onLost/onAvailable, the same song could come out of one queue as a local
- * file and out of the next as a stream, with the quality upgrade that a
- * stream allows (and a file forbids) following it. A downloaded file is the
- * copy the user chose to keep; the network is a *quality* preference, not a
- * reason to ignore it. Streaming quality is still capped by
- * `AppSettings.effectiveAudioQuality` for everything that has no file.
+ * A file is the *offline* path, not the preferred one. With a network up the
+ * answer is always a stream, at whatever the connection's ceiling allows —
+ * which is what "upgrade to the quality set on WiFi" means, and why a
+ * downloaded 128kbps copy does not get in the way of a lossless one. Neither
+ * YouTube nor the local file outranks a source that can serve better; see
+ * [SourceRegistry.active] for that order.
+ *
+ * This has been inverted twice, both times reported as the same bug — "a
+ * downloaded song sometimes plays the file and sometimes streams".
+ *
+ * - Disk-always-wins: a download kept playing as itself while a better copy
+ *   sat one lookup away.
+ * - Network-always-wins, decided from `meteredConnection`: `null` meant both
+ *   "offline" and "not determined yet", and it flips for a moment on every
+ *   network handover, so the verdict differed between two queues built seconds
+ *   apart.
+ *
+ * What settles it is [canStream], which is optimistic about a network and
+ * debounced about its loss — see [AppSettings.streamingAvailable]. Getting
+ * this wrong is survivable in one direction only: a stream that fails falls
+ * back to the file ([PlaybackService.fallbackOnlineStreamToFile]), while a
+ * stale file cannot fall forward.
  *
  * Pinned by `StreamPreferenceTest`.
  */
-internal fun shouldPlayLocalFile(hasLocalFile: Boolean): Boolean = hasLocalFile
+internal fun shouldPlayLocalFile(hasLocalFile: Boolean, canStream: Boolean): Boolean =
+    hasLocalFile && !canStream
 
 fun Song.toMediaItem(): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
@@ -611,13 +623,15 @@ fun Song.toMediaItem(): MediaItem {
     // leaves that path unguarded.
     val offlineUri = localUri?.takeUnless(Downloads::isMissingLocalFile)
         ?: Downloads.verifiedSavedUri(videoId)
-    // The disk is authoritative: if the file is there, it plays. Downloads
-    // used to be outranked by the network here, which made playback depend on
-    // connectivity at item-build time — see [shouldPlayLocalFile]. A stream
-    // that fails still falls back to the file via
+    // Streaming first while a network is up, file when there is none — see
+    // [shouldPlayLocalFile] for why that distinction has been got wrong twice.
+    // A stream that fails still falls back to the file via
     // [PlaybackService.fallbackOnlineStreamToFile]; a file that has gone
     // missing is caught above and by the player's own recovery.
-    val playFile = shouldPlayLocalFile(hasLocalFile = offlineUri != null)
+    val playFile = shouldPlayLocalFile(
+        hasLocalFile = offlineUri != null,
+        canStream = AppSettings.streamingAvailable.value,
+    )
     // One map read, no I/O: lets the row report the file's own bitrate even
     // when the song came from a playlist that knew nothing about the download.
     val offlineFormat: String? = if (playFile) Downloads.savedFormat(videoId) else null

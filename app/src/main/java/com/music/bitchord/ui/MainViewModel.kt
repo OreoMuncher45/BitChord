@@ -2526,8 +2526,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // tracks already on the device, and showed an error with no
             // connection at all. Its downloaded copy goes up first; the
             // online listing replaces it if and when that arrives.
+            // The record's own rows first: instant, and enough for the page to
+            // be usable. The verified listing follows and replaces them.
             val onDevice = if (localPlaylist == null && remote == null && !browseId.startsWith("local:")) {
-                downloadedCopyOf(browseId)
+                val snapshot = snapshotOf(browseId)
+                if (snapshot.isNotEmpty()) snapshot else downloadedCopyOf(browseId)
             } else {
                 emptyList()
             }
@@ -2858,9 +2861,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun downloadedCopyOf(browseId: String): List<Song> {
+    /**
+     * The collection [browseId] names, in saved order — the record's own answer.
+     *
+     * No disk I/O, which is the entire point: the verified listing this used to
+     * call opens a file descriptor per track, and it was awaited *before* the
+     * page painted anything, so a downloaded playlist showed a spinner for as
+     * long as the verification took — and again on the next cold start, because
+     * the memo behind it is per process. Paint these rows, then let the
+     * verified pass replace them and drop anything that is no longer there.
+     */
+    private fun downloadedCollectionId(browseId: String): String? {
         val bare = browseId.removePrefix("VL")
-        val id = Downloads.collections.value.keys.firstOrNull { it.removePrefix("VL") == bare } ?: return emptyList()
+        return Downloads.collections.value.keys.firstOrNull { it.removePrefix("VL") == bare }
+    }
+
+    private fun snapshotOf(browseId: String): List<Song> {
+        val id = downloadedCollectionId(browseId) ?: return emptyList()
+        return Downloads.snapshotCollectionSongs(id)
+    }
+
+    private suspend fun downloadedCopyOf(browseId: String): List<Song> {
+        val id = downloadedCollectionId(browseId) ?: return emptyList()
         return Downloads.getCollectionSongs(getApplication(), id)
     }
 
