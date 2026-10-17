@@ -67,6 +67,44 @@ class LikedCacheTest {
     }
 
     @Test
+    fun `the downloaded file and its format survive the round trip`() {
+        // The reason this field exists: a liked row with no local identity is
+        // indistinguishable from one that was never downloaded, so it played as
+        // a stream out of the cache and could not show the badge.
+        val downloaded = song("a").copy(
+            localUri = "content://media/external/audio/media/42",
+            downloadFormat = "FLAC",
+        )
+        val back = decodeLikedRows(encodeLikedRows(listOf(downloaded))).single()
+        assertEquals("content://media/external/audio/media/42", back.localUri)
+        assertEquals("FLAC", back.downloadFormat)
+    }
+
+    @Test
+    fun `a row written before local files existed decodes, with no file`() {
+        // Old blobs carry seven fields. They must still parse — dropping them
+        // would empty a library the user can see on disk — and simply arrive
+        // without a file, which the next write fills in.
+        val legacy = listOf("a", "Title", "Artist", "Album", "https://art", "3:00", "1")
+            .joinToString("\u001f")
+        val row = decodeLikedRows(legacy).single()
+        assertEquals("a", row.videoId)
+        assertEquals("Title", row.title)
+        assertNull(row.localUri)
+        assertNull(row.downloadFormat)
+    }
+
+    @Test
+    fun `a separator inside a local uri is blanked, not carried into the parse`() {
+        // Encoding strips both control separators from every field, including
+        // the file path — a real filename cannot contain them, and carrying one
+        // through would split the row in two on the way back.
+        val uri = "file:///storage/emulated/0/Music/BitChord/A\u001fB - C.flac"
+        val back = decodeLikedRows(encodeLikedRows(listOf(song("a").copy(localUri = uri)))).single()
+        assertEquals("file:///storage/emulated/0/Music/BitChord/A B - C.flac", back.localUri)
+    }
+
+    @Test
     fun `explicit flag survives only as explicit`() {
         val plain = decodeLikedRows(encodeLikedRows(listOf(song("a").copy(isExplicit = null))))
         assertNull(plain.single().isExplicit)

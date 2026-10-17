@@ -180,9 +180,17 @@ fun ClassipodHost(
         likedSeed?.let { PlaylistCache.seed(likedEntry, it) }
     }
     // Dead-network fallback: downloaded tracks the user liked.
+    //
+    // Held back until the network has actually failed, because this asks for a
+    // verified listing of the entire Downloads folder — one content-resolver
+    // open per record, ~10s of file opens for a 1,600-track library — and the
+    // only consumer draws it when the first page came back empty *and*
+    // failed. Paying that on every cold start, to have it thrown away the
+    // moment the network worked, was the single most expensive thing this page
+    // did.
     var offlineLiked by remember { mutableStateOf<List<Song>?>(null) }
-    LaunchedEffect(library, likeStatuses) {
-        if (offlineLiked == null && likeStatuses.isNotEmpty()) {
+    LaunchedEffect(library, likeStatuses, likedEntry.failedFirst) {
+        if (offlineLiked == null && likeStatuses.isNotEmpty() && likedEntry.failedFirst) {
             offlineLiked = Downloads.getDownloadedSongs(context)
                 .filter { likeStatuses[it.videoId] == LikeStatus.LIKE }
         }

@@ -2602,9 +2602,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // snapshot is free. The fetch below replaces it.
                     if (browseId == YtMusicRepository.LIKED_MUSIC) {
                         LikedCache.read(listenerKey())?.takeIf { it.isNotEmpty() }?.let { cached ->
+                            val painted = cached.withLocalFiles()
                             _detailStack.value = _detailStack.value.map {
                                 if (it.browseId == browseId && it.songs is UiState.Loading) {
-                                    it.copy(songs = UiState.Success(cached))
+                                    it.copy(songs = UiState.Success(painted))
                                 } else it
                             }
                         }
@@ -2650,8 +2651,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // A page showing its downloaded copy takes only a real listing: a
             // failed or empty fetch leaves the downloaded tracks up.
             _detailStack.value = _detailStack.value.map {
+                // Once the Liked cache has painted, `it.songs` is already a
+                // Success, so this test used to fail for every other field on
+                // the page: the network result was computed and dropped, and
+                // Liked permanently lost its header art, description, "saved to
+                // library" state and subscriber count. Metadata is merged in
+                // whatever state the rows are in; only the *rows* are withheld
+                // from a page showing a downloaded copy it already has.
                 if (it.browseId == browseId &&
-                    (it.songs is UiState.Loading || (onDevice.isNotEmpty() && state is UiState.Success))
+                    (it.songs is UiState.Loading ||
+                        onDevice.isNotEmpty() && state is UiState.Success ||
+                        state !is UiState.Error)
                 ) {
                     it.copy(
                         songs = state,
@@ -2825,6 +2835,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * is one. A playlist is filed under whichever id it was downloaded from,
      * which may or may not carry the `VL` its page id does.
      */
+    /**
+     * Stamp each row with the file it can play, from the download index.
+     *
+     * One map read per row — no `openFileDescriptor`, no directory walk, no
+     * network — so a cached list knows what is on the disk before the first
+     * request has even been sent. Rows cached before this existed get their
+     * file here too, which is why the codec change is a nicety and not a
+     * migration: without it a liked-and-downloaded song still played as a
+     * stream out of the cache.
+     */
+    private fun List<Song>.withLocalFiles(): List<Song> {
+        val saved = Downloads.saved.value
+        val formats = Downloads.savedMetadata
+        if (saved.isEmpty()) return this
+        return map { song ->
+            val uri = song.localUri ?: saved[song.videoId] ?: return@map song
+            song.copy(
+                localUri = uri,
+                downloadFormat = song.downloadFormat ?: formats[song.videoId]?.downloadFormat,
+            )
+        }
+    }
+
     private suspend fun downloadedCopyOf(browseId: String): List<Song> {
         val bare = browseId.removePrefix("VL")
         val id = Downloads.collections.value.keys.firstOrNull { it.removePrefix("VL") == bare } ?: return emptyList()

@@ -16,6 +16,9 @@ import com.music.bitchord.data.sources.SourceStream
 import com.music.bitchord.data.sources.StreamFormat
 import com.music.bitchord.data.sources.TrackMatcher
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +33,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.io.OutputStream
 import java.io.File
@@ -72,7 +79,58 @@ object Downloads {
     private const val KEY_SAVED_METADATA = "downloaded_tracks_metadata"
     private const val KEY_SAVED_COLLECTIONS = "downloaded_collections"
 
+    /**
+     * The index lives here, not in the settings file.
+     *
+     * See [migrateLegacy]. The only thing worth keeping on disk that is not
+     * rewritten on every download is the record of which downloads exist.
+     */
+    private const val PREFS_FILE = "bitchord_downloads"
+
+    /** Where it lived until this release; read once, then cleared. */
+    private const val LEGACY_PREFS_FILE = "bitchord_settings"
+
+    /**
+     * Bumped when a blob's shape changes. A future field that cannot be
+     * defaulted should refuse to load loudly rather than silently emptying a
+     * library that exists on disk.
+     */
+    private const val INDEX_VERSION = 1
+    private const val KEY_INDEX_VERSION = "downloaded_index_version"
+
     private lateinit var prefs: SharedPreferences
+
+    /**
+     * Set in [init] so the *synchronous* existence check can verify a
+     * `content://` record without a [Context] in hand — see [existsFor]. The
+     * app is single-process, so this is set before anything can ask.
+     */
+    private lateinit var appContext: Context
+
+    /**
+     * Whether a recorded uri still resolves to a file, remembered for the life
+     * of a playback decision.
+     *
+     * Verifying a `content://` download costs a binder round trip, which is why
+     * [isMissingLocalFile] used to refuse to answer for anything but `file://`
+     * and leave `content://` records permanently unverified — one code path
+     * checking, four others not, so the same track could be reported as
+     * downloaded by the song sheet and unplayable by the player. The check is
+     * cheap enough once per uri, so the refusal is not needed: answer it, and
+     * remember the answer.
+     *
+     * Invalidated wholesale by any mutation of the record ([record], [forget],
+     * [recordCollections]) and by [invalidateExistence], so a file deleted
+     * behind the app's back is re-checked on the next play. Bounded, and
+     * cleared rather than evicted, because a library is small enough that the
+     * whole working set fits and a partial eviction buys nothing.
+     */
+    private val existsMemo = ConcurrentHashMap<String, Boolean>()
+
+    /** Drops every remembered existence answer. Forgets are rare; this is cheap. */
+    fun invalidateExistence() = existsMemo.clear()
+
+    private const val EXISTS_MEMO_LIMIT = 8_000
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = MapSerializer(String.serializer(), String.serializer())
     private val metadataSerializer = MapSerializer(String.serializer(), SavedSongMetadata.serializer())
@@ -111,6 +169,13 @@ object Downloads {
 
     private val _savedMetadata = MutableStateFlow<Map<String, SavedSongMetadata>>(emptyMap())
 
+    /**
+     * The same records with their display metadata — title, artist, artwork,
+     * format. Read for the Liked cache join, which needs a row's file *and* its
+     * badge from one map rather than two.
+     */
+    internal val savedMetadata: Map<String, SavedSongMetadata> get() = _savedMetadata.value
+
     private val _collections = MutableStateFlow<Map<String, SavedCollection>>(emptyMap())
 
     /**
@@ -143,16 +208,83 @@ object Downloads {
     private val running = LinkedHashMap<String, Job?>()
 
     fun init(context: Context) {
-        prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
-        _saved.value = runCatching {
-            json.decodeFromString(serializer, prefs.getString(KEY_SAVED, null) ?: "{}")
-        }.getOrDefault(emptyMap())
-        _savedMetadata.value = runCatching {
-            json.decodeFromString(metadataSerializer, prefs.getString(KEY_SAVED_METADATA, null) ?: "{}")
-        }.getOrDefault(emptyMap())
-        _collections.value = runCatching {
-            json.decodeFromString(collectionSerializer, prefs.getString(KEY_SAVED_COLLECTIONS, null) ?: "{}")
-        }.getOrDefault(emptyMap())
+        appContext = context.applicationContext
+        prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
+        val legacy = context.getSharedPreferences(LEGACY_PREFS_FILE, Context.MODE_PRIVATE)
+        // Moved out of the shared settings file. It was three JSON blobs, the
+        // largest of which reached ~700 KB for a 1,600-track library, living in
+        // the same XML as every setting the app has — so each completed download
+        // rewrote the entire settings file atomically, temp file and fsync and
+        // all, carrying the whole library with it, four times over on a batch.
+        migrateLegacy(legacy)
+        _saved.value = decode(KEY_SAVED, serializer) { prefs.getString(it, null) }
+        _savedMetadata.value = decode(KEY_SAVED_METADATA, metadataSerializer) { prefs.getString(it, null) }
+        _collections.value = decode(KEY_SAVED_COLLECTIONS, collectionSerializer) { prefs.getString(it, null) }
+    }
+
+    /**
+     * Carry the index across from the shared settings file, once.
+     *
+     * Copy-then-clear, and the clear only happens after the copy has been
+     * committed — a half-finished migration that emptied the record would look
+     * exactly like a library the user never downloaded, and there is no backup
+     * of this index anywhere. Leaving the old keys in place instead of erasing
+     * them is deliberately not done: they would keep costing a rewrite of the
+     * settings file on every single setting change.
+     */
+    private fun migrateLegacy(legacy: SharedPreferences) {
+        if (prefs.getString(KEY_INDEX_VERSION, null) != null) return
+        val moves: List<Pair<String, (String) -> Map<String, *>>> = listOf(
+            KEY_SAVED to { raw: String -> json.decodeFromString(serializer, raw) },
+            KEY_SAVED_METADATA to { raw: String -> json.decodeFromString(metadataSerializer, raw) },
+            KEY_SAVED_COLLECTIONS to { raw: String -> json.decodeFromString(collectionSerializer, raw) },
+        )
+        val editor = prefs.edit()
+        var moved = 0
+        for ((key, decodeFn) in moves) {
+            val raw = legacy.getString(key, null) ?: continue
+            editor.putString(key, raw)
+            moved++
+            // A blob that will not parse is left where it is rather than
+            // carried over as "{}": an unreadable record is worth keeping for a
+            // future hand, and is reported below.
+            runCatching { decodeFn(raw) }.onFailure {
+                Log.w(TAG, "legacy $key unreadable, left in place: ${it.message}")
+            }
+        }
+        if (moved == 0) {
+            editor.putString(KEY_INDEX_VERSION, INDEX_VERSION.toString())
+            editor.commit()
+            return
+        }
+        if (!editor.commit()) {
+            Log.w(TAG, "download index migration did not commit; keeping the legacy keys")
+            return
+        }
+        val clear = legacy.edit()
+        moves.forEach { (key, _) -> clear.remove(key) }
+        clear.commit()
+        editor.putString(KEY_INDEX_VERSION, INDEX_VERSION.toString()).commit()
+        Log.i(TAG, "moved $moved download index blobs into $PREFS_FILE")
+    }
+
+    /**
+     * Parse one blob, or report the failure and answer empty.
+     *
+     * The silent `.getOrDefault(emptyMap())` this replaced turned a corrupt or
+     * schema-broken record into a library that had mysteriously never been
+     * downloaded — the app then streamed every one of those tracks and offered
+     * to download them all again. A decode failure is now logged at warning
+     * level with the key named, which is the difference between a bug report
+     * that can be acted on and one that cannot.
+     */
+    private fun <T> decode(key: String, serializer: KSerializer<Map<String, T>>, read: (String) -> String?): Map<String, T> {
+        val raw = read(key) ?: return emptyMap()
+        return runCatching { json.decodeFromString(serializer, raw) }
+            .getOrElse {
+                Log.w(TAG, "download index '$key' unreadable (${it.message}); treating as empty")
+                emptyMap()
+            }
     }
 
     // ---- Asking -------------------------------------------------------------
@@ -240,35 +372,82 @@ object Downloads {
      *
      * Touches the filesystem, so call it off the main thread.
      */
-    suspend fun savedUri(context: Context, videoId: String): Uri? = withContext(Dispatchers.IO) {
+    suspend fun savedUri(context: Context, videoId: String): Uri? =
+        resolveLocal(context, videoId)
+
+    /**
+     * The single answer to "is this track on the device, and where".
+     *
+     * There used to be five: a `file://`-only stat in [verifiedSavedUri], the
+     * verifying [savedUri], bare record membership read straight out of
+     * [saved], the unverified [snapshotSongs], and
+     * [PlaybackService.isLocalPlayback]'s own guess. They disagreed — most
+     * visibly for `content://` downloads, which the stat path could never
+     * check — so the song sheet would say "saved" about a file the player had
+     * already failed to open. Everything that needs the answer now comes here,
+     * so the UI, the queue builder and the player's own recovery cannot
+     * contradict each other.
+     *
+     * Verifies, and prunes a record it has just disproved, so a claim that has
+     * been shown false is not kept around to be shown false again.
+     */
+    suspend fun resolveLocal(context: Context, videoId: String): Uri? = withContext(Dispatchers.IO) {
         val recorded = _saved.value[videoId] ?: return@withContext null
         val uri = recorded.toUri()
-        if (DownloadStore.exists(context, uri)) return@withContext uri
+        // Remembered per uri, so asking for a track twice in a queue build
+        // costs one check rather than two.
+        if (existsRemembered(context, recorded, uri)) return@withContext uri
         Log.d(TAG, "$videoId was downloaded but the file is gone; forgetting it")
         forget(videoId)
         null
     }
 
     /**
-     * True when [uriString] names a `file://` path that is not there.
+     * [DownloadStore.exists], answered through the memo.
      *
-     * Deliberately answers only for `file://`, and deliberately cheaply: this is
-     * called from [Song.toMediaItem], which runs on the main thread once per
-     * item for a whole queue. A `stat` is a few microseconds and safe at that
-     * rate; the `openFileDescriptor` a `content://` uri would need is a binder
-     * round trip, and three hundred of those while building a queue is a frame
-     * budget gone. Stale `content://` records are left to
-     * [PlaybackService.recoverFrom], which catches every scheme at the moment a
-     * read actually fails and costs nothing until then.
-     *
-     * False for anything unparseable, which keeps "I could not tell" out of the
-     * "the file is missing" answer — the caller drops a uri on a true here.
+     * Every verification pass this file runs — the whole-library scan and the
+     * per-collection one — already opens each recorded file once. Routing those
+     * answers through [existsMemo] hands them to playback for free, which is
+     * what makes [verifiedSavedUri] affordable on a `content://` library: the
+     * binder round trip has already been paid by whoever opened the Downloads
+     * page, instead of once per row of every queue built afterwards.
      */
-    fun isMissingLocalFile(uriString: String): Boolean {
-        if (!uriString.startsWith("file://")) return false
-        val path = runCatching { uriString.toUri().path }.getOrNull() ?: return false
-        return !File(path).exists()
+    private fun existsRemembered(context: Context, uriString: String, uri: Uri): Boolean {
+        existsMemo[uriString]?.let { return it }
+        val answer = DownloadStore.exists(context, uri)
+        if (existsMemo.size >= EXISTS_MEMO_LIMIT) existsMemo.clear()
+        existsMemo[uriString] = answer
+        return answer
     }
+
+    /**
+     * Whether [uriString] resolves to a file right now, or null when this
+     * answer cannot be had (unparseable, or a `content://` record asked before
+     * [init] captured the app context).
+     *
+     * `file://` is answered by a `stat`, which is safe at the rate
+     * [Song.toMediaItem] asks — once per item, for a whole queue. Anything else
+     * needs the content resolver, so it goes through [existsMemo] and costs one
+     * binder round trip per uri rather than per question.
+     */
+    private fun existsFor(uriString: String): Boolean? {
+        if (uriString.startsWith("file://")) {
+            val path = runCatching { uriString.toUri().path }.getOrNull() ?: return null
+            return File(path).exists()
+        }
+        if (!::appContext.isInitialized) return null
+        return existsRemembered(appContext, uriString, uriString.toUri())
+    }
+
+    /**
+     * True only when [uriString] is known to be gone.
+     *
+     * "I could not tell" is false, never true: the caller drops a uri on a
+     * true here, so an unanswerable question must not cost the user their
+     * file. Stale records that do answer true are pruned by
+     * [verifiedSavedUri], and the player's recovery catches whatever slips past.
+     */
+    fun isMissingLocalFile(uriString: String): Boolean = existsFor(uriString) == false
 
     /**
      * As [savedUri], but synchronous and without a [Context] parameter — for
@@ -319,8 +498,10 @@ object Downloads {
         // patch the rows and re-stamp rather than pay a rescan for one id.
         // Called for aliases too, so only the named id leaves; the scan that
         // found a file missing rebuilds the rest on its own pass.
-        val cached = allSongsCache ?: return
-        allSongsCache = listingGeneration to cached.second.filterNot { it.videoId == videoId }
+        val cached = allSongsCache.get() ?: return
+        allSongsCache.set(
+            listingGeneration.get() to cached.second.filterNot { it.videoId == videoId },
+        )
     }
 
     /**
@@ -524,14 +705,15 @@ object Downloads {
     }
 
     private fun recordCollections(update: (Map<String, SavedCollection>) -> Map<String, SavedCollection>) {
-        listingGeneration++
         synchronized(collectionLock) {
             val map = update(_collections.value)
             _collections.value = map
             if (::prefs.isInitialized) {
-                prefs.edit()
-                    .putString(KEY_SAVED_COLLECTIONS, json.encodeToString(collectionSerializer, map))
-                    .apply()
+                synchronized(recordLock) {
+                    persistLocked(
+                        mapOf(KEY_SAVED_COLLECTIONS to json.encodeToString(collectionSerializer, map)),
+                    )
+                }
             }
         }
     }
@@ -620,7 +802,7 @@ object Downloads {
      * build it. New ids land at the end, matching date-added order.
      */
     private fun patchCacheFor(vararg videoIds: String) {
-        val cached = allSongsCache ?: return
+        val cached = allSongsCache.get() ?: return
         val metaMap = _savedMetadata.value
         val rows = videoIds.mapNotNull { id ->
             metaMap[id]?.let { meta ->
@@ -639,8 +821,9 @@ object Downloads {
             }
         }.associateBy { it.videoId }
         if (rows.isEmpty()) return
-        allSongsCache = listingGeneration to
-            (cached.second.filterNot { it.videoId in rows } + rows.values)
+        allSongsCache.set(
+            listingGeneration.get() to (cached.second.filterNot { it.videoId in rows } + rows.values),
+        )
     }
 
     /**
@@ -657,17 +840,60 @@ object Downloads {
         saved: (Map<String, String>) -> Map<String, String>,
         meta: (Map<String, SavedSongMetadata>) -> Map<String, SavedSongMetadata>,
     ) {
-        listingGeneration++
-        val savedMap = _saved.updateAndGet(saved)
-        val metaMap = _savedMetadata.updateAndGet(meta)
-        if (!::prefs.isInitialized) return
+        if (!::prefs.isInitialized) {
+            // Nothing to write to yet: keep the in-memory update, which the
+            // next init will not know about, but do not pretend it was saved.
+            _saved.updateAndGet(saved)
+            _savedMetadata.updateAndGet(meta)
+            return
+        }
+        // The lock covers the read as well as the write. It used to start after
+        // both snapshots were taken, which is precisely the window the comment
+        // above this function claimed to close: two downloads finishing together
+        // could each build a complete map, and whichever wrote last won — so the
+        // other track's row reached neither the file nor the next launch, while
+        // memory kept claiming it was downloaded. Four download workers made it
+        // routine. That is the "sometimes it streams a song I downloaded"
+        // report, and it survives every fix that only touches playback policy.
         synchronized(recordLock) {
-            prefs.edit()
-                .putString(KEY_SAVED, json.encodeToString(serializer, savedMap))
-                .putString(KEY_SAVED_METADATA, json.encodeToString(metadataSerializer, metaMap))
-                .apply()
+            listingGeneration.incrementAndGet()
+            invalidateExistence()
+            // One entry per collection opened, never removed. Cheap to keep
+            // until the generation moves, which is every mutation.
+            collectionSongsCache.clear()
+            val savedMap = _saved.updateAndGet(saved)
+            val metaMap = _savedMetadata.updateAndGet(meta)
+            persistLocked(
+                buildMap {
+                    put(KEY_SAVED, json.encodeToString(serializer, savedMap))
+                    put(KEY_SAVED_METADATA, json.encodeToString(metadataSerializer, metaMap))
+                },
+            )
         }
     }
+
+    /**
+     * The single write path.
+     *
+     * Coalesced and *committed*, not applied. `apply()` hands the write to
+     * `QueuedWork`, which a force-stop, a low-memory kill or a crash between
+     * the call and the write discards — and this index is the only record that
+     * a file was ever downloaded, so losing its tail means re-downloading a
+     * library the user is told they have. Committing off the calling thread
+     * costs a synchronous write but never lies about durability.
+     *
+     * Coalescing matters more than it looks: a batch download finishes dozens of
+     * tracks in a row, and each one used to encode and write the entire library
+     * on its own. Now the pending payload is replaced rather than queued, so a
+     * burst costs one write of the final state.
+     */
+    private val indexWriter = CoalescingWriter { payload ->
+        prefs.edit().apply {
+            payload.forEach { (key, value) -> putString(key, value) }
+        }.commit()
+    }
+
+    private fun persistLocked(payload: Map<String, String>) = indexWriter.submit(payload)
 
     private val recordLock = Any()
 
@@ -680,18 +906,23 @@ object Downloads {
      * mutations additionally patch the cache in place (see [remember] and
      * [forget]) so one new like never costs a rescan.
      */
-    private var listingGeneration = 0
-    private var allSongsCache: Pair<Int, List<Song>>? = null
-    private val collectionSongsCache = HashMap<String, Pair<Int, List<Song>>>()
+    private val listingGeneration = AtomicInteger(0)
+    private val allSongsCache = AtomicReference<Pair<Int, List<Song>>?>(null)
+    private val collectionSongsCache = ConcurrentHashMap<String, Pair<Int, List<Song>>>()
 
     /** Chunk size for progressive verification; see [verifiedDownloadedSongs]. */
     private const val VERIFY_CHUNK_SIZE = 200
 
     /** Returns all downloaded songs whose files still exist on disk. */
     suspend fun getDownloadedSongs(context: Context): List<Song> = withContext(Dispatchers.IO) {
-        val gen = listingGeneration
-        allSongsCache?.takeIf { it.first == gen }?.let { return@withContext it.second }
-        verifiedDownloadedSongs(context).also { allSongsCache = listingGeneration to it }
+        // Captured before the work and stamped with *that*, not with whatever
+        // the counter happens to say afterwards. Reading it after meant a
+        // download finishing mid-scan was recorded as already included, and the
+        // result was then served as fresh for the rest of the process — a
+        // listing that silently never gains a track.
+        val gen = listingGeneration.get()
+        allSongsCache.get()?.takeIf { it.first == gen }?.let { return@withContext it.second }
+        verifiedDownloadedSongs(context).also { allSongsCache.set(gen to it) }
     }
 
     /**
@@ -740,7 +971,7 @@ object Downloads {
             // materialise that file once, not once per alias.
             if (!seenUris.add(meta.uri)) continue
             val uri = meta.uri.toUri()
-            if (DownloadStore.exists(context, uri)) {
+            if (existsRemembered(context, meta.uri, uri)) {
                 val fileModifiedMillis = uri.takeIf { it.scheme == "file" }
                     ?.path
                     ?.let(::File)
@@ -814,11 +1045,11 @@ object Downloads {
      */
     suspend fun getCollectionSongs(context: Context, collectionId: String): List<Song> =
         withContext(Dispatchers.IO) {
-            val gen = listingGeneration
+            val gen = listingGeneration.get()
             collectionSongsCache[collectionId]?.takeIf { it.first == gen }
                 ?.let { return@withContext it.second }
             verifiedCollectionSongs(context, collectionId).also {
-                collectionSongsCache[collectionId] = listingGeneration to it
+                collectionSongsCache[collectionId] = gen to it
             }
         }
 
@@ -834,7 +1065,7 @@ object Downloads {
                 val uriString = saved[videoId] ?: metadata[videoId]?.uri ?: return@mapNotNull null
                 if (!seenUris.add(uriString)) return@mapNotNull null
                 val uri = uriString.toUri()
-                if (!DownloadStore.exists(context, uri)) {
+                if (!existsRemembered(context, uriString, uri)) {
                     // Both a video id and its catalogue replacement can name
                     // this file. Prune every alias now that the one disk check
                     // has established that the shared file is gone.
@@ -1568,3 +1799,61 @@ data class DownloadedCollection(
     val playlist: Boolean,
     val songs: List<Song>,
 )
+
+/**
+ * The one write path for the download index.
+ *
+ * Two jobs, both learned the hard way.
+ *
+ * **Coalesce.** A batch download finishes dozens of tracks in a row, and each
+ * completion used to encode the entire library and write it. Now a payload that
+ * arrives while a write is in flight replaces the pending one instead of
+ * queueing behind it, so a burst costs one write of the final state — which is
+ * the only state anyone will ever read.
+ *
+ * **Never lose the last one.** [drain] reads the pending payload until there is
+ * none, and re-checks for a late arrival before clearing [draining]. A payload
+ * submitted in the window between that last read and the flag going down used to
+ * be dropped, which on this index means a track the app had already told the
+ * user it downloaded stops being one after a restart.
+ *
+ * Calls are serialised on [lock] and never block the caller; the sink runs on
+ * [scope]. [Downloads] holds its own lock across *building* the payload, so the
+ * bytes handed to [submit] are always a complete, current snapshot.
+ */
+internal class CoalescingWriter(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val sink: (Map<String, String>) -> Unit,
+) {
+    private val lock = Any()
+    private var pending: Map<String, String>? = null
+    private var draining = false
+
+    fun submit(payload: Map<String, String>) {
+        val start = synchronized(lock) {
+            pending = payload
+            if (draining) return
+            draining = true
+            true
+        }
+        if (start) scope.launch { drain() }
+    }
+
+    private suspend fun drain() {
+        try {
+            while (true) {
+                val next = synchronized(lock) { pending.also { pending = null } } ?: break
+                sink(next)
+            }
+        } finally {
+            // Either a payload landed while the last one was being written — go
+            // round again — or there is nothing left and the next [submit] starts
+            // its own drain.
+            val missed = synchronized(lock) {
+                if (pending == null) draining = false
+                pending != null
+            }
+            if (missed) scope.launch { drain() }
+        }
+    }
+}

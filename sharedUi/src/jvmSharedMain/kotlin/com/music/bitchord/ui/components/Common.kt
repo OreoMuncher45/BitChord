@@ -710,8 +710,23 @@ fun SearchPlayingBars(modifier: Modifier = Modifier) {
  * for it and the record is pruned.
  */
 @Composable
-fun DownloadedBadge(videoId: String, tint: Color, modifier: Modifier = Modifier) {
-    if (videoId !in AppUi.host.downloadedIds()) return
+fun DownloadedBadge(
+    videoId: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    downloadedIds: Set<String>? = null,
+) {
+    // Remembered per call site, which is per visible row — the subscription to
+    // the download index used to be set up *inside* that composable, so every
+    // row registered its own collector on the same flow and every completed
+    // download woke all of them. Callers that draw many rows pass
+    // [downloadedIds] in once, from the list, and hand the set down.
+    val remembered = downloadedIds
+    if (remembered != null) {
+        if (videoId !in remembered) return
+    } else if (videoId !in AppUi.host.downloadedIds()) {
+        return
+    }
     Spacer(Modifier.width(8.dp))
     Icon(
         Icons.Rounded.DownloadDone,

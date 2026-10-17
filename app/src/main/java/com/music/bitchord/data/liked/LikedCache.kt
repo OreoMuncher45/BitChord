@@ -3,7 +3,12 @@ package com.music.bitchord.data.liked
 import android.content.Context
 import android.content.SharedPreferences
 import com.music.bitchord.data.model.Song
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -46,13 +51,53 @@ object LikedCache {
             .takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * Every write goes through here.
+     *
+     * Off the main thread, and committed. A Liked sync walks the whole
+     * continuation chain and calls [mergeBottom] once per page — sixteen
+     * times for a 1,600-track library — and each of those used to read, encode
+     * and rewrite the entire ~1MB blob on the main thread. Now the pending
+     * payload is replaced rather than queued, so a burst costs one write of
+     * the final state, and it happens on [writeScope].
+     *
+     * `commit()` rather than `apply()`: this blob is the only thing standing
+     * between a force-stop and another full rewalk of the network, and an
+     * async write that a kill discards buys nothing for a save that happens on
+     * a background thread anyway.
+     */
+    private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pending = AtomicReference<Pair<String, String>?>(null)
+    private var writing = false
+
+    private fun store(account: String, rows: String, withAccount: Boolean) {
+        pending.set(account to rows)
+        if (writing) return
+        writing = true
+        writeScope.launch {
+            try {
+                while (true) {
+                    val next = pending.getAndSet(null) ?: break
+                    val editor = prefs.edit()
+                    if (withAccount) editor.putString(KEY_ACCOUNT, next.first)
+                    editor.putString(KEY_ROWS, next.second).commit()
+                }
+            } finally {
+                writing = false
+                if (pending.get() != null) store(nextAccount(), nextRows(), withAccount = true)
+            }
+        }
+    }
+
+    // read back synchronously when the writer is preempted mid-flush; the
+    // payload is still in memory at that point, so nothing is lost
+    private fun nextAccount(): String = pending.get()?.first.orEmpty()
+    private fun nextRows(): String = pending.get()?.second.orEmpty()
+
     /** Full replace — the end of a successful fetch or background walk. */
     fun write(account: String?, songs: List<Song>) {
         if (!this::prefs.isInitialized || account.isNullOrBlank()) return
-        prefs.edit()
-            .putString(KEY_ACCOUNT, account)
-            .putString(KEY_ROWS, encodeLikedRows(songs))
-            .apply()
+        store(account, encodeLikedRows(songs), withAccount = true)
         _generation.value += 1
     }
 
@@ -66,7 +111,7 @@ object LikedCache {
         }
         val known = current.mapTo(HashSet()) { it.videoId }
         val merged = (rows.filter { known.add(it.videoId) } + current).take(MAX_ROWS)
-        prefs.edit().putString(KEY_ROWS, encodeLikedRows(merged)).apply()
+        store(account, encodeLikedRows(merged), withAccount = false)
         _generation.value += 1
     }
 
@@ -80,7 +125,7 @@ object LikedCache {
         val current = read(account).orEmpty()
         val known = current.mapTo(HashSet()) { it.videoId }
         val merged = (current + rows.filter { known.add(it.videoId) }).take(MAX_ROWS)
-        prefs.edit().putString(KEY_ROWS, encodeLikedRows(merged)).apply()
+        store(account, encodeLikedRows(merged), withAccount = false)
         _generation.value += 1
     }
 
@@ -89,9 +134,7 @@ object LikedCache {
         if (!this::prefs.isInitialized || account.isNullOrBlank() || videoId.isBlank()) return
         val current = read(account) ?: return
         if (current.none { it.videoId == videoId }) return
-        prefs.edit()
-            .putString(KEY_ROWS, encodeLikedRows(current.filterNot { it.videoId == videoId }))
-            .apply()
+        store(account, encodeLikedRows(current.filterNot { it.videoId == videoId }), withAccount = false)
         _generation.value += 1
     }
 }
@@ -107,6 +150,11 @@ fun encodeLikedRows(songs: List<Song>): String =
             s.videoId, s.title, s.artist,
             s.albumName.orEmpty(), s.thumbnailUrl.orEmpty(),
             s.durationText.orEmpty(), if (s.isExplicit == true) "1" else "",
+            // Which file, if any, plays this row. Without it a cached row was
+            // indistinguishable from a row that was never downloaded, so a
+            // liked song on the disk still played as a stream from cache —
+            // and the download badge could not be shown.
+            s.localUri.orEmpty(), s.downloadFormat.orEmpty(),
         ).joinToString("\u001f") { it.replace("\u001e", " ").replace("\u001f", " ") }
     }
 
@@ -124,6 +172,11 @@ fun decodeLikedRows(text: String): List<Song> {
             thumbnailUrl = f.getOrNull(4)?.takeIf { it.isNotBlank() },
             durationText = f.getOrNull(5)?.takeIf { it.isNotBlank() },
             isExplicit = if (f.getOrNull(6) == "1") true else null,
+            // Absent in rows written before this field existed, which is the
+            // point: an old blob decodes to rows that simply have no file yet,
+            // and the next write fills them in.
+            localUri = f.getOrNull(7)?.takeIf { it.isNotBlank() },
+            downloadFormat = f.getOrNull(8)?.takeIf { it.isNotBlank() },
         )
     }
 }

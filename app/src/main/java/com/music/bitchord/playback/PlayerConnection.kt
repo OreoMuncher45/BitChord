@@ -406,6 +406,11 @@ fun MediaItem.toSong() = Song(
     playbackSourceId = mediaMetadata.extras?.getString(EXTRA_PLAYBACK_SOURCE_ID),
     localUri = mediaMetadata.extras?.getString(EXTRA_LOCAL_URI),
     localPath = mediaMetadata.extras?.getString(EXTRA_LOCAL_PATH),
+    // Both were dropped on the way out, so a song crossing the session
+    // boundary lost its bitrate badge and its source-quality preference even
+    // though both had been known.
+    downloadFormat = mediaMetadata.extras?.getString(EXTRA_DOWNLOAD_FORMAT),
+    sourceQuality = mediaMetadata.extras?.getString(EXTRA_SOURCE_QUALITY),
 )
 
 /** @see Song.fromAutoplay */
@@ -469,6 +474,16 @@ internal const val EXTRA_LOCAL_URI = "bitchord.localUri"
 
 /** @see Song.localPath */
 internal const val EXTRA_LOCAL_PATH = "bitchord.localPath"
+
+/**
+ * The file's own format (e.g. "FLAC"), taken from the download record when the
+ * row that queued the song did not carry one — which is the usual case for a
+ * song found in a playlist.
+ */
+internal const val EXTRA_DOWNLOAD_FORMAT = "bitchord.downloadFormat"
+
+/** What the stream claimed to be, e.g. "128 kbps". Survives the round trip. */
+internal const val EXTRA_SOURCE_QUALITY = "bitchord.sourceQuality"
 
 /**
  * How long the track runs, as the row that queued it said.
@@ -550,18 +565,25 @@ private fun Song.matchQuery(): String = buildString {
 }
 
 /**
- * Whether a downloaded track plays as a stream even though its file is on
- * disk: the network is up, full stop. Local files rank last — FLAC sources
- * first, YouTube next, the disk only when nothing else can play (offline,
- * or a failed stream falling back). Offline always keeps the file; it is
- * the only thing that can play.
+ * Whether a track plays from its downloaded file.
+ *
+ * The disk wins. This used to answer `online` — the network outranked the
+ * file, the disk was the offline path and the failure fallback — which made
+ * the answer depend on connectivity at the instant the item was built, and
+ * froze into [MediaItem.uri] for the rest of the session. Since
+ * `AppSettings.meteredConnection` starts `null` and flaps across
+ * onLost/onAvailable, the same song could come out of one queue as a local
+ * file and out of the next as a stream, with the quality upgrade that a
+ * stream allows (and a file forbids) following it. A downloaded file is the
+ * copy the user chose to keep; the network is a *quality* preference, not a
+ * reason to ignore it. Streaming quality is still capped by
+ * `AppSettings.effectiveAudioQuality` for everything that has no file.
+ *
+ * Pinned by `StreamPreferenceTest`.
  */
-internal fun shouldPreferStream(online: Boolean): Boolean = online
+internal fun shouldPlayLocalFile(hasLocalFile: Boolean): Boolean = hasLocalFile
 
-private fun shouldPreferStream(videoId: String): Boolean =
-    shouldPreferStream(online = AppSettings.meteredConnection.value != null)
-
-fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
+fun Song.toMediaItem(): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
     // A row from search or a playlist carries no file of its own, but the track
     // may still be on disk from a download — see [Downloads.saved].
@@ -589,12 +611,17 @@ fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
     // leaves that path unguarded.
     val offlineUri = localUri?.takeUnless(Downloads::isMissingLocalFile)
         ?: Downloads.verifiedSavedUri(videoId)
-    // Downloads used to win unconditionally here, so a lossy file kept
-    // playing as a lossy file with the network up and a better copy one
-    // lookup away. Online, the settings ceiling outranks the disk — the
-    // file remains the offline path and the failure fallback (see
-    // [fallbackOnlineStreamToFile]).
-    val playFile = offlineUri != null && (forceFile || !shouldPreferStream(videoId))
+    // The disk is authoritative: if the file is there, it plays. Downloads
+    // used to be outranked by the network here, which made playback depend on
+    // connectivity at item-build time — see [shouldPlayLocalFile]. A stream
+    // that fails still falls back to the file via
+    // [PlaybackService.fallbackOnlineStreamToFile]; a file that has gone
+    // missing is caught above and by the player's own recovery.
+    val playFile = shouldPlayLocalFile(hasLocalFile = offlineUri != null)
+    // One map read, no I/O: lets the row report the file's own bitrate even
+    // when the song came from a playlist that knew nothing about the download.
+    val offlineFormat: String? = if (playFile) Downloads.savedFormat(videoId) else null
+    val formatBadge: String? = downloadFormat ?: offlineFormat
     val playUri = offlineUri?.takeIf { playFile }
     val uriString = playUri ?: when {
         videoId.startsWith("content://") || videoId.startsWith("file://") -> videoId
@@ -664,7 +691,8 @@ fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
             // depends on.
             .apply {
                 if (queueTier != QueueTier.CONTEXT || queueEntryId != null || fromAutoplay ||
-                    offlineUri != null || durationText != null ||
+                    offlineUri != null || durationText != null || downloadFormat != null ||
+                    sourceQuality != null ||
                     artistId != null || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
                     playbackSource != null || playbackSourceType != null || playbackSourceId != null
@@ -678,8 +706,16 @@ fun Song.toMediaItem(forceFile: Boolean = false): MediaItem {
                             EXTRA_PLAYBACK_SOURCE to playbackSource,
                             EXTRA_PLAYBACK_SOURCE_TYPE to playbackSourceType?.name,
                             EXTRA_PLAYBACK_SOURCE_ID to playbackSourceId,
-                            EXTRA_LOCAL_URI to playUri,
+                            // The *claim*, not the choice: this used to be
+                            // playUri, so a track that streamed despite being
+                            // downloaded came back from [toSong] with no local
+                            // identity at all — the download badge, the local
+                            // badge in stats and the quality row all disagreed
+                            // with the very index that named the file.
+                            EXTRA_LOCAL_URI to offlineUri,
                             EXTRA_LOCAL_PATH to localPath,
+                            EXTRA_DOWNLOAD_FORMAT to formatBadge,
+                            EXTRA_SOURCE_QUALITY to sourceQuality,
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,
                             EXTRA_ALBUM_ID to albumId,

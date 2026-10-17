@@ -3431,7 +3431,9 @@ class PlaybackService : MediaLibraryService() {
         val scheme = current.localConfiguration?.uri?.scheme
         if (scheme == "file" || scheme == "content") return false
         if (Downloads.verifiedSavedUri(mediaId) == null) return false
-        val fileItem = current.toSong().copy(localUri = null, localPath = null).toMediaItem(forceFile = true)
+                // forceFile is gone: the disk is authoritative, so a rebuilt item with
+        // a file on it plays that file without being told to.
+        val fileItem = current.toSong().copy(localUri = null, localPath = null).toMediaItem()
         val fileScheme = fileItem.localConfiguration?.uri?.scheme
         if (fileScheme != "file" && fileScheme != "content") return false
         TrackLog.w(
@@ -4979,19 +4981,19 @@ class PlaybackService : MediaLibraryService() {
         if (requestUri != null && (requestUri.scheme == "file" || requestUri.scheme == "content")) {
             return true
         }
-        val extras = mediaItem?.mediaMetadata?.extras
-        val localUri = extras?.getString(EXTRA_LOCAL_URI)
-        if (!localUri.isNullOrBlank() && (localUri.startsWith("content://") || localUri.startsWith("file://"))) {
-            return true
-        }
-        val localPath = extras?.getString(EXTRA_LOCAL_PATH)
-        if (!localPath.isNullOrBlank()) {
-            return true
-        }
-        if (Downloads.verifiedSavedUri(mediaId) != null) {
-            return true
-        }
-        return false
+        // Not local on the strength of what the item *claims*. These extras
+        // name a file on disk, not the source this session is playing from,
+        // and reading them that way reported "Local Storage" in the stats of a
+        // track that was streaming from the network — which is also why a
+        // downloaded track could show a bitrate badge for a file it was not
+        // playing.
+        //
+        // Only a `bitchord://` uri, which is what an item carries before the
+        // resolver has opened it, is still an open question — and there the
+        // download record is the best answer available.
+        val scheme = uri?.scheme
+        if (scheme != null && scheme != "bitchord") return false
+        return Downloads.verifiedSavedUri(mediaId) != null
     }
 
     private fun currentSourceName(mediaId: String?, mediaItem: MediaItem?): String? {
