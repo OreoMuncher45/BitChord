@@ -474,7 +474,17 @@ class AddonClient(rawBaseUrl: String) {
         private const val BACKOFF_BASE_MS = 500L
         private const val BACKOFF_CAP_MS = 8_000L
 
-        private val USER_AGENT = "BitChord/v${com.music.bitchord.BuildConfig.VERSION_NAME}"
+        /**
+         * Deliberately a neutral browser string, not the app's name. Some
+         * addon hosts Cloudflare-block our app user-agent outright (observed:
+         * manifest 200 as Chrome Mobile, 403 as BitChord on the same host,
+         * same IP, seconds apart) — identifying ourselves buys nothing and
+         * costs whole servers. The rest of the app's third-party traffic
+         * already presents this way.
+         */
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
 
         /**
          * What [probeSearch] asks for. Deliberately an ordinary word rather
