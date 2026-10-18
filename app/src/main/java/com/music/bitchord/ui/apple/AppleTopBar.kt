@@ -21,6 +21,8 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,13 +31,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import coil3.compose.AsyncImage
 
 /**
@@ -97,6 +105,7 @@ fun AppleTopBar(
                 AppleCircleButton(
                     onClick = onBack,
                     interaction = interaction,
+                    label = "Back",
                     content = {
                         Icon(
                             Icons.Rounded.ChevronLeft,
@@ -141,6 +150,7 @@ fun AppleTopBar(
                 onClick = {
                     if (accountActions.isEmpty()) onOpenAccount() else menuOpen = true
                 },
+                label = "Account",
                 onSwipe = onSwipeProfile,
                 interaction = remember { MutableInteractionSource() },
                 content = {
@@ -234,30 +244,71 @@ private fun AppleCircleButton(
     interaction: MutableInteractionSource,
     content: @Composable () -> Unit,
     onSwipe: ((forward: Boolean) -> Boolean)? = null,
+    label: String? = null,
 ) {
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
             .then(
-                if (onSwipe == null) Modifier else Modifier.pointerInput(onSwipe) {
-                    var travelled = 0f
-                    val threshold = 56f
-                    detectHorizontalDragGestures(
-                        onDragStart = { travelled = 0f },
-                        onHorizontalDrag = { _, dx ->
-                            travelled += dx
-                            if (kotlin.math.abs(travelled) > threshold) {
-                                // Consumed only once per gesture: without this
-                                // the same swipe steps every account it passes.
-                                if (onSwipe(travelled < 0f)) travelled = 0f
-                            }
-                        },
-                    )
+                if (label != null) {
+                    Modifier.semantics {
+                        contentDescription = label
+                        role = Role.Button
+                    }
+                } else {
+                    Modifier
                 },
             )
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            .then(
+                if (onSwipe == null) {
+                    Modifier.clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
+                    Modifier.appleTapOrSwipe(onTap = onClick, onSwipe = onSwipe)
+                },
+            ),
         contentAlignment = Alignment.Center,
         content = { content() },
     )
+}
+
+/**
+ * Tap-or-swipe in a single pointer handler.
+ *
+ * These cannot be layered as `pointerInput(detectHorizontalDragGestures)`
+ * before `clickable`: the drag detector awaits the down event and consumes it,
+ * so the clickable downstream of it in the chain never sees a clean tap and the
+ * button goes dead. Stacking it the other way round is no better — the drag
+ * still competes for the same events. So the two are distinguished here, from
+ * one gesture, on horizontal travel: past the threshold it is a swipe and the
+ * tap is abandoned; under it, a release is a tap.
+ *
+ * The swipe fires once per gesture. Firing per delta event would step through
+ * every account the finger crossed in a single drag.
+ */
+private fun Modifier.appleTapOrSwipe(
+    onTap: () -> Unit,
+    onSwipe: (forward: Boolean) -> Boolean,
+): Modifier = pointerInput(onTap, onSwipe) {
+    val tracker = ProfileGestureTracker()
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        tracker.reset()
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) {
+                // The decision of *what* a release means lives in
+                // ProfileGestureTracker, which is testable without a compositor.
+                if (!tracker.onRelease().wasSwipe) onTap()
+                change.consume()
+                break
+            }
+            tracker.onDrag(change.positionChange().x)
+        }
+    }
 }

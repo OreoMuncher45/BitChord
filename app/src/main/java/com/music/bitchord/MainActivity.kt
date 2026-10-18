@@ -148,6 +148,7 @@ import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.AppUi
 import com.music.bitchord.ui.components.SingSheet
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
@@ -466,11 +467,23 @@ private fun BitChordApp(
     viewModel: MainViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    // Which shell is in front. Needed above the backdrop layer because the
+    // Apple shell's chrome is glass unconditionally, while the Legacy shell's
+    // is behind the Liquid Glass toggle.
+    val appUi by AppSettings.appUi.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val hazeState = remember { HazeState() }
     // Recording the backdrop layer costs a draw pass, so it only runs when a
     // liquid-glass surface (the nav bar or artwork-page back button) can sample it.
-    val glassActive = LocalLiquidGlassEnabled.current && isGlassSupported()
+    //
+    // The Apple shell is *made of* the glass — it is the surface, not an
+    // optional treatment on top of one — so it never consults the toggle. That
+    // toggle exists for the Legacy shell, where glass is an alternative to
+    // Haze; offering it in a shell whose entire visual identity is the material
+    // would mean shipping the new UI off by default, which is how the Convx
+    // engine ended up invisible in v2.2.4.
+    val glassActive =
+        (LocalLiquidGlassEnabled.current || appUi == AppUi.APPLE_MUSIC) && isGlassSupported()
     // "Reduce dynamic blur" keeps the glass bar's *shape* — the folding
     // now-playing-and-tabs component is a layout, not an effect, and dropping
     // back to the two stacked bars would be answering a question about material
@@ -3476,7 +3489,6 @@ private fun BitChordApp(
             }
         } else null
 
-        val appUi by com.music.bitchord.data.settings.AppSettings.appUi.collectAsStateWithLifecycle()
 
         // The Apple Music shell: a third branch at the same seam, replacing tabs,
         // bars and player chrome wholesale. It borrows its *chrome* from nobody;

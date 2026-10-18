@@ -129,6 +129,11 @@ fun Modifier.lightweightLiquidGlass(
  * Convx's signature is `liquidGlass(config, shape, ...)`; its defaults already
  * match Apple's nav spec (3dp blur, .60/.69 lens), so the config is passed
  * through unchanged.
+ *
+ * Unlike the Legacy shell's glass, this does not read the Liquid Glass toggle:
+ * see [LocalLiquidGlassEnabled]. The Apple shell's chrome is glass rather than
+ * a glass option over something else, so gating it left the whole Convx engine
+ * unreachable behind a switch that defaults off.
  */
 @Composable
 fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier =

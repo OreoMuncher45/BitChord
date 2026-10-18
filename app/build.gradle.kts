@@ -80,8 +80,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 63
-        versionName = "2.2.4"
+        versionCode = 64
+        versionName = "2.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -207,6 +207,10 @@ android {
     }
     testOptions {
         unitTests {
+            // Robolectric needs the merged resources and manifest to inflate a
+            // composable; without these the interaction tests below cannot run.
+            isIncludeAndroidResources = true
+
             // Unit tests run against a stub android.jar whose methods throw
             // rather than return. That is the right default for anything whose
             // behaviour depends on the framework, and wrong for android.util.Log
@@ -214,6 +218,19 @@ android {
             // so a test of that layer fails on the logging rather than on the
             // logic it was written to check.
             isReturnDefaultValues = true
+
+            // The Compose interaction tests need Robolectric, which loads
+            // Conscrypt's native library by JNI during sandbox setup — and
+            // Conscrypt publishes no linux-aarch64 build, so on this host every
+            // one of them dies with UnsatisfiedLinkError before it reaches an
+            // assertion. They are real tests and CI is x86_64, so they run
+            // there; excluding them here keeps a local run reporting only
+            // failures that mean something.
+            all {
+                if (System.getProperty("os.arch") in setOf("aarch64", "arm64")) {
+                    it.filter.excludeTestsMatching("com.music.bitchord.ui.apple.*InteractionTest")
+                }
+            }
         }
     }
 }
@@ -405,6 +422,20 @@ dependencies {
     // the OkHttp version already on the runtime classpath.
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // Interaction tests. Every other test here is pure JVM logic, which cannot
+    // see a composable at all — and a shell whose account button and mini player
+    // could both be shipped dead, because nothing rendered them. These run the
+    // real Compose tree on Robolectric and assert that a tap reaches the
+    // callback it is supposed to.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    // Robolectric defaults to Conscrypt for its TLS stack and loads its native
+    // library by JNI, which only ships for x86_64. On an aarch64 host that
+    // throws UnsatisfiedLinkError before a single test runs, so point it at the
+    // JDK's own provider instead. The shadowed classes under test here never
+    // open a socket; this only gets the JVM to start.
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }

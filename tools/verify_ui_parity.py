@@ -241,7 +241,15 @@ def main() -> int:
     # Declared above the branch point — they are shared state — so the scan is
     # over the whole file and only *reachability* is judged per shell.
     # Anything the hoisted destination layer sets is reachable from both.
-    shared_body = src[src.find("val sharedDestinations"):src.find("val appUi by")]
+    shared_start = src.find("val sharedDestinations")
+    # Anchor the end of the shared layer *after* its start. Searching for the
+    # terminator from position 0 makes the slice depend on whether some earlier
+    # line happens to contain the same text: hoisting the shell-selection read
+    # above the shells once truncated this to an empty slice and invented a gap.
+    shared_end = src.find("val appUi by", shared_start if shared_start != -1 else 0)
+    if shared_start == -1:
+        shared_start, shared_end = 0, -1
+    shared_body = src[shared_start:shared_end]
     for flag, line in overlay_flags(src):
         if flag in shared_body:
             report.shared.append(f"overlay: {flag} (raised inside the shared destination layer)")
