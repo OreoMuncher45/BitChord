@@ -20,6 +20,15 @@ import com.music.bitchord.ui.components.backdrop.isRenderEffectSupported
 fun BackdropEffectScope.colorFilter(colorFilter: ColorFilter) {
     if (!isRenderEffectSupported()) return
 
+    // First in the chain (the usual case: vibrancy before blur/lens) rides on the
+    // layer's composite instead of costing a render pass of its own — see
+    // [BackdropEffectScope.compositeColorFilter]. Anything after an effect still
+    // chains, so ordering against a non-linear effect is preserved.
+    if (renderEffect == null && compositeColorFilter == null) {
+        compositeColorFilter = colorFilter
+        return
+    }
+
     renderEffect = ColorFilterEffect(renderEffect, colorFilter)
 }
 

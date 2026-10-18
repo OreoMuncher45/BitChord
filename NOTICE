@@ -1,0 +1,81 @@
+BitChord is licensed under the GNU General Public License v3.0. See LICENSE.
+
+This file records third-party code that is vendored into BitChord's source
+tree, as required by GPL-3.0 section 5(d) when shipping derived works.
+
+================================================================================
+Convx Project (C) 2026 — GPL-3.0
+================================================================================
+Source:  https://github.com/cosmictaserdev-creator/Convx
+License: GPL-3.0
+
+BitChord's Apple Music shell uses Convx's Liquid Glass renderer, ported into
+this repository. Convx is itself GPL-3.0, and BitChord is GPL-3.0, so the
+terms are compatible.
+
+Ported files
+------------
+  ui/components/backdrop/**                       (42 files)
+      Convx's backdrop engine, itself vendored upstream from Kyant0/backdrop.
+      See ui/components/backdrop/Backdrop.kt for the upstream attribution.
+
+  ui/components/GlassEffect.kt
+      Convx's public glass API: GlassEffectConfig, Modifier.liquidGlass,
+      LocalAppBackdrop, and the text/rim colour resolution on top of the
+      backdrop engine.
+
+  ui/theme/GlassTintTokens.kt
+      Convx's glass tint colour maths (base, content, hero and pluck colours).
+
+  ui/theme/ConvxOuterDarkRim.kt
+      Ported from Convx ui/utils/ModifierExt.kt (outerDarkRim).
+
+  ui/theme/ColorHueless.kt
+      Ported from Convx ui/theme/HeroTheme.kt (Color.isHueless()).
+
+  ui/utils/IosOverscroll.kt
+      Ported from Convx's iOS-style overscroll factory.
+
+  ui/apple/AppleShell.kt, ui/apple/AppleTopBar.kt
+      Adapted from Convx's shell/navigation structure to BitChord's state
+      model and existing page bodies.
+
+BitChord-specific adaptations
+-----------------------------
+The backdrop engine under ui/components/backdrop/ is kept byte-identical to
+Convx's apart from its package name, so it can be re-synced by re-copying
+Convx's ui/component/backdrop/ and rewriting
+`com.convx.music.ui.component.backdrop` -> `com.music.bitchord.ui.components.backdrop`.
+
+The handful of places where BitChord has to supply app-level context that
+Convx keeps outside the engine are in
+ui/components/backdrop/ConvxBackdropCompat.kt:
+
+  - LocalAmbientBackgroundColor, LocalAmbientDarkChrome, LocalSampledChromeDark
+      Convx declares these at its root; they hold MutableState and default to
+      Color.Unspecified / null. BitChord has no sampled-chrome pipeline, so
+      LocalSampledChromeDark stays null and the engine falls back to the
+      ambient path, exactly as Convx does when no sample is available.
+
+  - lastNavWasPop()
+      Convx's "a nav transition is popping" flag, read by
+      backdrops/NavTransitionFreeze.kt. BitChord's shells do not currently
+      drive it, so it stays false and layers sample live.
+
+  - markNavTransitionIsPop(Boolean)
+      BitChord-side setter for the flag above, for when a shell does drive it.
+
+In GlassEffect.kt, Convx's AppTheme.colorScheme.surface.luminance() is read
+through BitChord's MaterialTheme surface role, which is the same final
+fallback in Convx's own appearance decision.
+
+================================================================================
+Kyant0/backdrop — Apache License 2.0
+================================================================================
+Source:  https://github.com/Kyant0/backdrop
+License: Apache-2.0
+
+Convx vendored this upstream into its own tree before BitChord took its copy,
+and its attribution is preserved verbatim in the header of
+ui/components/backdrop/Backdrop.kt and the other engine files. Apache-2.0 is
+permissive and compatible with GPL-3.0.

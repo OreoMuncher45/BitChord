@@ -77,9 +77,18 @@ fun AppleShell(
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues()
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
 
-    // Apple tabs: 0=Home, 1=New, 2=Radio, 3=Library → Legacy: 0=Home, 1=Explore, 2=Library, 3=Search
-    val appleToLegacy = intArrayOf(0, 1, 2, 3)
-    val legacyToApple = intArrayOf(0, 1, 2, 3)
+    // Apple tabs: 0=Home, 1=New, 2=Radio, 3=Library
+    // Legacy tabs: 0=Home, 1=Explore, 2=Library, 3=Search
+    //
+    // Only Home/New/Library have a one-to-one legacy counterpart. Search is
+    // deliberately detached from the capsule in Apple's layout, so it is not
+    // reachable by index here at all — it is raised through [onSearchSelected].
+    // Radio has no legacy tab: BitChord's radio is its mood/genre station
+    // browse, which the shell routes through [onTabSelected] to Explore and
+    // then overlays, so its legacy index is Explore too. Mapping it by
+    // position instead sent Radio to Library and Library to Search.
+    val appleToLegacy = intArrayOf(0, 1, 1, 2)
+    val legacyToApple = intArrayOf(0, 1, 3, 0)
 
     // Apple shell uses its own selectedTab index; we translate to/from legacy
     var appleSelectedTab by remember { mutableStateOf(legacyToApple[selectedTab]) }
@@ -87,7 +96,7 @@ fun AppleShell(
     val tabs = rememberAppleTabs()
 
     val onAppleTabSelected = { appleIndex: Int ->
-        onTabSelected(intArrayOf(0, 1, 2, 3)[appleIndex])
+        onTabSelected(appleToLegacy[appleIndex])
     }
 
     Box(

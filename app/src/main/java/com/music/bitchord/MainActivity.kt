@@ -233,7 +233,9 @@ import com.music.bitchord.ui.components.GlassNavBar
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.LastfmLoginAlert
+import com.music.bitchord.ui.components.GlassEffectConfig
 import com.music.bitchord.ui.components.LocalAppBackdrop
+import com.music.bitchord.ui.components.LocalGlassEffectConfig
 import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
 import com.music.bitchord.ui.components.backdrop.backdrops.LayerBackdrop
 import com.music.bitchord.ui.components.backdrop.backdrops.layerBackdrop
@@ -383,6 +385,7 @@ class MainActivity : AppCompatActivity() {
                     LocalOverscrollFactory provides iosOverscrollFactory,
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,
+                    LocalGlassEffectConfig provides GlassEffectConfig(),
                 ) {
                 // The window's width, measured rather than asked for.
                 //
@@ -3506,6 +3509,23 @@ private fun BitChordApp(
                         },
                         onBack = appleBack,
                         onOpenAccount = { showSettings = true },
+                        accountActions = listOf(
+                            com.music.bitchord.ui.apple.AppleAccountAction(
+                                stringResource(R.string.settings),
+                            ) { showSettings = true },
+                            com.music.bitchord.ui.apple.AppleAccountAction(
+                                stringResource(R.string.listen_together),
+                            ) { showListenTogether = true },
+                            com.music.bitchord.ui.apple.AppleAccountAction(
+                                stringResource(R.string.account_scrobbling),
+                            ) { showAccountScrobbling = true },
+                            com.music.bitchord.ui.apple.AppleAccountAction(
+                                stringResource(R.string.discord),
+                            ) { showDiscord = true },
+                            com.music.bitchord.ui.apple.AppleAccountAction(
+                                stringResource(R.string.spotify),
+                            ) { showSpotify = true },
+                        ),
                         avatarUrl = account?.thumbnailUrl,
                         collapse = 0f,
                         onSwipeProfile = { forward -> viewModel.stepProfile(forward) },

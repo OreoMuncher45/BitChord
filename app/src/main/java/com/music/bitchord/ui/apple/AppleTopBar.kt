@@ -2,6 +2,8 @@ package com.music.bitchord.ui.apple
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,13 +21,17 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,10 +69,16 @@ fun AppleTopBar(
      * hidden requirement.
      */
     onSwipeProfile: (forward: Boolean) -> Boolean = { false },
+    /**
+     * Account menu rows, in display order. Each opens the destination the
+     * matching callback raises. Empty means the avatar opens Settings only.
+     */
+    accountActions: List<AppleAccountAction> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalApplePalette.current
     val interaction = remember { MutableInteractionSource() }
+    var menuOpen by remember { mutableStateOf(false) }
 
     // The title does not animate: it is placed by the scroll offset directly.
     val alpha = (1f - collapse * 1.6f).coerceIn(0f, 1f)
@@ -126,7 +138,9 @@ fun AppleTopBar(
                     .graphicsLayer { this.alpha = alpha },
             )
             AppleCircleButton(
-                onClick = onOpenAccount,
+                onClick = {
+                    if (accountActions.isEmpty()) onOpenAccount() else menuOpen = true
+                },
                 onSwipe = onSwipeProfile,
                 interaction = remember { MutableInteractionSource() },
                 content = {
@@ -147,6 +161,69 @@ fun AppleTopBar(
                     }
                 },
             )
+
+        }
+
+        // Anchored to the outer Box, not the title Row: the menu drops below the
+        // avatar and the Row's own layout would squeeze it to zero width.
+        if (menuOpen && accountActions.isNotEmpty()) {
+            AppleAccountMenu(
+                actions = accountActions,
+                onDismiss = { menuOpen = false },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 52.dp, end = 8.dp),
+            )
+        }
+    }
+}
+
+/** One row in the account menu. */
+data class AppleAccountAction(
+    val label: String,
+    val onClick: () -> Unit,
+)
+
+/**
+ * The account menu, anchored under the avatar.
+ *
+ * Backdrop-dismissed so a tap outside closes it, and it raises the same
+ * destinations the other shells raise, so an item means the same thing here as
+ * it does anywhere else in the app.
+ */
+@Composable
+private fun AppleAccountMenu(
+    actions: List<AppleAccountAction>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalApplePalette.current
+    Box(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 180.dp)
+                .clip(AppleShape.Sheet)
+                .background(palette.backgroundElevated)
+                .border(0.5.dp, palette.separator, AppleShape.Sheet)
+                .padding(vertical = 4.dp)
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+        ) {
+            actions.forEach { action ->
+                Text(
+                    text = action.label,
+                    style = AppleType.RowTitle,
+                    color = palette.label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onDismiss()
+                            action.onClick()
+                        }
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                )
+            }
         }
     }
 }
