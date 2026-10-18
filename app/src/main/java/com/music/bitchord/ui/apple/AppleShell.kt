@@ -1,11 +1,6 @@
 package com.music.bitchord.ui.apple
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,8 +27,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.R
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.ui.apple.AppleTab
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.runtime.mutableStateOf
 
 /**
  * The Apple Music shell.
@@ -73,7 +77,18 @@ fun AppleShell(
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues()
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
 
+    // Apple tabs: 0=Home, 1=New, 2=Radio, 3=Library → Legacy: 0=Home, 1=Explore, 2=Library, 3=Search
+    val appleToLegacy = intArrayOf(0, 1, 2, 3)
+    val legacyToApple = intArrayOf(0, 1, 2, 3)
+
+    // Apple shell uses its own selectedTab index; we translate to/from legacy
+    var appleSelectedTab by remember { mutableStateOf(legacyToApple[selectedTab]) }
+
     val tabs = rememberAppleTabs()
+
+    val onAppleTabSelected = { appleIndex: Int ->
+        onTabSelected(intArrayOf(0, 1, 2, 3)[appleIndex])
+    }
 
     Box(
         modifier = modifier
@@ -134,8 +149,8 @@ fun AppleShell(
             }
             AppleTabBar(
                 tabs = tabs,
-                selectedIndex = selectedTab,
-                onTabSelected = onTabSelected,
+                selectedIndex = legacyToApple[selectedTab],
+                onTabSelected = onAppleTabSelected,
                 onSearchSelected = onSearchSelected,
             )
         }
@@ -145,14 +160,14 @@ fun AppleShell(
 /** The four tabs in the capsule, in Apple's order, with Search detached. */
 @Composable
 private fun rememberAppleTabs(): List<AppleTab> {
-    val home = androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.app_ui_apple_home)
-    val newTab = androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.app_ui_apple_new)
-    val radio = androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.app_ui_apple_radio)
-    val library = androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.app_ui_apple_library)
+    val home = stringResource(R.string.app_ui_apple_home)
+    val newTab = stringResource(R.string.app_ui_apple_new)
+    val radio = stringResource(R.string.app_ui_apple_radio)
+    val library = stringResource(R.string.app_ui_apple_library)
     return remember(home, newTab, radio, library) {
         listOf(
             AppleTab(Icons.Rounded.Home, home),
-            AppleTab(Icons.Rounded.Apps, newTab),
+            AppleTab(Icons.Rounded.Explore, newTab),
             AppleTab(Icons.Rounded.Radio, radio),
             AppleTab(Icons.Rounded.LibraryMusic, library),
         )
