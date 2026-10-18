@@ -407,7 +407,7 @@ fun ClassipodHost(
     fun interfacePage(): ClassipodPage.Menu = ClassipodPage.Menu(
         "Interface",
         listOf(
-            MenuItem("Theme: BitChord") { AppSettings.setAppUi(AppUi.BITCHORD) },
+            MenuItem("Theme: Apple Music") { AppSettings.setAppUi(AppUi.APPLE_MUSIC) },
             MenuItem(
                 "Faceplate",
                 AppSettings.classipodColorway.value,

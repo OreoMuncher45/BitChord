@@ -113,13 +113,24 @@ enum class ThemeMode(val label: String) {
 }
 
 /**
- * Which interface shell the app wears. BitChord is the full modern UI;
- * Classipod is the iPod Classic re-creation (click wheel + LCD) running on
- * the same playback, library, Flow and sources underneath. Switchable both
- * ways, from either shell's settings.
+ * Which interface shell the app wears. All three run on the same playback,
+ * library, Flow and sources; only the chrome differs, and the choice is
+ * free and reversible from any of them.
+ *
+ * - [APPLE_MUSIC] — the default. Built from the ground up against the iOS 26
+ *   references rather than adapted from the BitChord layout.
+ * - [CLASSIPOD] — the iPod Classic re-creation, click wheel and LCD.
+ * - [BITCHORD] — the previous UI, kept whole. "Legacy" because it is no longer
+ *   the one being worked on, not because it is broken: it still has surfaces
+ *   the new one has not reached yet.
+ *
+ * The enum order *is* the order they appear in the picker, and the first entry
+ * is what a fresh install gets.
  */
 enum class AppUi(val label: String) {
-    BITCHORD("BitChord"), CLASSIPOD("Classipod")
+    APPLE_MUSIC("Apple Music"),
+    CLASSIPOD("Classipod"),
+    BITCHORD("BitChord Legacy"),
 }
 
 /**
@@ -393,7 +404,7 @@ object AppSettings {
     val themeMode = MutableStateFlow(ThemeMode.DARK)
 
     /** Which shell the app wears — see [AppUi]. Defaults to the modern UI. */
-    val appUi = MutableStateFlow(AppUi.BITCHORD)
+    val appUi = MutableStateFlow(AppUi.APPLE_MUSIC)
 
     /** Keep playing similar music once the queue runs out. */
     val autoplay = MutableStateFlow(true)
@@ -790,6 +801,16 @@ object AppSettings {
      * local copy when the network was there is not recoverable and is not even
      * visible: it just sounds like the quality upgrade that never happened.
      */
+    /**
+     * The shell a fresh install opens in.
+     *
+     * Apple Music is the default because it is the one being worked on, and a
+     * user who has never chosen should be looking at the current one. The other
+     * two are a click away in Settings, and the choice is remembered, so
+     * "default" is a first-run answer rather than a forced one.
+     */
+    fun defaultAppUi(): AppUi = AppUi.APPLE_MUSIC
+
     /** How long a network may be gone before the player stops streaming. */
     private const val NETWORK_LOST_GRACE_MS = 750L
     private val streamingAvailableFlow = MutableStateFlow(true)
@@ -929,9 +950,12 @@ object AppSettings {
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
-        appUi.value = runCatching {
-            AppUi.valueOf(prefs.getString(KEY_APP_UI, null) ?: "BITCHORD")
-        }.getOrDefault(AppUi.BITCHORD)
+        // Looked up by name rather than valueOf: a build that renames or
+        // removes a shell must fall back to the default shell, not crash the
+        // launch on a string this app itself wrote.
+        appUi.value = AppUi.entries
+            .firstOrNull { it.name == prefs.getString(KEY_APP_UI, null) }
+            ?: AppUi.APPLE_MUSIC
         classipodColorway.value = prefs.getString(KEY_CLASSIPOD_COLORWAY, "Silver").orEmpty()
             .ifBlank { "Silver" }
         classipodClicks.value = prefs.getBoolean(KEY_CLASSIPOD_CLICKS, true)

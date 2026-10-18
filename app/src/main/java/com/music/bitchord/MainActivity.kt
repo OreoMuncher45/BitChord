@@ -2651,8 +2651,234 @@ private fun BitChordApp(
         // The Classipod shell replaces tabs, bars and player sheets wholesale:
         // same viewModel, same controller, same stores — only the chrome
         // differs. Switching back lives in both shells' settings.
+        // Hoisted above the shells so both of them answer a Home card the same
+        // way. Duplicated per shell it would drift, and the first drift anyone
+        // would see is Flow: its card has to open the page without starting
+        // playback, and that rule would live in two places.
+        val onHomeShelfItemClick: (com.music.bitchord.data.model.ShelfItem, String) -> Unit = { item, shelfTitle ->
+            val song = shelfSong(item)
+            // Hoisted because ShelfItem lives in :shared, and Kotlin will not
+            // smart-cast a public nullable property declared in another module.
+            val browseId = item.browseId
+            when {
+                browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
+                    // Flow tap only opens the page — never rebuilds, never plays.
+                    // BACK + tap returns to this same mix; Play and Shuffle
+                    // inside it are what start playback, New mix the only reset.
+                    showFlow = true
+                }
+                song != null -> playRadio(
+                    song,
+                    QueueSource(shelfTitle, PlaybackSourceType.HOME),
+                )
+                browseId != null -> viewModel.openDetail(
+                    browseId = browseId,
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    thumbnailUrl = item.thumbnailUrl,
+                )
+            }
+        }
+
+        // Shared by both shells' search tab. A search hit is a station seed, not
+        // a queue position, so tapping one records it and plays it — see the
+        // legacy branch for why the recording matters.
+        val onSearchSongClick: (List<Song>, Int) -> Unit = { songs, index ->
+            songs.getOrNull(index)?.let { song ->
+                viewModel.recordEntity(SearchHistoryEntity(
+                    id = song.videoId,
+                    title = song.title,
+                    subtitle = song.artist.ifEmpty { "" },
+                    artworkUrl = song.thumbnailUrl,
+                    entityType = EntityType.TRACK,
+                ))
+                playRadio(song, QueueSource(searchLabel, PlaybackSourceType.SEARCH))
+            }
+        }
+        val onSearchSongPlay: (Song) -> Unit = { song ->
+            viewModel.recordEntity(SearchHistoryEntity(
+                id = song.videoId,
+                title = song.title,
+                subtitle = song.artist.ifEmpty { "" },
+                artworkUrl = song.thumbnailUrl,
+                entityType = EntityType.TRACK,
+            ))
+            playRadio(song, QueueSource(searchLabel, PlaybackSourceType.SEARCH))
+        }
+        val onSearchHistoryEntityClick: (com.music.bitchord.data.model.SearchHistoryEntity) -> Unit = { entity ->
+            when (entity.entityType) {
+                EntityType.TRACK -> viewModel.recordEntity(entity)
+                EntityType.ALBUM -> viewModel.openDetail(entity.id, entity.title, entity.subtitle, entity.artworkUrl)
+                EntityType.ARTIST -> viewModel.openDetail(entity.id, entity.title, entity.subtitle, entity.artworkUrl)
+                EntityType.PLAYLIST -> viewModel.openDetail(entity.id, entity.title, entity.subtitle, entity.artworkUrl)
+                else -> Unit
+            }
+        }
+
         val appUi by com.music.bitchord.data.settings.AppSettings.appUi.collectAsStateWithLifecycle()
-        if (appUi == com.music.bitchord.data.settings.AppUi.CLASSIPOD) {
+
+        // The Apple Music shell: a third branch at the same seam, replacing tabs,
+        // bars and player chrome wholesale. It borrows its *chrome* from nobody;
+        // its pages are given below, and it raises the shared overlays through
+        // the same callbacks the Classipod branch uses, so a sheet opened from
+        // here is the sheet opened from anywhere.
+        if (appUi == com.music.bitchord.data.settings.AppUi.APPLE_MUSIC) {
+          com.music.bitchord.ui.apple.AppleMusicTheme(darkTheme = darkTheme) {
+            com.music.bitchord.ui.apple.AppleShell(
+                darkTheme = darkTheme,
+                selectedTab = selectedTab,
+                onTabSelected = { index ->
+                    viewModel.clearDetail()
+                    showSettings = false
+                    showSources = false
+                    showHistory = false
+                    showFlow = false
+                    libraryShowAll = null
+                    settingsSubScreen = null
+                    selectedTab = index
+                },
+                onSearchSelected = {
+                    selectedTab = TAB_SEARCH
+                    viewModel.onQueryChange("")
+                    searchFocusRequested = true
+                },
+                currentSong = player.song,
+                isPlaying = player.isPlaying,
+                isLoading = player.isLoading,
+                onPlayPause = { togglePlayPause() },
+                onNext = { controller?.seekToNextMediaItem() },
+                onExpandPlayer = { showNowPlaying = true },
+            ) { pagePadding ->
+                // The page bodies. The feeds themselves are the shared screens:
+                // they are data-driven, already correct, and shared with the
+                // desktop. What this overhaul replaces is the *chrome* — the
+                // bars, the type ramp, the motion — and the padding handed here
+                // is computed by this shell rather than the legacy one, so the
+                // last row clears the floating bars instead of the old insets.
+                when (selectedTab) {
+                    TAB_HOME -> HomeScreen(
+                        state = homeWithFlow,
+                        listState = homeListState,
+                        onItemClick = onHomeShelfItemClick,
+                        onRetry = viewModel::loadHome,
+                        refreshing = MainViewModel.Feed.HOME in refreshing,
+                        onRefresh = { viewModel.refresh(MainViewModel.Feed.HOME) },
+                        pullState = homePull,
+                        contentPadding = pagePadding,
+                        title = homeLabel,
+                        signedIn = signedIn,
+                        onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                        onItemLongPress = onShelfLongPress,
+                        onLoadMore = viewModel::loadMoreHome,
+                        loadingMore = homeLoadingMore,
+                        recentlyPlayedLoading = homeRecentlyPlayedLoading,
+                    )
+
+                    TAB_EXPLORE -> ExploreScreen(
+                        state = exploreState,
+                        listState = exploreListState,
+                        onCategoryClick = viewModel::openMoodGenre,
+                        onRetry = viewModel::loadExplore,
+                        refreshing = MainViewModel.Feed.EXPLORE in refreshing,
+                        onRefresh = { viewModel.refresh(MainViewModel.Feed.EXPLORE) },
+                        pullState = explorePull,
+                        contentPadding = pagePadding,
+                    )
+
+                    TAB_LIBRARY -> LibraryScreen(
+                        signedIn = signedIn,
+                        state = libraryState,
+                        listState = libraryListState,
+                        onShelfItemClick = onLibraryItemClick,
+                        onShelfItemLongPress = onBrowseLongPress,
+                        onNewPlaylist = { creatingPlaylist = true },
+                        onImportSpotifyPlaylist = { showSpotifyImportDialog = true },
+                        onShowAll = { shelf -> libraryShowAll = shelf },
+                        replay = {
+                            LibraryReplayEntry(
+                                cards = replayCards,
+                                loading = replay.loading,
+                                holder = account?.name.orEmpty(),
+                                memberSince = replay.memberSince,
+                                onOpenReplay = { page ->
+                                    replayLandingPage = page
+                                    showReplay = true
+                                },
+                            )
+                        },
+                        onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                        onRetry = viewModel::loadLibrary,
+                        refreshing = MainViewModel.Feed.LIBRARY in refreshing,
+                        onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
+                        pullState = libraryPull,
+                        contentPadding = pagePadding,
+                        links = libraryLinks(),
+                        deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
+                    )
+
+                    else -> SearchScreen(
+                        query = query,
+                        onQueryChange = viewModel::onQueryChange,
+                        filter = filter,
+                        currentSong = player.song,
+                        isPlaying = player.isPlaying,
+                        onFilterChange = viewModel::onFilterChange,
+                        results = results,
+                        loadingMore = searchLoadingMore,
+                        onLoadMore = viewModel::loadMoreSearchResults,
+                        listState = searchListState,
+                        scrollResetTrigger = searchScrollReset,
+                        focusRequested = searchFocusRequested,
+                        onFocusHandled = { searchFocusRequested = false },
+                        history = searchHistory,
+                        suggestions = searchSuggestions,
+                        typeaheadResults = viewModel.typeaheadResults.collectAsStateWithLifecycle().value,
+                        onSubmit = viewModel::submitSearch,
+                        onSuggestionClick = viewModel::searchFor,
+                        onHistoryClick = onSearchHistoryEntityClick,
+                        onSongClick = onSearchSongClick,
+                        onSongLongPress = openSongMenu,
+                        onSongSwipe = onSongSwipe,
+                        onTopResultPlay = onSearchSongPlay,
+                        onTopResultPlaylist = onSearchSongPlay,
+                        onBrowseClick = { item ->
+                            viewModel.recordEntity(SearchHistoryEntity(
+                                id = item.browseId ?: "",
+                                title = item.title,
+                                subtitle = item.subtitle.ifBlank { "" },
+                                artworkUrl = item.thumbnailUrl,
+                                entityType = when (item.type) {
+                                    BrowseType.ALBUM -> EntityType.ALBUM
+                                    BrowseType.ARTIST -> EntityType.ARTIST
+                                    else -> EntityType.PLAYLIST
+                                },
+                            ))
+                            item.browseId?.let { viewModel.openDetail(it, item.title, item.subtitle, item.thumbnailUrl) }
+                        },
+                        onHistoryRemove = viewModel::removeSearch,
+                        onHistoryClear = viewModel::clearSearchHistory,
+                        topPadding = 0.dp,
+                        contentPadding = pagePadding,
+                        sourceSwitcher = {
+                            SegmentedControl(
+                                options = listOf(
+                                    stringResource(R.string.search_source_youtube),
+                                    stringResource(R.string.library),
+                                ),
+                                selectedIndex = searchSource.ordinal,
+                                onSelect = { index -> onSearchSourceChange(SearchSource.entries[index]) },
+                            )
+                        },
+                        searchingLibrary = searchSource == SearchSource.LIBRARY,
+                        libraryResults = libraryResults,
+                        onLibrarySongClick = { songs, index ->
+                            playFrom(songs, index, QueueSource(context.getString(R.string.local_music), PlaybackSourceType.BROWSE, "local:all"))
+                        },
+                    )
+                }
+            }
+            }
+        } else if (appUi == com.music.bitchord.data.settings.AppUi.CLASSIPOD) {
             com.music.bitchord.ui.classipod.ClassipodHost(
                 darkTheme = darkTheme,
                 viewModel = viewModel,
@@ -3220,33 +3446,7 @@ private fun BitChordApp(
                             title = stringResource(R.string.listen_now),
                             signedIn = signedIn,
                             onSignIn = { webSession = WebSessionMode.SIGN_IN },
-                            onItemClick = { item, shelfTitle ->
-                                val song = shelfSong(item)
-                                // Hoisted because ShelfItem lives in :shared, and
-                                // Kotlin will not smart-cast a public nullable
-                                // property declared in another module.
-                                val browseId = item.browseId
-                                when {
-                                    browseId == com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID -> {
-                                        // Flow tap only opens the page — never
-                                        // rebuilds, never plays. BACK + tap
-                                        // returns to this same mix; Play and
-                                        // Shuffle inside it are what start
-                                        // playback, New mix is the only reset.
-                                        showFlow = true
-                                    }
-                                    song != null -> playRadio(
-                                        song,
-                                        QueueSource(shelfTitle, PlaybackSourceType.HOME),
-                                    )
-                                    browseId != null -> viewModel.openDetail(
-                                        browseId = browseId,
-                                        title = item.title,
-                                        subtitle = item.subtitle,
-                                        thumbnailUrl = item.thumbnailUrl,
-                                    )
-                                }
-                            },
+                            onItemClick = onHomeShelfItemClick,
                             onItemLongPress = onShelfLongPress,
                             onRetry = viewModel::loadHome,
                             refreshing = MainViewModel.Feed.HOME in refreshing,

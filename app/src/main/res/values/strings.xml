@@ -191,6 +191,10 @@
     <string name="revert_to_original">Revert to original</string>
     <string name="upgrade_quality">Upgrade quality</string>
     <string name="offline_mode">Offline mode</string>
+    <string name="app_ui_apple_home">Home</string>
+    <string name="app_ui_apple_new">New</string>
+    <string name="app_ui_apple_radio">Radio</string>
+    <string name="app_ui_apple_library">Library</string>
     <string name="sing_method_original">Classic</string>
     <string name="sing_method_band">Band</string>
     <string name="sing_method_gate">Smart</string>
@@ -1207,7 +1211,7 @@
 
     <!-- Interface shell -->
     <string name="app_ui">Interface</string>
-    <string name="app_ui_subtitle">BitChord modern UI or Classipod click-wheel UI</string>
+    <string name="app_ui_subtitle">Apple Music, Classipod click-wheel, or the previous BitChord UI</string>
 
     <!-- Cover art -->
     <string name="save_cover_art">Save cover art</string>
