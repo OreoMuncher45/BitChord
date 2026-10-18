@@ -61,7 +61,10 @@ fun AppleShell(
     isLoading: Boolean,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
+    /** Raises the full-screen player. */
     onExpandPlayer: () -> Unit,
+    /** The large-title bar, drawn over the page. */
+    topBar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     /** The four page bodies, already bound to their state. */
     content: @Composable (PaddingValues) -> Unit,
@@ -93,6 +96,8 @@ fun AppleShell(
             top = statusBarPadding.calculateTopPadding(),
             bottom = bottomInset,
         )
+
+        topBar()
 
         AnimatedContent(
             targetState = selectedTab,

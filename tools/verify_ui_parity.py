@@ -90,27 +90,60 @@ def split_shells(src: str) -> tuple[str, str, str]:
 
 
 def destinations(src: str) -> list[tuple[str, int]]:
-    """Keys of the legacy AnimatedContent `targetState = when { … }` ladder."""
+    """
+    Keys of the destination ladder.
+
+    Lives in the hoisted `sharedDestinations` body rather than inside an
+    AnimatedContent's `targetState`, because the ladder is shared by every
+    shell — that hoist is what made the destinations reachable at all.
+    """
     out: list[tuple[str, int]] = []
-    at = src.find("targetState = when {")
-    if at == -1:
+    m = re.search(r"val key = when \{", src)
+    if not m:
         return out
-    depth = 0
-    i = at + len("targetState = when") - 1
-    end = len(src)
-    while i < end:
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    block = src[at:i]
-    base_line = src[:at].count("\n") + 1
-    for m in re.finditer(r'->\s*"([a-z0-9_]+)"', block):
-        out.append((m.group(1), base_line + block[: m.start()].count("\n")))
+    at = m.start()
+    # Take the text of the `when` by brace matching, string- and comment-aware.
+    body, base_line = _block(src, src.index("{", at + len("val key = when") - 1))
+    for k in re.finditer(r'->\s*"([a-z0-9_]+)"', body):
+        out.append((k.group(1), base_line + body[: k.start()].count("\n")))
     return out
+
+
+def _block(src: str, start: int) -> tuple[str, int]:
+    """Text of the brace-delimited block beginning at `start`, and its line."""
+    depth = 0
+    j = start
+    in_str = in_lc = in_bc = False
+    while j < len(src):
+        c = src[j]
+        n = src[j + 1] if j + 1 < len(src) else ""
+        if in_lc:
+            if c == "\n":
+                in_lc = False
+        elif in_bc:
+            if c == "*" and n == "/":
+                in_bc = False
+                j += 1
+        elif in_str:
+            if c == "\\":
+                j += 1
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "/" and n == "/":
+                in_lc = True
+            elif c == "/" and n == "*":
+                in_bc = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    return src[start : j + 1], src[:start].count("\n") + 1
+        j += 1
+    return src[start:], src[:start].count("\n") + 1
 
 
 def rendered_keys(src: str) -> set[str]:
@@ -175,28 +208,47 @@ def main() -> int:
     src = read_source()
     shared, apple, rest = split_shells(src)
     legacy = rest  # Classipod + legacy; Classipod is not the comparison target
+
+    # Everything below the shell branch is the overlay layer — sheets, dialogs,
+    # the player, notices — mounted once and reachable from whichever shell is
+    # being worn. The file marks the boundary itself; without it the checker
+    # would report every one of those as a gap, which is how a tool teaches
+    # people to ignore it.
+    tail_marker = "} // end else: everything above is one shell or the other"
+    tail = legacy[legacy.find(tail_marker):] if tail_marker in legacy else ""
     report = Report()
 
     # ── 1. Destinations ────────────────────────────────────────────────────
-    dests = destinations(legacy)
+    # The ladder is hoisted, so it lives above the shell branch: scan the file.
+    dests = destinations(src)
     rendered = rendered_keys(legacy)
+    # The ladder is hoisted, so its destinations are reachable from both shells
+    # by construction — but only if the Apple shell actually *calls* it.
+    mounted = "sharedDestinations(" in apple
     for key, line in dests:
         if key.startswith("tab"):
             report.shared.append(f"destination: {key} (tab bar, owned by the shell)")
             continue
-        reachable = key in apple
         report.mark(
             "destination",
             key,
-            "no reference in the Apple shell branch; the destination cannot be opened",
-            reachable,
+            "the shared destination layer is never called from the Apple shell",
+            mounted,
             line,
         )
 
     # ── 2. Overlay flags ───────────────────────────────────────────────────
     # Declared above the branch point — they are shared state — so the scan is
     # over the whole file and only *reachability* is judged per shell.
+    # Anything the hoisted destination layer sets is reachable from both.
+    shared_body = src[src.find("val sharedDestinations"):src.find("val appUi by")]
     for flag, line in overlay_flags(src):
+        if flag in shared_body:
+            report.shared.append(f"overlay: {flag} (raised inside the shared destination layer)")
+            continue
+        if flag in tail:
+            report.shared.append(f"overlay: {flag} (raised in the overlay layer below the shells)")
+            continue
         if flag in apple:
             report.mark("overlay", flag, "", True, line)
         else:
@@ -212,7 +264,7 @@ def main() -> int:
     # ── 3. Sheets and dialogs ──────────────────────────────────────────────
     for name, line in sheet_calls(legacy):
         # Sheets mounted *below* the shell branch are shared by construction.
-        mounted_shared = name in shared
+        mounted_shared = name in shared or name in tail
         if mounted_shared:
             report.shared.append(f"sheet: {name} (mounted below the shell branch)")
         elif name in apple:
@@ -222,8 +274,8 @@ def main() -> int:
 
     # ── 4. Top-bar actions ─────────────────────────────────────────────────
     for action in topbar_actions(legacy):
-        if action in shared:
-            report.shared.append(f"topbar-action: {action} (defined above the shells)")
+        if action in shared or action in tail:
+            report.shared.append(f"topbar-action: {action} (shared: defined outside the shell branches)")
         else:
             report.mark(
                 "topbar-action",
@@ -237,7 +289,8 @@ def main() -> int:
         ("NowPlayingScreen", "full-screen player"),
         ("showNowPlaying", "the flag that raises the player"),
     ):
-        report.mark("player", symbol, f"{why} is not raised from the Apple shell", symbol in apple)
+        raised = symbol in apple or symbol in tail or symbol in shared
+        report.mark("player", symbol, f"{why} is not raised from the Apple shell", raised)
 
     # ── report ─────────────────────────────────────────────────────────────
     print(f"\nUI parity — Apple Music shell vs BitChord Legacy\n")
@@ -264,6 +317,25 @@ def main() -> int:
         print(f"  shared : {len(report.shared)} (below the shell branch — available to both)")
     else:
         print("no gaps: every destination, overlay, sheet, action and the player are reachable\n")
+
+    # A section that checked nothing is not a passing section. This exists
+    # because the checker once reported "no gaps" while counting zero
+    # destinations, which is exactly the shape of a green build that means
+    # nothing.
+    vacuous = [
+        name
+        for name, count in (
+            ("destinations", len(dests)),
+            ("overlays", len(overlay_flags(src))),
+            ("sheets", len(sheet_calls(legacy))),
+            ("top-bar actions", len(topbar_actions(legacy))),
+        )
+        if count == 0
+    ]
+    if vacuous:
+        print(f"VACUOUS: {', '.join(vacuous)} checked nothing — the pattern is stale, not the code clean\n")
+        if args.strict:
+            return 1
 
     if args.strict and report.gaps:
         print(f"FAIL: {len(report.gaps)} parity gap(s)\n")
