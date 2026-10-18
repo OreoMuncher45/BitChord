@@ -190,6 +190,15 @@
     <string name="converting_to_audio">Converting to audio…</string>
     <string name="revert_to_original">Revert to original</string>
     <string name="upgrade_quality">Upgrade quality</string>
+    <string name="offline_mode">Offline mode</string>
+    <string name="sing_method_original">Classic</string>
+    <string name="sing_method_band">Band</string>
+    <string name="sing_method_gate">Smart</string>
+    <string name="sing_method_original_note">The plain centre cut, from the first version. Fastest and cleanest on an old recording; takes the kick and snare with the vocal on anything modern.</string>
+    <string name="sing_method_band_note">Cuts only 150 Hz to 10 kHz and lets drum hits through. Leaves a faint thinning from the crossover phase.</string>
+    <string name="sing_method_gate_note">The same band, rebuilt as a true bandpass, with a voice detector that leaves instrumentals alone and side makeup that replaces the removed energy.</string>
+    <string name="offline_mode_detected">No connection</string>
+    <string name="offline_mode_subtitle">Play downloaded files only. Stays on until you turn it off.</string>
     <string name="dolby_atmos">Dolby Atmos</string>
     <string name="dolby_atmos_subtitle">Play the more immersive, surround version of a song when there is one.</string>
     <string name="dolby_atmos_unavailable">This device can\'t play Atmos, so these songs play in their usual version</string>

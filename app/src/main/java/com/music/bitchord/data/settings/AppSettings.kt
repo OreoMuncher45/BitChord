@@ -15,6 +15,16 @@ import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import com.music.bitchord.playback.SingMethod
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -325,6 +335,21 @@ object AppSettings {
      * fighting the removal.
      */
     val singLevel = MutableStateFlow(0f)
+
+    /**
+     * Which vocal remover Sing runs — see [SingMethod].
+     *
+     * Defaults to the current engine so an existing install changes nothing
+     * until the listener picks something else. The other two are not
+     * deprecated: each wins on some material, and the choice belongs to
+     * whoever is listening.
+     */
+    val singMethod = MutableStateFlow(SingMethod.VOICE_GATE)
+
+    fun setSingMethod(value: SingMethod) {
+        singMethod.value = value
+        prefs.edit().putString(KEY_SING_METHOD, value.name).apply()
+    }
 
     /**
      * The app's own equaliser, master switch.
@@ -768,6 +793,38 @@ object AppSettings {
     /** How long a network may be gone before the player stops streaming. */
     private const val NETWORK_LOST_GRACE_MS = 750L
     private val streamingAvailableFlow = MutableStateFlow(true)
+
+    /** Owns the delayed offline verdict; see [watchConnection]. */
+    private val networkScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Whether the listener asked for offline playback, whatever the radio says.
+     *
+     * A switch, not a mode that resolves itself: on stays on until it is turned
+     * off, network or no network. It exists for the case the detector cannot
+     * know about — a device with a working network and no internet behind it,
+     * which looks identical to being online right up until a stream fails.
+     */
+    private val offlineModeFlow = MutableStateFlow(false)
+    val offlineMode: StateFlow<Boolean> = offlineModeFlow.asStateFlow()
+
+    /**
+     * The one answer the player asks: are we offline?
+     *
+     * True when the switch is on, or when no network has been there for the
+     * grace period. Neither is sufficient alone: the switch does not know
+     * whether the internet is reachable, and the detector does not know what
+     * was asked for. Putting them here means no caller has to remember both.
+     */
+    val effectiveOffline: StateFlow<Boolean> =
+        combine(offlineModeFlow, streamingAvailableFlow) { manual, streaming -> manual || !streaming }
+            .stateIn(networkScope, SharingStarted.Eagerly, false)
+
+    fun setOfflineMode(value: Boolean) {
+        if (offlineModeFlow.value == value) return
+        offlineModeFlow.value = value
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_OFFLINE_MODE, value).apply()
+    }
     val streamingAvailable: StateFlow<Boolean> = streamingAvailableFlow.asStateFlow()
 
     /** The ceiling that applies to a stream started right now. */
@@ -797,6 +854,8 @@ object AppSettings {
     fun init(context: Context, authStore: AuthStore) {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
         this.authStore = authStore
+        offlineModeFlow.value =
+            runCatching { prefs.getBoolean(KEY_OFFLINE_MODE, false) }.getOrDefault(false)
         com.music.bitchord.data.spotify.LocalPlaylistStore.init(context)
         readAll()
         watchConnection(context)
@@ -855,6 +914,7 @@ object AppSettings {
         dolbyAtmos.value = prefs.getBoolean(KEY_DOLBY_ATMOS, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         singLevel.value = prefs.getFloat(KEY_SING_LEVEL, 0f).coerceIn(0f, 1f)
+        singMethod.value = SingMethod.fromName(prefs.getString(KEY_SING_METHOD, null))
         equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
         equalizerMode.value = runCatching {
             EqualizerMode.valueOf(prefs.getString(KEY_EQ_MODE, null) ?: EqualizerMode.DYNAMIC.name)
@@ -1066,22 +1126,38 @@ object AppSettings {
      */
     private fun watchConnection(context: Context) {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
-        var lostAt = 0L
+        var pendingCheck: Job? = null
+
+        val actuallyUp = { runCatching { manager.activeNetwork != null }.getOrDefault(false) }
+
+        // Believed immediately when a network is there; believed gone only after
+        // the grace period, and only if it is *still* gone by then. `activeNetwork`
+        // is null for a moment on every handover, and the player reads this to
+        // choose between a downloaded file and a stream — a verdict that
+        // flickers for 200ms mid-handover is how one queue came out as files and
+        // the next as streams.
+        //
+        // The wait has to be *scheduled*, not read from the clock inside the
+        // callback. Reading it there meant the verdict was only ever computed at
+        // the instant the callback ran, which is always inside the grace: with
+        // no network at all the only callback is the initial one, so the app
+        // believed it could stream forever and no downloaded file ever played.
+        val markStreaming = {
+            pendingCheck?.cancel()
+            pendingCheck = null
+            streamingAvailableFlow.value = true
+        }
+
         val refresh = {
-            val up = runCatching { manager.activeNetwork != null }.getOrDefault(false)
-            // Believed immediately when a network is there, and only after a
-            // grace period when one has gone. `activeNetwork` is null for a
-            // moment on every handover, and the player reads this to decide
-            // between a downloaded file and a stream — a verdict that flickers
-            // for 200ms mid-switch is how one queue came out as files and the
-            // next as streams.
-            if (up) {
-                lostAt = 0L
-                streamingAvailableFlow.value = true
+            if (actuallyUp()) {
+                markStreaming()
             } else {
-                if (lostAt == 0L) lostAt = SystemClock.elapsedRealtime()
-                streamingAvailableFlow.value =
-                    SystemClock.elapsedRealtime() - lostAt >= NETWORK_LOST_GRACE_MS
+                pendingCheck?.cancel()
+                pendingCheck = networkScope.launch {
+                    delay(NETWORK_LOST_GRACE_MS)
+                    if (!actuallyUp()) streamingAvailableFlow.value = false
+                    pendingCheck = null
+                }
             }
             meteredConnection.value = runCatching {
                 if (manager.activeNetwork == null) null else manager.isActiveNetworkMetered
@@ -2065,6 +2141,10 @@ object AppSettings {
     private const val KEY_LOUDNESS_OFF_ON_SPEAKER = "loudness_off_on_speaker"
     private const val KEY_DOLBY_ATMOS = "dolby_atmos"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
+    /** Sticky: read back at every launch, written only by [setOfflineMode]. */
+    private const val KEY_OFFLINE_MODE = "offline_mode"
+    /** Stored by name so an unknown value falls back rather than crashing. */
+    private const val KEY_SING_METHOD = "sing_method"
     private const val KEY_SING_LEVEL = "sing_level"
     private const val KEY_EQ_ENABLED = "equalizer_enabled"
     private const val KEY_EQ_MODE = "equalizer_mode"

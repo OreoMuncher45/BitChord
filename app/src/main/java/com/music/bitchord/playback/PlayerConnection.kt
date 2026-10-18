@@ -584,16 +584,30 @@ private fun Song.matchQuery(): String = buildString {
  *   network handover, so the verdict differed between two queues built seconds
  *   apart.
  *
- * What settles it is [canStream], which is optimistic about a network and
- * debounced about its loss — see [AppSettings.streamingAvailable]. Getting
- * this wrong is survivable in one direction only: a stream that fails falls
- * back to the file ([PlaybackService.fallbackOnlineStreamToFile]), while a
- * stale file cannot fall forward.
+ * What settles it is [AppSettings.effectiveOffline]: the switch in Settings, or
+ * the detector, or either — never a value read from one and forgotten about
+ * the other. The detector is optimistic about a network and waits out a
+ * handover before believing one has gone. Getting this wrong is survivable in
+ * one direction only: a stream that fails falls back to the file
+ * ([PlaybackService.fallbackOnlineStreamToFile]), while a stale file cannot
+ * fall forward.
  *
  * Pinned by `StreamPreferenceTest`.
  */
 internal fun shouldPlayLocalFile(hasLocalFile: Boolean, canStream: Boolean): Boolean =
     hasLocalFile && !canStream
+
+/**
+ * The same question, asked of the app's own answers rather than of two
+ * booleans someone remembered to combine: [AppSettings.effectiveOffline] is the
+ * manual switch OR the detector, so a caller cannot get this wrong by reading
+ * one and forgetting the other.
+ */
+internal fun shouldPlayLocalFile(hasLocalFile: Boolean): Boolean =
+    shouldPlayLocalFile(
+        hasLocalFile = hasLocalFile,
+        canStream = !AppSettings.effectiveOffline.value,
+    )
 
 fun Song.toMediaItem(): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
@@ -628,10 +642,7 @@ fun Song.toMediaItem(): MediaItem {
     // A stream that fails still falls back to the file via
     // [PlaybackService.fallbackOnlineStreamToFile]; a file that has gone
     // missing is caught above and by the player's own recovery.
-    val playFile = shouldPlayLocalFile(
-        hasLocalFile = offlineUri != null,
-        canStream = AppSettings.streamingAvailable.value,
-    )
+    val playFile = shouldPlayLocalFile(hasLocalFile = offlineUri != null)
     // One map read, no I/O: lets the row report the file's own bitrate even
     // when the song came from a playlist that knew nothing about the download.
     val offlineFormat: String? = if (playFile) Downloads.savedFormat(videoId) else null

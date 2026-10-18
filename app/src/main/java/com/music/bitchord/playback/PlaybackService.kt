@@ -6054,6 +6054,21 @@ class PlaybackService : MediaLibraryService() {
             AppSettings.singLevel.collect { applySingLevel() }
         }
         scope.launch {
+            AppSettings.singMethod.collect { method ->
+                singProcessorA.setMethod(method)
+                singProcessorB.setMethod(method)
+            }
+        }
+        scope.launch {
+            // Edge-triggered: the work is only wanted on the offline -> online
+            // edge, not on every emission of a value the player already follows.
+            var wasOffline = AppSettings.effectiveOffline.value
+            AppSettings.effectiveOffline.collect { offline ->
+                if (wasOffline && !offline) restoreStreamingAfterOffline()
+                wasOffline = offline
+            }
+        }
+        scope.launch {
             AppSettings.loudnessNormalization.collect {
                 setupLoudness(player?.currentMediaItem?.mediaId)
             }
@@ -6129,10 +6144,45 @@ class PlaybackService : MediaLibraryService() {
         spatialAudioProcessorB.enabled = enabled
     }
 
-        private fun applySingLevel() {
+    private fun applySingLevel() {
         val level = AppSettings.singLevel.value
         singProcessorA.level = level
         singProcessorB.level = level
+    }
+
+    /**
+     * When offline ends, put the *upcoming* tracks back on the configured
+     * stream.
+     *
+     * Which copy plays is decided where the item is built, so a queue assembled
+     * while offline carries file uris and would stay on them until the queue was
+     * rebuilt by hand — the switch would come back on and nothing would change.
+     * Every item records the file it could play in its own extras, so the rows
+     * can be rebuilt as streams without disturbing the queue, its order, or
+     * what is playing right now.
+     *
+     * The current item is left alone on purpose: swapping the source under a
+     * track that is already audible is a gap in the music, and the one track
+     * where it would be felt is the one nobody is waiting on. The change lands
+     * on the next play, which is also when it would be noticed.
+     */
+    private suspend fun restoreStreamingAfterOffline() {
+        val player = player ?: return
+        val count = player.mediaItemCount
+        if (count == 0) return
+        val items: List<MediaItem> = (0 until count).map { player.getMediaItemAt(it) }
+        val from = player.currentMediaItemIndex + 1
+        if (from >= items.size) return
+        val rebuilt = (from until items.size)
+            .mapNotNull { items[it].toSong().takeIf { song -> song.localUri != null } }
+            .map { it.toMediaItem() }
+        if (rebuilt.isEmpty()) return
+        TrackLog.d(
+            "BitChord",
+            "back online; ${rebuilt.size} queued track(s) return to streaming",
+            about = player.currentMediaItem?.mediaId,
+        )
+        player.replaceMediaItems(from, items.size, rebuilt)
     }
 
     /**

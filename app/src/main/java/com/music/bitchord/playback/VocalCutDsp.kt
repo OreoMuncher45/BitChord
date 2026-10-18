@@ -42,7 +42,7 @@ import kotlin.math.tanh
  * allocation on the audio thread. Sample rate is set by [configure] and
  * defaults to 48 kHz before the sink reports it.
  */
-class VocalCutDsp {
+class VocalCutDsp : SingEngine {
 
     companion object {
         const val LOW_CUTOFF_HZ = 150.0
@@ -148,7 +148,7 @@ class VocalCutDsp {
     /** Reusable frame output — audio-thread confined, never allocated per call. */
     private val frameOut = FloatArray(2)
 
-    fun configure(sampleRate: Int) {
+    override fun configure(sampleRate: Int) {
         sampleRateHz = sampleRate.coerceAtLeast(8_000)
         val sr = sampleRateHz.toDouble()
         computeLowpass(LOW_CUTOFF_HZ / sr).let { (nb0, nb1, nb2, na1, na2) ->
@@ -202,7 +202,7 @@ class VocalCutDsp {
 
     private fun timeConst(ms: Double, sr: Double): Double = 1.0 - exp(-1.0 / (ms / 1000.0 * sr))
 
-    fun reset() {
+    override fun reset() {
         low1Ls.fill(0f); low2Ls.fill(0f); low1Rs.fill(0f); low2Rs.fill(0f)
         high1Ls.fill(0f); high2Ls.fill(0f); high1Rs.fill(0f); high2Rs.fill(0f)
         mid1Ls.fill(0f); mid2Ls.fill(0f); mid1Rs.fill(0f); mid2Rs.fill(0f)
@@ -221,7 +221,7 @@ class VocalCutDsp {
      * nothing is written while [cut] is idle — a disabled Sing leaves the
      * block byte-identical.
      */
-    fun processSpan(samples: FloatArray, sampleCount: Int, cut: Float) {
+    override fun processSpan(samples: FloatArray, sampleCount: Int, cut: Float) {
         val active = cut > 0.001f
         val c = cut.coerceIn(0f, 1f)
         var idx = 0
@@ -236,7 +236,7 @@ class VocalCutDsp {
     }
 
     /** One stereo frame into [frameOut]; the short path's per-sample entry. */
-    fun processFrame(left: Float, right: Float, cut: Float): FloatArray {
+    override fun processFrame(left: Float, right: Float, cut: Float): FloatArray {
         step(left, right, cut.coerceIn(0f, 1f), cut > 0.001f)
         return frameOut
     }

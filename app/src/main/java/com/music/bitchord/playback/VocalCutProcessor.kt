@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.playback.audio.AudioBlock
 import com.music.bitchord.playback.audio.FloatAudioProcessor
 import com.music.bitchord.playback.audio.PcmBoundary
@@ -13,16 +14,14 @@ import java.nio.ByteOrder
  * Apple Music Sing equivalent: turns the lead vocal down (or off) so the
  * listener can sing over the track.
  *
- * Band-limited center cut with transient bypass (see [VocalCutDsp]): only
- * the mid-band a vocal lives in is ever cut, bass and air pass untouched,
- * and drum transients punch through unducked. Wide-panned instruments are
- * never touched at any setting. Thin shell over the pure kernel — all math
- * lives in [VocalCutDsp] where unit tests drive it without an audio stack.
+ * Three engines, one slider — see [SingMethod] for what each one is for and
+ * which kind of mix it suits. This is a thin shell over whichever pure kernel
+ * is selected, so all the math stays testable without an audio stack.
  *
- * No makeup gain: removed energy stays removed, so bass and air (which
- * bypass the cut) never get doubled. At cut = 0 the kernel tracks filter
- * state but writes nothing, so a disabled Sing leaves the block
- * byte-identical — see [DspChain]'s exactness contract.
+ * At cut = 0 every engine tracks its own state but writes nothing, so a
+ * disabled Sing leaves the block byte-identical — see [DspChain]'s exactness
+ * contract. That holds for all three, including [VocalCutOriginal], whose
+ * makeup gain is unity at zero cut.
  */
 @UnstableApi
 class VocalCutProcessor : BaseAudioProcessor(), FloatAudioProcessor {
@@ -35,10 +34,44 @@ class VocalCutProcessor : BaseAudioProcessor(), FloatAudioProcessor {
     @Volatile
     var level: Float = 0f
 
-    private val dsp = VocalCutDsp()
+    /**
+     * Which remover is running. Swapped from the UI thread via [setMethod],
+     * read on the audio thread, hence volatile.
+     *
+     * The three engines are kept alive one at a time rather than all three at
+     * once: each carries filter memory sized for its own band, and holding
+     * three of them per player to switch between costs memory nobody asked for.
+     */
+    @Volatile
+    private var engine: SingEngine = engineFor(AppSettings.singMethod.value)
+
+    private var configuredSampleRate: Int = VocalCutDsp.DEFAULT_SAMPLE_RATE
+
+    /**
+     * Switch engines, configured for the rate this processor is already
+     * running at and reset so no filter memory from the last method leaks into
+     * the first frame of the new one.
+     *
+     * Called from the player thread rather than from inside [process], so the
+     * swap happens between callbacks and never mid-buffer.
+     */
+    fun setMethod(method: SingMethod) {
+        if (method == currentMethod()) return
+        engine = engineFor(method).apply {
+            configure(configuredSampleRate)
+            reset()
+        }
+    }
+
+    private fun currentMethod(): SingMethod = when (engine) {
+        is VocalCutOriginal -> SingMethod.ORIGINAL
+        is VocalCutBandLimited -> SingMethod.BAND_LIMITED
+        else -> SingMethod.VOICE_GATE
+    }
 
     override fun configure(sampleRate: Int, channelCount: Int) {
-        dsp.configure(sampleRate)
+        configuredSampleRate = sampleRate
+        engine.configure(sampleRate)
     }
 
     /**
@@ -48,7 +81,7 @@ class VocalCutProcessor : BaseAudioProcessor(), FloatAudioProcessor {
      */
     override fun process(block: AudioBlock) {
         if (block.channelCount != 2 || block.frameCount == 0) return
-        dsp.processSpan(block.samples, block.frameCount * 2, level)
+        engine.processSpan(block.samples, block.frameCount * 2, level)
     }
 
     /**
@@ -61,14 +94,14 @@ class VocalCutProcessor : BaseAudioProcessor(), FloatAudioProcessor {
             return AudioProcessor.AudioFormat.NOT_SET
         }
         if (inputAudioFormat.sampleRate > 0) {
-            dsp.configure(inputAudioFormat.sampleRate)
+            configure(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
         }
         return inputAudioFormat
     }
 
-    override fun onFlush() = dsp.reset()
+    override fun onFlush() = engine.reset()
 
-    override fun onReset() = dsp.reset()
+    override fun onReset() = engine.reset()
 
     override fun queueInput(inputBuffer: java.nio.ByteBuffer) {
         val frameCount = inputBuffer.remaining() / BYTES_PER_FRAME
@@ -89,7 +122,7 @@ class VocalCutProcessor : BaseAudioProcessor(), FloatAudioProcessor {
         repeat(frameCount) {
             val left = inputBuffer.short.toFloat() * invScale
             val right = inputBuffer.short.toFloat() * invScale
-            val out = dsp.processFrame(left, right, cut)
+            val out = engine.processFrame(left, right, cut)
             outputBuffer.putShort(PcmBoundary.clamp16FromFloat(out[0]))
             outputBuffer.putShort(PcmBoundary.clamp16FromFloat(out[1]))
         }
