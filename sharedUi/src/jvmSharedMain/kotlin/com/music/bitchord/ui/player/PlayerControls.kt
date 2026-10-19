@@ -1,5 +1,8 @@
 package com.music.bitchord.ui.player
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CastConnected
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -412,9 +415,12 @@ internal fun TransportRow(
     onNext: () -> Unit,
     compact: Boolean = false,
 ) {
-    val playSize = if (compact) 58.dp else 74.dp
+    // The glyphs are ~20% smaller than they were (74/53 → 59/42): the owner
+    // found them oversized against Apple's. The touch boxes are untouched, so
+    // the buttons are as easy to hit as they ever were.
+    val playSize = if (compact) 46.dp else 59.dp
     val playTouch = if (compact) 76.dp else 92.dp
-    val skipSize = if (compact) 44.dp else PLAYER_SKIP_ICON_SIZE
+    val skipSize = if (compact) 35.dp else PLAYER_SKIP_ICON_SIZE
     Row(
         modifier = Modifier.fillMaxWidth(),
         // SpaceAround, not SpaceEvenly: the outer margins take half a gap, so
@@ -731,7 +737,7 @@ private fun TransportGlyph(
 }
 
 /** The skip glyphs' width, and their touch box, beside the larger play button. */
-private val PLAYER_SKIP_ICON_SIZE = 53.dp
+private val PLAYER_SKIP_ICON_SIZE = 42.dp
 private val PLAYER_SKIP_TOUCH_SIZE = 53.dp
 
 /**
@@ -826,6 +832,32 @@ private fun PillDivider() {
  * quality — the same kind of choice, offered the same way. This capsule is
  * back to the two icons it always otherwise had, at their original spacing.
  */
+/**
+ * What the output segment shows: the thing the music is actually coming out of,
+ * the way Apple Music's AirPlay button does — the phone, buds, a speaker —
+ * rather than headphones whatever is playing it. Ported from upstream v1.8.1's
+ * rememberOutputGlyph, less the watch and Bluetooth-form branches this fork's
+ * [PlayerHost] has no state for: cast first, because while casting the phone's
+ * own route is not where anybody is listening, then the active output's kind.
+ */
+@Composable
+private fun rememberOutputGlyph(): PlayerIcon {
+    val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
+    val active = rememberAudioOutputs().firstOrNull { it.isActive }
+    return when {
+        cast.connectedName != null -> PlayerIcon.Vector(Icons.Rounded.CastConnected)
+        else -> when (active?.kind) {
+            null, AudioOutputKind.PHONE -> PlayerIcon.Drawable(Res.drawable.ic_output_phone)
+            AudioOutputKind.BLUETOOTH -> PlayerIcon.Drawable(Res.drawable.ic_output_buds)
+            AudioOutputKind.HDMI -> PlayerIcon.Vector(Icons.Rounded.Tv)
+            AudioOutputKind.OTHER -> PlayerIcon.Drawable(Res.drawable.ic_output_speaker)
+            // Wired and USB double as the neutral "some audio device" glyph:
+            // a device that will not say what it is gets that, not a guess.
+            else -> PlayerIcons.Output
+        }
+    }
+}
+
 @Composable
 private fun OutputPartyPill(
     onOutput: () -> Unit,
@@ -834,9 +866,10 @@ private fun OutputPartyPill(
     onOpenMembers: () -> Unit,
 ) {
     val badge = rememberPartyBadge()
+    val output = rememberOutputGlyph()
     Pill {
         PillSegment(
-            icon = PlayerIcons.Output,
+            icon = output,
             iconSize = PILL_HEADPHONES_SIZE,
             contentDescription = stringResource(Res.string.audio_output),
             onClick = onOutput,

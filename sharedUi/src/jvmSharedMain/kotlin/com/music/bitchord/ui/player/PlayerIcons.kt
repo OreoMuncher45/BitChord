@@ -3,6 +3,8 @@ package com.music.bitchord.ui.player
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.painter.Painter
@@ -144,16 +146,19 @@ object PlayerIcons {
     // ---- Like ------------------------------------------------------------
 
     /**
-     * The star, liked. `favorite`.
+     * The star, liked. Apple's is `star.fill`; Material's [Icons.Rounded.Star]
+     * is the same five-point star, so it is taken from the vector pool rather
+     * than a Convx drawable — Convx's `favorite` is a heart, and it shipped as
+     * the Liked glyph while its own comment called it a star.
      *
      * Filled rather than merely tinted, which is why it is two entries and not
      * one tinted twice: the player draws every glyph white on album artwork,
      * and a colour change is the one signal the backdrop can swallow.
      */
-    val Liked = PlayerIcon.Drawable(Res.drawable.favorite)
+    val Liked = PlayerIcon.Vector(Icons.Rounded.Star)
 
-    /** The star, not liked. `favorite_border`. */
-    val LikedOff = PlayerIcon.Drawable(Res.drawable.favorite_border)
+    /** The star, not liked — Apple's `star`, the same outline. */
+    val LikedOff = PlayerIcon.Vector(Icons.Rounded.StarBorder)
 
     // ---- The credits row's second button ---------------------------------
 

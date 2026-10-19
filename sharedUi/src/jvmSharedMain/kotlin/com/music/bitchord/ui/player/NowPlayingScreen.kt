@@ -242,6 +242,21 @@ private val THUMB_SIZE = 66.dp
 private val HEADER_HEIGHT = 72.dp
 private val ART_TITLE_GAP = 20.dp
 /**
+ * The expanded sleeve draws this much wider than the player, so its Crop fills
+ * a frame that overhangs the window's width. Six percent: enough that the
+ * artwork reads zoomed rather than fitted, small enough that no corner radius
+ * or edge of the source image shows at the crop.
+ */
+private const val ART_ZOOM = 1.06f
+/**
+ * How far the artwork-and-title block sits below dead centre. Apple's player
+ * gives the sleeve more air above it than below — a fitted, perfectly centred
+ * block reads as floating — so the block is nudged down by a fixed amount
+ * rather than re-weighting the centre, which would move it by a different
+ * amount on every screen height.
+ */
+private val ART_TOP_NUDGE = 12.dp
+/**
  * How long the sleeve takes to travel the whole way between the full player and
  * the queue's header.
  *
@@ -2550,7 +2565,10 @@ fun NowPlayingScreen(
                 // over once the credits row and the gap above it have had
                 // theirs. Sizing it off the width alone is what pushed the
                 // credits down across the scrubber on anything but a phone.
-                val wantArt = minOf(maxWidth, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
+                // [ART_ZOOM] over the width, not the width itself: the sleeve's Crop fills
+                // the larger frame, which is the zoom. minOf still binds it by
+                // the height the controls leave, so nothing below moves.
+                val wantArt = minOf(maxWidth * ART_ZOOM, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
                 // Held to what the box has actually got, for the single frame it
                 // takes the gaps below to catch up with a change in their own
                 // height: a sleeve a few dp under for one frame is a better
@@ -2632,7 +2650,7 @@ fun NowPlayingScreen(
                 // the controls couldn't take, which on all but the tallest
                 // screens is nothing.
                 val groupTop = (maxHeight - fullArt - ART_TITLE_GAP - HEADER_HEIGHT)
-                    .coerceAtLeast(0.dp) / 2
+                    .coerceAtLeast(0.dp) / 2 + ART_TOP_NUDGE
                 // Functions of the collapse, called at placement and measure
                 // — see [p]. Composition never reads them.
                 fun artSize(): Dp = lerp(fullArt, THUMB_SIZE, p())
