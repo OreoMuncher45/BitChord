@@ -147,3 +147,32 @@ They are placeholders for step 2. Delete them if the icon set changes.
 - Home screen, tab bar, Radio as its own destination, Library, Search
 - The press-and-hold menu question is answered above; the other menus were not
   investigated
+## Now Playing restyle — exact measurements (authoritative, from the owner)
+
+Units: W = screen width; 1% W = 10.8px on the owner's 1080px-wide screen. All Y
+from the top of the screen. Positions are %-of-WIDTH, never %-of-height.
+
+1) ALBUM ART (banner): scale ×1.234 uniform, transform-origin 50% 0 (top
+   centre), then translateY +1.6% W (~17px). On a wrapper so it multiplies with
+   the existing sleeve animation, not replaces it. Full-width art becomes
+   123.4% W, ~11.7% W cropped each side. Bottom fade/mask scales with the art.
+2) TITLE ROW: title/artist font ×0.86. Title top Y = 122.7% W (1325px). Artist
+   line bottom Y = 132.2% W (1428px). Star/ellipsis diameter 8.0% W (86px,
+   ×0.84), gap between them 4.0% W, vertical centre Y = 127.5% W (1377px),
+   ellipsis right edge at 92% W. Left margin 8.4% W.
+3) PROGRESS: centre Y = 142.5% W (1539px, current). Thickness 1.7% W (18px,
+   from 20). Spans 8%–92% W. Time labels centre Y = 148.0% W (1595px, +9px).
+4) CONTROLS (row centre Y = 167.0% W, unchanged): pause 7.4% W × 9.9% W
+   (80×107px; bars 3.0% W, gap 1.4% W; ×0.60 of current), centred at 50% W.
+   Rewind/forward 9.8% W × 5.6% W each (105×60px, ×0.95), centres 23.4% W
+   (253px) and 76.5% W (826px) — each moves inward ~33px.
+5) VOLUME: row centre Y = 189.5% W (2047px, +25px). Bar thickness 1.6% W
+   (17px). Track 14.5%–83.3% W. Speakers at 8.9% W and 91% W.
+6) BOTTOM ROW: centre Y = 200.5% W (2161px, +7px). Icon size unchanged
+   (~5.4% W). Lyrics centre X = 21.5% W (232px), queue centre X = 78.2% W
+   (845px), centre icon at 50% — outer icons move inward ~63px.
+
+DO NOT MODIFY: status bar, grabber, "Playing from…", Opus/Automix lines,
+lyric-preview row, device label. Info lines overlay the art's lower fade
+(z above art). Title moving down leaves only ~13px to the lyric-preview row —
+reduce its spacing or hide if cramped. VERIFY at 1080px wide, every Y ±3px.

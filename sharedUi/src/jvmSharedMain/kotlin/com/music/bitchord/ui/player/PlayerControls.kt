@@ -415,17 +415,21 @@ internal fun TransportRow(
     onNext: () -> Unit,
     compact: Boolean = false,
 ) {
-    // The glyphs are ~20% smaller than they were (74/53 → 59/42): the owner
-    // found them oversized against Apple's. The touch boxes are untouched, so
-    // the buttons are as easy to hit as they ever were.
-    val playSize = if (compact) 46.dp else 59.dp
+    // The pause glyph, measured against Apple's player: 0.60x the height it
+    // had when the measurements were taken — 38.3pt tall on Apple's own
+    // numbers. The touch box is untouched, so the button hits exactly as it
+    // ever did.
+    val playSize = if (compact) 30.dp else 38.dp
     val playTouch = if (compact) 76.dp else 92.dp
-    val skipSize = if (compact) 35.dp else PLAYER_SKIP_ICON_SIZE
+    val skipSize = if (compact) 36.dp else PLAYER_SKIP_ICON_SIZE
     Row(
+        // A tight, centred cluster — the shrink to 59/42dp left SpaceAround
+        // stretching the empty space between the buttons across the whole
+        // width, which read as the row falling apart rather than the icons
+        // getting smaller. spacedBy holds a fixed gap instead, and the
+        // alignment centres the cluster where the three sat before.
         modifier = Modifier.fillMaxWidth(),
-        // SpaceAround, not SpaceEvenly: the outer margins take half a gap, so
-        // the three buttons spread a little further apart from each other.
-        horizontalArrangement = Arrangement.SpaceAround,
+        horizontalArrangement = Arrangement.spacedBy(TRANSPORT_GAP, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TransportGlyph(
@@ -738,6 +742,16 @@ private fun TransportGlyph(
 
 /** The skip glyphs' width, and their touch box, beside the larger play button. */
 private val PLAYER_SKIP_ICON_SIZE = 42.dp
+
+/**
+ * The fixed gap between the three transport buttons' boxes, derived from the
+ * measured centres — both sets of reference numbers put the skips at 23.4% and
+ * 76.5% of the width, 104.5dp centre-to-centre from the pause button on a
+ * 393dp player. With the boxes at 53dp and 92dp, that leaves
+ * 104.5 − 26.5 − 46 = 32dp between them: a tight cluster that still reads as
+ * three buttons, not one object.
+ */
+private val TRANSPORT_GAP = 32.dp
 private val PLAYER_SKIP_TOUCH_SIZE = 53.dp
 
 /**

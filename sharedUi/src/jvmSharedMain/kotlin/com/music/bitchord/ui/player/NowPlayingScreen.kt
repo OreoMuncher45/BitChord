@@ -242,22 +242,28 @@ private val THUMB_SIZE = 66.dp
 private val HEADER_HEIGHT = 72.dp
 private val ART_TITLE_GAP = 20.dp
 /**
- * The expanded sleeve's width as a share of the player, measured off Apple's
- * own Now Playing reference (apple-music-iphone-04.png): the artwork there
- * runs 1002px on a 1320px screen — 75.9% — an inset rounded block with ~12%
- * of margin either side, not an edge-to-edge frame. Crop into that tighter
- * frame is what reads as "zoomed in" where a wider frame would show more of
- * the image at a smaller scale.
+ * How much the hero banner's still artwork is scaled past its frame, measured
+ * — twice, independently, to the same number — against Apple's player: 123.4%
+ * of the width, a full-width banner cropping ~11.7% off each side. Scaling
+ * past the frame is the zoom; Crop takes the tighter slice; the edges fall
+ * outside the clip, which is exactly the slightly-cropped look Apple's own
+ * player has and the owner asked for.
  */
-private const val ART_WIDTH_FRACTION = 0.76f
+private const val HERO_ART_ZOOM = 1.234f
 /**
- * How far the artwork-and-title block sits below dead centre. Apple's player
- * gives the sleeve more air above it than below — a fitted, perfectly centred
- * block reads as floating — so the block is nudged down by a fixed amount
- * rather than re-weighting the centre, which would move it by a different
- * amount on every screen height.
+ * How far down the zoomed artwork drifts: 1.6% of the width, measured off the
+ * same reference. Applied AFTER the scale in the same layer, about the
+ * top-centre origin, so the zoom and the drift are one transform.
  */
-private val ART_TOP_NUDGE = 12.dp
+private const val HERO_ART_DRIFT = 0.016f
+/**
+ * How far the mesh's dissolve seam sits below the banner's bottom edge. The
+ * wash reading as starting at the artwork's own boundary made the blurred
+ * region end abruptly where the art ended; pushing the seam down drags the
+ * gradient's transition under the content below, so the mesh reads as
+ * nudged down the screen rather than cut at the banner.
+ */
+private val MESH_SEAM_NUDGE = 16.dp
 /**
  * How long the sleeve takes to travel the whole way between the full player and
  * the queue's header.
@@ -2123,7 +2129,7 @@ fun NowPlayingScreen(
         } else if (!tabletArtworkBackdrop && !spotifyCanvasPresentation) {
             ArtworkMeshBackdrop(
                 mesh = artMesh,
-                seam = if (canvasFirstPortrait) renderedCanvasBottom else if (heroMode) heroHeight else 0.dp,
+                seam = if (canvasFirstPortrait) renderedCanvasBottom else if (heroMode) heroHeight + MESH_SEAM_NUDGE else 0.dp,
                 modifier = Modifier.graphicsLayer { alpha = 1f - fullArtworkBackdropAlpha },
             )
         }
@@ -2567,11 +2573,7 @@ fun NowPlayingScreen(
                 // over once the credits row and the gap above it have had
                 // theirs. Sizing it off the width alone is what pushed the
                 // credits down across the scrubber on anything but a phone.
-                // Apple's inset proportion, not the full width: Crop into the
-                // narrower frame is the zoom the reference shows. minOf still
-                // binds it by the height the controls leave, so nothing below
-                // moves on a short screen.
-                val wantArt = minOf(maxWidth * ART_WIDTH_FRACTION, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
+                val wantArt = minOf(maxWidth, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
                 // Held to what the box has actually got, for the single frame it
                 // takes the gaps below to catch up with a change in their own
                 // height: a sleeve a few dp under for one frame is a better
@@ -2653,7 +2655,7 @@ fun NowPlayingScreen(
                 // the controls couldn't take, which on all but the tallest
                 // screens is nothing.
                 val groupTop = (maxHeight - fullArt - ART_TITLE_GAP - HEADER_HEIGHT)
-                    .coerceAtLeast(0.dp) / 2 + ART_TOP_NUDGE
+                    .coerceAtLeast(0.dp) / 2
                 // Functions of the collapse, called at placement and measure
                 // — see [p]. Composition never reads them.
                 fun artSize(): Dp = lerp(fullArt, THUMB_SIZE, p())
@@ -3042,6 +3044,22 @@ fun NowPlayingScreen(
                         // [PlayerArtwork.loaded] still flips the moment it does.
                         modifier = Modifier
                             .fillMaxSize()
+                            // In the banner, the art is zoomed past its frame
+                            // — [HERO_ART_ZOOM] — so Crop takes a tighter slice
+                            // and the edges fall outside the clip. The sleeve
+                            // keeps its fitted card; the zoom is a banner idea.
+                            .then(
+                                if (heroMode) Modifier.graphicsLayer {
+                                    // Top-centre origin, then drift: the scale
+                                    // takes the top edge with it, so the crop
+                                    // grows at the sides and the bottom rather
+                                    // than lifting the art off the status bar.
+                                    scaleX = HERO_ART_ZOOM
+                                    scaleY = HERO_ART_ZOOM
+                                    transformOrigin = TransformOrigin(0.5f, 0f)
+                                    translationY = size.width * HERO_ART_DRIFT
+                                } else Modifier,
+                            )
                             .drawWithContent { if (art.loaded || !canvasRendered) drawContent() },
                     )
 
