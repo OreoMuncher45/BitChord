@@ -126,9 +126,14 @@ fun <T : Any> HeldContextMenu(
                 if (reduceMotion) {
                     tween(durationMillis = 140, easing = LinearEasing)
                 } else {
-                    // Under-damped on purpose: the small overshoot is the "pop"
-                    // of the item coming off the page.
-                    spring(dampingRatio = 0.72f, stiffness = 420f)
+                    // Still a spring, but no longer the bouncy one the lift
+                    // once ran: the menu now grows out of the press and
+                    // settles without the overshoot. Stiffness 330 (from 420)
+                    // makes the opening read slightly slower and gentler off
+                    // the mark, and damping 0.83 (from 0.72) takes the bounce
+                    // from a visible pop to under a percent — smooth, but a
+                    // hair short of critical so the arrival is not dead.
+                    spring(dampingRatio = 0.83f, stiffness = 330f)
                 },
             )
         } else {

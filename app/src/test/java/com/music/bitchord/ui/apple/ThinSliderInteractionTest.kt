@@ -29,6 +29,7 @@
 
 package com.music.bitchord.ui.apple
 
+import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
@@ -50,7 +51,18 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
+// Not the manifest application: BitChordApplication.onCreate installs the
+// stream hooks, whose class init loads innertubex's TokenProvider — published
+// as Java 21 bytecode (class file 65) that a JDK 17 test worker's Robolectric
+// sandbox cannot define, so every test in this class used to die with
+// UnsupportedClassVersionError before a single assertion ran. The slider needs
+// no app state, so the plain Application is used, exactly as the passing
+// SongActionsMenuInteractionTest does.
+@Config(
+    sdk = [34],
+    application = Application::class,
+    qualifiers = "w411dp-h891dp-xhdpi",
+)
 class ThinSliderInteractionTest {
 
     @get:Rule
