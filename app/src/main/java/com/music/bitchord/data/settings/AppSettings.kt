@@ -506,8 +506,15 @@ object AppSettings {
      * shrink-while-paused, and only a clip goes full-bleed. Phones only either
      * way — see the hero notes in
      * [NowPlayingScreen][com.music.bitchord.ui.player.NowPlayingScreen].
+     *
+     * Defaults off: the full-bleed banner is not the layout Apple's own Now
+     * Playing ships — measured off apple-music-iphone-04.png, their artwork
+     * is an inset rounded block, 75.9% of the screen's width with ~12%
+     * margins, not an edge-to-edge wash. A banner that shows more of the
+     * image at a smaller scale is what read as "not zoomed in" against
+     * that reference. Anyone who wants it back can still turn it on here.
      */
-    val fullBleedArtwork = MutableStateFlow(true)
+    val fullBleedArtwork = MutableStateFlow(false)
 
     /**
      * Puts v1.5's backdrop back on the player: four quantised blobs drifting
@@ -966,7 +973,7 @@ object AppSettings {
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, false)
         spotifyCanvasAutoHide.value = prefs.getBoolean(KEY_SPOTIFY_CANVAS_AUTO_HIDE, true)
         prioritizeSpotifyCanvas.value = prefs.getBoolean(KEY_PRIORITIZE_SPOTIFY_CANVAS, false)
-        fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
+        fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, false)
         legacyMeshGradient.value = prefs.getBoolean(KEY_LEGACY_MESH_GRADIENT, false)
         lastPlayerScreen.value = runCatching {
             LastPlayerScreen.valueOf(

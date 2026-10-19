@@ -242,12 +242,14 @@ private val THUMB_SIZE = 66.dp
 private val HEADER_HEIGHT = 72.dp
 private val ART_TITLE_GAP = 20.dp
 /**
- * The expanded sleeve draws this much wider than the player, so its Crop fills
- * a frame that overhangs the window's width. Six percent: enough that the
- * artwork reads zoomed rather than fitted, small enough that no corner radius
- * or edge of the source image shows at the crop.
+ * The expanded sleeve's width as a share of the player, measured off Apple's
+ * own Now Playing reference (apple-music-iphone-04.png): the artwork there
+ * runs 1002px on a 1320px screen — 75.9% — an inset rounded block with ~12%
+ * of margin either side, not an edge-to-edge frame. Crop into that tighter
+ * frame is what reads as "zoomed in" where a wider frame would show more of
+ * the image at a smaller scale.
  */
-private const val ART_ZOOM = 1.06f
+private const val ART_WIDTH_FRACTION = 0.76f
 /**
  * How far the artwork-and-title block sits below dead centre. Apple's player
  * gives the sleeve more air above it than below — a fitted, perfectly centred
@@ -2565,10 +2567,11 @@ fun NowPlayingScreen(
                 // over once the credits row and the gap above it have had
                 // theirs. Sizing it off the width alone is what pushed the
                 // credits down across the scrubber on anything but a phone.
-                // [ART_ZOOM] over the width, not the width itself: the sleeve's Crop fills
-                // the larger frame, which is the zoom. minOf still binds it by
-                // the height the controls leave, so nothing below moves.
-                val wantArt = minOf(maxWidth * ART_ZOOM, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
+                // Apple's inset proportion, not the full width: Crop into the
+                // narrower frame is the zoom the reference shows. minOf still
+                // binds it by the height the controls leave, so nothing below
+                // moves on a short screen.
+                val wantArt = minOf(maxWidth * ART_WIDTH_FRACTION, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
                 // Held to what the box has actually got, for the single frame it
                 // takes the gaps below to catch up with a change in their own
                 // height: a sleeve a few dp under for one frame is a better

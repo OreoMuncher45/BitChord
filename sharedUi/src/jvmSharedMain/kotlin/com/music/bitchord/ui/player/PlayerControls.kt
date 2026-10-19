@@ -1573,6 +1573,10 @@ private fun LosslessOrStats(
             } else {
                 stringResource(Res.string.upgrading_quality)
             },
+            // Apple's lossless glyph — upstream v1.8.1's — not the headphones
+            // this defaulted to: the wait is FOR lossless, and the badge that
+            // ends the wait already shows this glyph.
+            iconPainter = painterResource(Res.drawable.ic_lossless),
             animated = false,
             modifier = modifier,
         )
@@ -1580,6 +1584,8 @@ private fun LosslessOrStats(
             // Same line Tidal, Qobuz and Apple Music draw it at — see
             // [NerdStats.Snapshot.isHiRes].
             text = stringResource(if (nerdStats.isHiRes) Res.string.hi_res_lossless else Res.string.lossless),
+            // Apple's lossless glyph, as upstream v1.8.1 draws it here.
+            iconPainter = painterResource(Res.drawable.ic_lossless),
             // Shimmer is reserved for the thing that was asked for and
             // confirmed. It is what makes the badge read as an achievement
             // rather than a label, which only one of these two is.
