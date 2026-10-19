@@ -188,7 +188,11 @@ class AppleChromeInteractionTest {
             }
         }
 
-        compose.onNodeWithContentDescription("Account").performTouchInput { swipeLeft() }
+        // The button is 40dp, so a default swipe crosses ~40px — under the
+        // 56px threshold. Ask for a longer one so the gesture actually trips.
+        compose.onNodeWithContentDescription("Account").performTouchInput {
+            swipeLeft(400f)
+        }
         compose.waitForIdle()
 
         assertEquals("one swipe steps one account", 1, stepped)

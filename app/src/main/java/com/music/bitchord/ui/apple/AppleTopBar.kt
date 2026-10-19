@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -209,14 +208,26 @@ private fun AppleAccountMenu(
 ) {
     val palette = LocalApplePalette.current
     Box(modifier = modifier) {
+        // The dismiss target is a scrim *behind* the menu, not a pointer handler
+        // on it. A handler on the menu itself competes with each row's own click
+        // for the same events and swallows them — the rows become dead, which is
+        // the same failure as the account button's drag detector, one level down.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+        )
         Column(
             modifier = Modifier
                 .widthIn(min = 180.dp)
                 .clip(AppleShape.Sheet)
                 .background(palette.backgroundElevated)
                 .border(0.5.dp, palette.separator, AppleShape.Sheet)
-                .padding(vertical = 4.dp)
-                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+                .padding(vertical = 4.dp),
         ) {
             actions.forEach { action ->
                 Text(
