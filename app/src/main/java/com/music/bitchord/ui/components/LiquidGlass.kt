@@ -22,15 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.components.backdrop.Backdrop
 import com.music.bitchord.ui.components.backdrop.backdrops.LayerBackdrop
-import com.music.bitchord.ui.components.backdrop.drawBackdrop
-import com.music.bitchord.ui.components.backdrop.effects.blur
 import com.music.bitchord.ui.components.backdrop.effects.colorControls
-import com.music.bitchord.ui.components.backdrop.effects.lens
 import com.music.bitchord.ui.components.backdrop.highlight.Highlight
 import com.music.bitchord.ui.components.backdrop.highlight.HighlightElement
 import com.music.bitchord.ui.components.backdrop.internal.ShapeProvider
@@ -39,9 +35,6 @@ import androidx.compose.ui.unit.dp
 
 /** Whether the liquid glass nav bar is turned on — see [AppSettings.liquidGlass]. */
 val LocalLiquidGlassEnabled = staticCompositionLocalOf { false }
-
-/** The backdrop content (app UI) that a liquid glass surface samples from. */
-val LocalAppBackdrop = staticCompositionLocalOf<Backdrop> { error("No AppBackdrop provided") }
 
 /**
  * Where a [liquidGlass] surface composed under it also records the glass it
@@ -52,32 +45,8 @@ val LocalAppBackdrop = staticCompositionLocalOf<Backdrop> { error("No AppBackdro
  */
 internal val LocalGlassExport = compositionLocalOf<LayerBackdrop?> { null }
 
-/**
- * The backdrop blur pipeline requires [android.graphics.RenderEffect] on a
- * [android.graphics.RenderNode], available from Android 12 (API 31).
- */
-fun isGlassSupported(sdkInt: Int = Build.VERSION.SDK_INT): Boolean = sdkInt >= Build.VERSION_CODES.S
-
-/** Apple-matched defaults (Echo's GlassEffectConfig()), fixed rather than user sliders. */
-private const val VIBRANCY = 1f
-private const val BLUR_RADIUS_DP = 8f
-private const val LENS_HEIGHT = 0.5f
-private const val LENS_AMOUNT = 0.5f
-private const val LENS_MAX_DP = 48f
 private const val SURFACE_OPACITY = 0.4f
 
-/**
- * Resolution fraction the glass surface records and processes its backdrop at.
- *
- * A third, which is what Echo's `glassResolutionScale` comes to at this blur
- * radius. It was briefly raised to a half while the sharp-text bug was being
- * chased — wrongly, as it turned out: the cause was a transparent backdrop, not
- * the resample (see MainActivity's `paintBackdrop`). A third is nine times fewer
- * pixels than full resolution through the colour matrix, the blur and the lens
- * shader, on as many as six surfaces at once in the middle of a fold, and the
- * blur is what hides the upscale.
- */
-private const val GLASS_RESOLUTION_SCALE = 0.33f
 
 /**
  * The hairline along a bar's edge, and what stands in for the glass rim
@@ -152,62 +121,20 @@ fun Modifier.lightweightLiquidGlass(
 }
 
 /**
- * Renders this composable as a liquid glass surface sampling [LocalAppBackdrop]:
- * vibrancy, blur and lens refraction, then a theme-adaptive surface tint (light
- * glass on light theme, dark on dark). Returns the receiver unchanged on devices
- * without RenderEffect support — callers should still gate on [isGlassSupported]
- * to fall back to the regular Haze treatment there.
+ * BitChord-facing glass surface. Delegates to the vendored Convx
+ * [Modifier.liquidGlass], which is the authoritative implementation; this
+ * wrapper only pins BitChord's house defaults so existing call sites keep a
+ * one-argument shape API.
  *
- * Under "reduce dynamic blur" the surface is filled solid instead, which is what
- * that setting promises everywhere else in the app. It is checked here rather
- * than at each call site so there is one answer to it: [MainActivity] also stops
- * recording the backdrop layer when it is on, and a surface that still tried to
- * sample would be sampling a layer nothing is drawing into.
+ * Convx's signature is `liquidGlass(config, shape, ...)`; its defaults already
+ * match Apple's nav spec (3dp blur, .60/.69 lens), so the config is passed
+ * through unchanged.
  *
- * [shape] is restricted to [CornerBasedShape] because the backdrop's lens effect
- * throws for any other shape type.
+ * Unlike the Legacy shell's glass, this does not read the Liquid Glass toggle:
+ * see [LocalLiquidGlassEnabled]. The Apple shell's chrome is glass rather than
+ * a glass option over something else, so gating it left the whole Convx engine
+ * unreachable behind a switch that defaults off.
  */
 @Composable
-fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
-    if (!isGlassSupported()) return this
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    if (reduceDynamicBlur) {
-        return background(MaterialTheme.colorScheme.surface, shape)
-            .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
-    }
-    val backdrop = LocalAppBackdrop.current
-    val exportedBackdrop = LocalGlassExport.current
-    val density = LocalDensity.current
-    val blurPx = with(density) { BLUR_RADIUS_DP.dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensHeightPx = with(density) { (LENS_HEIGHT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensAmountPx = with(density) { (LENS_AMOUNT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val surfaceTintColor = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
-        Color(0xFFFAFAFA)
-    } else {
-        Color(0xFF121212)
-    }
-
-    return drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            colorControls(saturation = 1f + 0.5f * VIBRANCY)
-            blur(blurPx)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(
-                    refractionHeight = lensHeightPx,
-                    refractionAmount = lensAmountPx,
-                    depthEffect = true,
-                    chromaticAberration = true,
-                )
-            }
-        },
-        highlight = { Highlight.Default },
-        shadow = { Shadow.Default },
-        onDrawSurface = {
-            drawRect(color = surfaceTintColor.copy(alpha = SURFACE_OPACITY), size = size)
-        },
-        exportedBackdrop = exportedBackdrop,
-        backdropScale = GLASS_RESOLUTION_SCALE,
-    )
-}
+fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier =
+    liquidGlass(GlassEffectConfig(), shape)

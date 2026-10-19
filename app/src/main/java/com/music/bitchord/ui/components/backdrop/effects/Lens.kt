@@ -25,7 +25,10 @@ fun BackdropEffectScope.lens(
     @FloatRange(from = 0.0) refractionHeight: Float,
     @FloatRange(from = 0.0) refractionAmount: Float,
     depthEffect: Boolean = false,
-    chromaticAberration: Boolean = false
+    chromaticAberration: Boolean = false,
+    fastCircleMap: Boolean = false,
+    @FloatRange(from = 0.0, to = 1.0) chromaticAberrationAmount: Float =
+        if (chromaticAberration) 1f else 0f,
 ) {
     if (!isRuntimeShaderSupported()) return
     if (refractionHeight <= 0f || refractionAmount <= 0f) return
@@ -37,8 +40,9 @@ fun BackdropEffectScope.lens(
     val cornerRadii = cornerRadii
     val effect =
         if (cornerRadii != null) {
+            val dispersion = chromaticAberrationAmount.coerceIn(0f, 1f)
             val shader =
-                if (!chromaticAberration) {
+                if (dispersion <= 0f) {
                     obtainRuntimeShader(
                         "Refraction",
                         RoundedRectRefractionShaderString
@@ -50,14 +54,18 @@ fun BackdropEffectScope.lens(
                     )
                 }
             shader.apply {
-                setFloatUniform("size", size.width, size.height)
+                val w = size.width
+                val h = size.height
+                setFloatUniform("halfSize", w * 0.5f, h * 0.5f)
+                setFloatUniform("minHalf", minOf(w, h) * 0.5f)
                 setFloatUniform("offset", -padding, -padding)
                 setFloatUniform("cornerRadii", cornerRadii)
                 setFloatUniform("refractionHeight", refractionHeight)
                 setFloatUniform("refractionAmount", -refractionAmount)
                 setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
-                if (chromaticAberration) {
-                    setFloatUniform("chromaticAberration", 1f)
+                setIntUniform("circleMapMode", if (fastCircleMap) 1 else 0)
+                if (dispersion > 0f) {
+                    setFloatUniform("chromaticAberration", dispersion)
                 }
             }
             RuntimeShaderEffect(shader, "content")

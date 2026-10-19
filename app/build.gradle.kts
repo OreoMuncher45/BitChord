@@ -80,8 +80,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 59
-        versionName = "2.1.17"
+        versionCode = 60
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -207,6 +207,20 @@ android {
     }
     testOptions {
         unitTests {
+            // Robolectric needs merged resources and the manifest to inflate a
+            // composable.
+            isIncludeAndroidResources = true
+
+            all {
+                // Conscrypt, which Robolectric loads by JNI during sandbox
+                // setup, publishes no linux-aarch64 build, so on this host the
+                // interaction tests die with UnsatisfiedLinkError before
+                // reaching an assertion. CI is x86_64 and runs them for real.
+                if (System.getProperty("os.arch") in setOf("aarch64", "arm64")) {
+                    it.filter.excludeTestsMatching("com.music.bitchord.ui.apple.*InteractionTest")
+                }
+            }
+
             // Unit tests run against a stub android.jar whose methods throw
             // rather than return. That is the right default for anything whose
             // behaviour depends on the framework, and wrong for android.util.Log
@@ -404,6 +418,15 @@ dependencies {
     // a hand-rolled fake of the client would be a test of the fake. Pinned to
     // the OkHttp version already on the runtime classpath.
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
+    // Compose interaction tests. Every other test in this module is pure JVM
+    // logic, which cannot render a composable at all — so a UI whose callbacks
+    // were dead shipped twice before anything noticed. Robolectric runs the
+    // real tree on the JVM; it needs Conscrypt's native lib, which is x86_64
+    // only, so these are skipped on aarch64 hosts (see testOptions).
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")

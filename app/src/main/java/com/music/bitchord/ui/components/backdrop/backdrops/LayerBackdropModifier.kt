@@ -20,15 +20,22 @@ import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.InspectorInfo
 import com.music.bitchord.ui.components.backdrop.internal.recordLayer
 
-fun Modifier.layerBackdrop(backdrop: LayerBackdrop): Modifier =
-    this then LayerBackdropElement(backdrop)
+/**
+ * @param frozen no longer read by the source (see [LayerBackdropNode.draw]); kept so
+ *   callers need not change. Samplers still take their own `frozen`.
+ */
+fun Modifier.layerBackdrop(
+    backdrop: LayerBackdrop,
+    frozen: () -> Boolean = { false }
+): Modifier = this then LayerBackdropElement(backdrop, frozen)
 
 private class LayerBackdropElement(
-    val backdrop: LayerBackdrop
+    val backdrop: LayerBackdrop,
+    val frozen: () -> Boolean
 ) : ModifierNodeElement<LayerBackdropNode>() {
 
     override fun create(): LayerBackdropNode {
-        return LayerBackdropNode(backdrop)
+        return LayerBackdropNode(backdrop, frozen)
     }
 
     override fun update(node: LayerBackdropNode) {
@@ -36,6 +43,7 @@ private class LayerBackdropElement(
             node.backdrop.layerCoordinates = null
             node.backdrop = backdrop
         }
+        node.frozen = frozen
         node.invalidateDraw()
     }
 
@@ -49,46 +57,37 @@ private class LayerBackdropElement(
         if (other !is LayerBackdropElement) return false
 
         if (backdrop != other.backdrop) return false
+        if (frozen != other.frozen) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        return backdrop.hashCode()
+        return 31 * backdrop.hashCode() + frozen.hashCode()
     }
 }
 
 private class LayerBackdropNode(
-    var backdrop: LayerBackdrop
+    var backdrop: LayerBackdrop,
+    var frozen: () -> Boolean
 ) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
 
     override fun ContentDrawScope.draw() {
-        // Vendored change: record once and composite, rather than upstream's
-        // draw-then-record.
-        //
-        // Upstream draws the content to the screen and then draws all of it a
-        // second time into the layer, which puts the entire app through the draw
-        // pass twice on every frame the glass is switched on — and this node
-        // wraps the whole page, so "the entire app" is what that is. Recording
-        // first and then blitting the finished layer to the screen produces the
-        // same pixels off one pass.
-        //
-        // The layer is the node's own size, so this does clip anything a child
-        // paints outside its bounds. Nothing here does — the pages are lists
-        // inside a full-screen container — but a child that grew a shadow past
-        // the edge would lose it, which upstream would not.
-        // A degenerate size would record an empty layer, and unlike upstream there
-        // is no direct draw left to fall back on — the page would simply vanish.
-        if (size.width < 1f || size.height < 1f) {
-            drawContent()
-            return
-        }
+        // Cleared every generation, before children (backdropStaticRegion among
+        // them) redraw and repopulate it below — see LayerBackdrop.staticRegions.
+        backdrop.staticRegions.clear()
+
+        // Record once and composite to the screen; glass samplers reuse this layer.
         recordLayer(this@LayerBackdropNode, backdrop.graphicsLayer) { backdrop.onDraw(this@draw) }
         drawLayer(backdrop.graphicsLayer)
+        // Notify sampling glass surfaces that the source pixels changed, so they
+        // re-record their own layers. When the source is static they skip it.
+        backdrop.contentRecorded()
     }
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
         if (coordinates.isAttached) {
+            if (backdrop.layerCoordinates !== coordinates) backdrop.geometryChanged()
             backdrop.layerCoordinates = coordinates
         }
     }
