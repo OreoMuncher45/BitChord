@@ -4,8 +4,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -177,18 +178,20 @@ fun AppleTopBar(
         // Anchored to the outer Box, not the title Row: the menu drops below the
         // avatar and the Row's own layout would squeeze it to zero width.
         if (menuOpen && accountActions.isNotEmpty()) {
-            // No outside-tap scrim. Anything drawn over this area competes with
-            // the rows for the same pointer events, and a row that cannot be
-            // clicked is worse than a menu that stays open until a row is
-            // chosen or Back is pressed — which is what dismisses it.
-            BackHandler(enabled = true) { menuOpen = false }
-            AppleAccountMenu(
-                actions = accountActions,
-                onDismiss = { menuOpen = false },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 52.dp, end = 8.dp),
-            )
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { menuOpen = false },
+            ) {
+                accountActions.forEach { action ->
+                    DropdownMenuItem(
+                        text = { Text(action.label) },
+                        onClick = {
+                            menuOpen = false
+                            action.onClick()
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -206,47 +209,6 @@ data class AppleAccountAction(
  * destinations the other shells raise, so an item means the same thing here as
  * it does anywhere else in the app.
  */
-@Composable
-private fun AppleAccountMenu(
-    actions: List<AppleAccountAction>,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // Each row dismisses before running its action, so the menu is always
-    // closed by the time the destination it raises starts navigating.
-    val palette = LocalApplePalette.current
-    Box(modifier = modifier) {
-        // No dismiss handler inside the menu: anything that competes with the
-        // rows for the same pointer events swallows them, and the rows going
-        // dead is exactly the failure this whole file was rewritten to fix. The
-        // scrim is a sibling *behind* the menu, in the caller.
-        Column(
-            modifier = Modifier
-                .widthIn(min = 180.dp)
-                .clip(AppleShape.Sheet)
-                .background(palette.backgroundElevated)
-                .border(0.5.dp, palette.separator, AppleShape.Sheet)
-                .padding(vertical = 4.dp),
-        ) {
-            actions.forEach { action ->
-                Text(
-                    text = action.label,
-                    style = AppleType.RowTitle,
-                    color = palette.label,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onDismiss()
-                            action.onClick()
-                        }
-                        .padding(horizontal = 14.dp, vertical = 11.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun AppleCircleButton(
