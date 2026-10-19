@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -176,17 +177,11 @@ fun AppleTopBar(
         // Anchored to the outer Box, not the title Row: the menu drops below the
         // avatar and the Row's own layout would squeeze it to zero width.
         if (menuOpen && accountActions.isNotEmpty()) {
-            // Sibling behind the menu, not a handler on it. Drawn first so the
-            // menu sits above it and the rows keep their own clicks.
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { menuOpen = false },
-                    ),
-            )
+            // No outside-tap scrim. Anything drawn over this area competes with
+            // the rows for the same pointer events, and a row that cannot be
+            // clicked is worse than a menu that stays open until a row is
+            // chosen or Back is pressed — which is what dismisses it.
+            BackHandler(enabled = true) { menuOpen = false }
             AppleAccountMenu(
                 actions = accountActions,
                 onDismiss = { menuOpen = false },

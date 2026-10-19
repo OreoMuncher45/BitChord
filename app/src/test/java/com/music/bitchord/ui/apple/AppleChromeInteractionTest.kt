@@ -209,10 +209,11 @@ class AppleChromeInteractionTest {
             // 56dp at density 1 is 56px and the button is 40dp wide, so a swipe
             // confined to the node cannot clear the threshold. Route the whole
             // drag through moveTo with explicit waypoints so travel is real.
-            down(Offset(center.x, center.y))
-            moveTo(Offset(center.x - 30f, center.y))
-            moveTo(Offset(center.x - 90f, center.y))
-            moveTo(Offset(center.x - 120f, center.y))
+            down(Offset(width - 1f, height / 2f))
+            moveTo(Offset(width * 0.6f, height / 2f))
+            moveTo(Offset(width * 0.3f, height / 2f))
+            moveTo(Offset(width * 0.1f, height / 2f))
+            moveTo(Offset(0f, height / 2f))
             up()
         }
         compose.waitForIdle()
