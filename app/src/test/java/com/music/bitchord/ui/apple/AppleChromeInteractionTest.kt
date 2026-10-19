@@ -26,16 +26,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.music.bitchord.data.model.Song
-import org.junit.Assume.assumeFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
-import java.util.Locale
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
@@ -44,22 +41,11 @@ class AppleChromeInteractionTest {
     @get:Rule
     val compose = createComposeRule()
 
-    /**
-     * Robolectric loads Conscrypt's native library by JNI during sandbox setup,
-     * and Conscrypt publishes no linux-aarch64 build at all — only x86_64. On an
-     * aarch64 host every test in here dies with UnsatisfiedLinkError before
-     * reaching an assertion. CI is x86_64 and runs them for real; skipping here
-     * keeps a local run honest instead of reporting six failures that say
-     * nothing about the UI.
-     */
-    @Before
-    fun requireX86Host() {
-        val arch = System.getProperty("os.arch", "").lowercase(Locale.ROOT)
-        assumeFalse(
-            "Robolectric has no linux-aarch64 Conscrypt native; run on x86_64",
-            arch == "aarch64" || arch == "arm64",
-        )
-    }
+    // Robolectric loads Conscrypt's native library by JNI during sandbox setup,
+    // and Conscrypt ships no linux-aarch64 build, so on aarch64 every test here
+    // dies with UnsatisfiedLinkError before reaching an assertion — which is
+    // why the exclusion lives in build.gradle.kts rather than in an assumption
+    // here: the sandbox is set up before any @Before runs.
 
     private val song = Song(
         videoId = "abc123",
@@ -67,6 +53,8 @@ class AppleChromeInteractionTest {
         artist = "Test Artist",
         thumbnailUrl = null,
     )
+
+    private val songTitle: String get() = requireNotNull(song.title)
 
     /** Tapping the mini player must raise the full player. */
     @Test
@@ -87,7 +75,7 @@ class AppleChromeInteractionTest {
             }
         }
 
-        compose.onNodeWithContentDescription("Now playing: ${song.title}")
+        compose.onNodeWithContentDescription("Now playing: $songTitle")
             .performClick()
         compose.waitForIdle()
 

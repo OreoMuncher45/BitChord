@@ -105,10 +105,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      # 21, not 17: the Robolectric unit tests load android-all jars compiled
+      # for 21, and on 17 they fail every interaction test with
+      # UnsupportedClassVersionError before reaching an assertion. The desktop
+      # jobs already build on 21, and bytecode still targets 17 (jvmTarget),
+      # so this widens the toolchain without changing what ships.
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - uses: gradle/actions/setup-gradle@v4
