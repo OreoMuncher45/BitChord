@@ -176,6 +176,17 @@ fun AppleTopBar(
         // Anchored to the outer Box, not the title Row: the menu drops below the
         // avatar and the Row's own layout would squeeze it to zero width.
         if (menuOpen && accountActions.isNotEmpty()) {
+            // Sibling behind the menu, not a handler on it. Drawn first so the
+            // menu sits above it and the rows keep their own clicks.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { menuOpen = false },
+                    ),
+            )
             AppleAccountMenu(
                 actions = accountActions,
                 onDismiss = { menuOpen = false },
@@ -206,21 +217,14 @@ private fun AppleAccountMenu(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Each row dismisses before running its action, so the menu is always
+    // closed by the time the destination it raises starts navigating.
     val palette = LocalApplePalette.current
     Box(modifier = modifier) {
-        // The dismiss target is a scrim *behind* the menu, not a pointer handler
-        // on it. A handler on the menu itself competes with each row's own click
-        // for the same events and swallows them — the rows become dead, which is
-        // the same failure as the account button's drag detector, one level down.
-        Box(
-            Modifier
-                .matchParentSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
+        // No dismiss handler inside the menu: anything that competes with the
+        // rows for the same pointer events swallows them, and the rows going
+        // dead is exactly the failure this whole file was rewritten to fix. The
+        // scrim is a sibling *behind* the menu, in the caller.
         Column(
             modifier = Modifier
                 .widthIn(min = 180.dp)

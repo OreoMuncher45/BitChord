@@ -16,7 +16,12 @@
 package com.music.bitchord.ui.apple
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import com.music.bitchord.ui.components.LocalAppBackdrop
+import com.music.bitchord.ui.components.backdrop.Backdrop
+import com.music.bitchord.ui.components.backdrop.backdrops.emptyBackdrop
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -62,6 +67,11 @@ class AppleChromeInteractionTest {
         var expanded = false
         compose.setContent {
             AppleMusicTheme(darkTheme = false) {
+                // The mini player's glass reads LocalAppBackdrop unconditionally
+                // now that the Apple shell does not consult the toggle.
+                CompositionLocalProvider(
+                    LocalAppBackdrop provides emptyBackdrop(),
+                ) {
                 Box(Modifier) {
                     AppleMiniPlayer(
                         song = song,
@@ -71,6 +81,7 @@ class AppleChromeInteractionTest {
                         onNext = {},
                         onExpand = { expanded = true },
                     )
+                }
                 }
             }
         }
@@ -89,6 +100,9 @@ class AppleChromeInteractionTest {
         var toggled = false
         compose.setContent {
             AppleMusicTheme(darkTheme = false) {
+                CompositionLocalProvider(
+                    LocalAppBackdrop provides emptyBackdrop(),
+                ) {
                 AppleMiniPlayer(
                     song = song,
                     isPlaying = false,
@@ -97,6 +111,7 @@ class AppleChromeInteractionTest {
                     onNext = {},
                     onExpand = { expanded = true },
                 )
+                }
             }
         }
 
@@ -191,7 +206,14 @@ class AppleChromeInteractionTest {
         // The button is 40dp, so a default swipe crosses ~40px — under the
         // 56px threshold. Ask for a longer one so the gesture actually trips.
         compose.onNodeWithContentDescription("Account").performTouchInput {
-            swipeLeft(400f)
+            // 56dp at density 1 is 56px and the button is 40dp wide, so a swipe
+            // confined to the node cannot clear the threshold. Route the whole
+            // drag through moveTo with explicit waypoints so travel is real.
+            down(Offset(center.x, center.y))
+            moveTo(Offset(center.x - 30f, center.y))
+            moveTo(Offset(center.x - 90f, center.y))
+            moveTo(Offset(center.x - 120f, center.y))
+            up()
         }
         compose.waitForIdle()
 
