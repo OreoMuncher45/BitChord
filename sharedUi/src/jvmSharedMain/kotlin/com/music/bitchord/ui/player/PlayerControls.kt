@@ -10,7 +10,6 @@ import com.music.bitchord.data.model.CreditSegment
 import com.music.bitchord.data.model.creditSegments
 import com.music.bitchord.sharedui.resources.*
 
-import org.jetbrains.compose.resources.DrawableResource
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedContent
@@ -53,11 +52,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.VolumeDown
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -83,7 +77,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -101,7 +94,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
-import com.music.bitchord.ui.icons.BitChordIcons
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.listentogether.PartyMember
@@ -431,7 +423,7 @@ internal fun TransportRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TransportGlyph(
-            icon = Res.drawable.ic_player_previous,
+            icon = PlayerIcons.SkipPrevious,
             contentDescription = stringResource(Res.string.widget_previous),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
@@ -452,7 +444,7 @@ internal fun TransportRow(
             }
         } else {
             TransportGlyph(
-                icon = if (isPlaying) Res.drawable.ic_player_pause else Res.drawable.ic_player_play,
+                icon = if (isPlaying) PlayerIcons.Pause else PlayerIcons.Play,
                 contentDescription = stringResource(if (isPlaying) Res.string.pause else Res.string.play),
                 size = playSize,
                 touchSize = playTouch,
@@ -461,7 +453,7 @@ internal fun TransportRow(
             )
         }
         TransportGlyph(
-            icon = Res.drawable.ic_player_next,
+            icon = PlayerIcons.SkipNext,
             contentDescription = stringResource(Res.string.widget_next),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
@@ -492,7 +484,7 @@ internal fun VolumeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.AutoMirrored.Rounded.VolumeDown,
+            painter = PlayerIcons.VolumeLow.painter(),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp),
@@ -508,7 +500,7 @@ internal fun VolumeRow(
         )
         Spacer(Modifier.width(10.dp))
         Icon(
-            Icons.AutoMirrored.Rounded.VolumeUp,
+            painter = PlayerIcons.VolumeHigh.painter(),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp),
@@ -553,7 +545,7 @@ internal fun PlayerActionRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BottomGlyph(
-                icon = BitChordIcons.LyricsQuote,
+                icon = PlayerIcons.Lyrics,
                 contentDescription = stringResource(if (lyricsOpen) Res.string.close_lyrics else Res.string.open_lyrics),
                 // Lyrics and the queue are two things to show in one place, so
                 // opening either closes the other; lit to say which is up.
@@ -577,7 +569,7 @@ internal fun PlayerActionRow(
                     // [PILL_SEGMENT_WIDTH_TRIPLE].
                     Pill {
                         PillSegment(
-                            icon = BitChordIcons.Shuffle,
+                            icon = PlayerIcons.Shuffle,
                             contentDescription = stringResource(
                                 if (shuffleEnabled) Res.string.shuffle_on else Res.string.shuffle_off,
                             ),
@@ -589,7 +581,7 @@ internal fun PlayerActionRow(
                         )
                         PillDivider()
                         PillSegment(
-                            icon = if (repeatMode == RepeatModes.ONE) null else BitChordIcons.Repeat,
+                            icon = if (repeatMode == RepeatModes.ONE) null else PlayerIcons.Repeat,
                             label = if (repeatMode == RepeatModes.ONE) "1" else null,
                             contentDescription = when (repeatMode) {
                                 RepeatModes.ONE -> stringResource(Res.string.repeat_one)
@@ -611,7 +603,7 @@ internal fun PlayerActionRow(
                         )
                         PillDivider()
                         PillSegment(
-                            icon = BitChordIcons.Infinity,
+                            icon = PlayerIcons.Autoplay,
                             contentDescription = stringResource(
                                 if (autoplayEnabled) Res.string.autoplay_on else Res.string.autoplay_off,
                             ),
@@ -631,7 +623,7 @@ internal fun PlayerActionRow(
                 }
             }
             BottomGlyph(
-                icon = BitChordIcons.Queue,
+                icon = PlayerIcons.Queue,
                 contentDescription = stringResource(Res.string.up_next),
                 onClick = onToggleQueue,
                 highlighted = queueOpen,
@@ -646,12 +638,12 @@ internal fun PlayerActionRow(
  *
  * [active] brightens the disc rather than only the glyph: this sits on album
  * artwork of any colour, and a white icon on a white-ish sleeve has no tint
- * change left to make. The filled heart carries the state as a shape too —
- * see [BitChordIcons.HeartFilled].
+ * change left to make. The filled star carries the state as a shape too —
+ * see [PlayerIcons.Liked].
  */
 @Composable
 internal fun CircleGlyph(
-    icon: ImageVector,
+    icon: PlayerIcon,
     contentDescription: String,
     onClick: () -> Unit,
     active: Boolean = false,
@@ -682,7 +674,7 @@ internal fun CircleGlyph(
             label = "playerMenuGlyph",
         ) { glyph ->
             Icon(
-                imageVector = glyph,
+                painter = glyph.painter(),
                 contentDescription = contentDescription,
                 tint = Color.White,
                 modifier = Modifier.size(19.dp),
@@ -698,7 +690,7 @@ internal fun CircleGlyph(
  */
 @Composable
 private fun TransportGlyph(
-    icon: DrawableResource,
+    icon: PlayerIcon,
     contentDescription: String,
     size: androidx.compose.ui.unit.Dp,
     touchSize: androidx.compose.ui.unit.Dp = size,
@@ -728,7 +720,7 @@ private fun TransportGlyph(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(icon),
+            painter = icon.painter(),
             contentDescription = contentDescription,
             tint = Color.White.copy(alpha = alpha),
             modifier = Modifier
@@ -844,7 +836,7 @@ private fun OutputPartyPill(
     val badge = rememberPartyBadge()
     Pill {
         PillSegment(
-            icon = Icons.Rounded.Headphones,
+            icon = PlayerIcons.Output,
             iconSize = PILL_HEADPHONES_SIZE,
             contentDescription = stringResource(Res.string.audio_output),
             onClick = onOutput,
@@ -854,7 +846,7 @@ private fun OutputPartyPill(
             // Person rather than Groups: the three-person glyph is drawn half
             // the height of Headphones and wider than the segment holding it,
             // so the two halves of the capsule never looked like a pair.
-            icon = Icons.Rounded.Person,
+            icon = PlayerIcons.Party,
             iconSize = PILL_PARTY_SIZE,
             // The count is here and nowhere else: spoken, it is the whole
             // point of the control; drawn, it would cost the capsule its
@@ -886,7 +878,7 @@ private fun OutputPartyPill(
 private fun PillSegment(
     contentDescription: String,
     onClick: () -> Unit,
-    icon: ImageVector? = null,
+    icon: PlayerIcon? = null,
     iconSize: Dp = PILL_ICON_SIZE,
     label: String? = null,
     trailingLabel: String? = null,
@@ -940,7 +932,7 @@ private fun PillSegment(
                         label = "pillSegmentIcon",
                     ) { currentIcon ->
                         Icon(
-                            imageVector = currentIcon,
+                            painter = currentIcon.painter(),
                             contentDescription = null,
                             tint = tint,
                             modifier = Modifier.size(iconSize),
@@ -1097,7 +1089,7 @@ private fun rememberPartyBadge(): PartyBadge {
 
 @Composable
 private fun BottomGlyph(
-    icon: ImageVector?,
+    icon: PlayerIcon?,
     contentDescription: String,
     onClick: () -> Unit,
     highlighted: Boolean = false,
@@ -1141,7 +1133,7 @@ private fun BottomGlyph(
         val tint = Color.White.copy(alpha = if (highlighted) 1f else 0.75f)
         if (icon != null) {
             Icon(
-                imageVector = icon,
+                painter = icon.painter(),
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier.size(26.dp),
@@ -1595,7 +1587,7 @@ private fun LosslessLabel(
     text: String,
     animated: Boolean,
     modifier: Modifier = Modifier,
-    icon: ImageVector = Icons.Rounded.Headphones,
+    icon: PlayerIcon? = PlayerIcons.Output,
     iconPainter: Painter? = null,
 ) {
     Row(
@@ -1611,9 +1603,9 @@ private fun LosslessLabel(
                 tint = tint,
                 modifier = Modifier.size(width = 13.dp, height = 10.dp),
             )
-        } else {
+        } else if (icon != null) {
             Icon(
-                imageVector = icon,
+                painter = icon.painter(),
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier.size(13.dp),

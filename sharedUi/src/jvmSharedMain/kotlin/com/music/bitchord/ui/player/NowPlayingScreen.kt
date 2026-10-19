@@ -59,11 +59,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.FastForward
-import androidx.compose.material.icons.rounded.FastRewind
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -145,7 +140,6 @@ import com.music.bitchord.ui.LyricsProviderState
 import com.music.bitchord.ui.components.optimizedHazeEffect
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
-import com.music.bitchord.ui.icons.BitChordIcons
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.canvas.CanvasSource
 import com.music.bitchord.data.lyrics.LyricLine
@@ -216,8 +210,36 @@ internal const val SEEK_SETTLE_TOLERANCE_MS = 1_500L
  */
 internal const val SEEK_SETTLE_TIMEOUT_MS = 4_000L
 
-private val THUMB_SIZE = 54.dp
-private val HEADER_HEIGHT = 60.dp
+/**
+ * The header artwork's side, once the sleeve has collapsed into the credits
+ * row — the state the reference screenshot for Now Playing is in, with the
+ * lyrics up.
+ *
+ * Measured off `apple-music-iphone-03.png` rather than assumed: the artwork
+ * there is 179px wide on a screen 1002px wide, so 17.9% of the width, and it
+ * stands 2.24 times the diameter of the circular button beside it. At 54dp on
+ * a 411dp window this was 13.1% — visibly smaller than the star it sits beside.
+ * 66dp is 16.1%, inside the band the reference puts it in and inside the band
+ * a 393pt iPhone puts it in (64pt).
+ *
+ * This is the *collapsed* size only. The expanded sleeve above it is bounded by
+ * the window and is not touched — see [HEADER_HEIGHT] for what moved with it.
+ */
+private val THUMB_SIZE = 66.dp
+/**
+ * The credits row the collapsed artwork sits in.
+ *
+ * Raised from 60dp because the artwork inside it grew: at 54dp in a 60dp row
+ * there were three dp of air above and below, which is what made it read as a
+ * thumbnail dropped into a slot rather than as the corner of a picture. 72dp
+ * puts four dp back, and leaves the row the shape the reference has — the
+ * artwork is taller than the button beside it and the text is centred on both.
+ *
+ * The row is also the top padding of the lyrics panel and the top of the
+ * banner, so this is a band rather than a box: everything in it moves down by
+ * the same twelve.
+ */
+private val HEADER_HEIGHT = 72.dp
 private val ART_TITLE_GAP = 20.dp
 /**
  * How long the sleeve takes to travel the whole way between the full player and
@@ -2949,7 +2971,7 @@ fun NowPlayingScreen(
                     ) {
                         if (!art.loaded && !canvasRendered) {
                             Icon(
-                                imageVector = BitChordIcons.MusicNote,
+                                painter = PlayerIcons.NoArtwork.painter(),
                                 contentDescription = null,
                                 tint = Color.White.copy(alpha = 0.35f),
                                 modifier = Modifier
@@ -3113,7 +3135,7 @@ fun NowPlayingScreen(
                     val enabled = if (showNext) hasNext else hasPrevious
                     val hintAlpha = if (enabled) 0.85f else 0.3f
                     Icon(
-                        imageVector = if (showNext) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                        painter = (if (showNext) PlayerIcons.SkipNext else PlayerIcons.SkipPrevious).painter(),
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier
@@ -3261,7 +3283,7 @@ fun NowPlayingScreen(
                     if (signedIn && song.localUri == null) {
                         val liked = likeStatus == LikeStatus.LIKE
                         CircleGlyph(
-                            icon = if (liked) BitChordIcons.HeartFilled else BitChordIcons.Heart,
+                            icon = if (liked) PlayerIcons.Liked else PlayerIcons.LikedOff,
                             contentDescription = stringResource(
                                 if (liked) Res.string.remove_from_liked else Res.string.like,
                             ),
@@ -3272,7 +3294,7 @@ fun NowPlayingScreen(
                         Spacer(Modifier.width(8.dp))
                     }
                     CircleGlyph(
-                        icon = if (showRevertCue) Icons.AutoMirrored.Rounded.Undo else Icons.Rounded.MoreHoriz,
+                        icon = if (showRevertCue) PlayerIcons.Revert else PlayerIcons.More,
                         contentDescription = stringResource(Res.string.more),
                         onClick = onOpenMenu,
                     )

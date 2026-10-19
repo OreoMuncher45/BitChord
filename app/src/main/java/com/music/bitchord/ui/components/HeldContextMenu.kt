@@ -29,9 +29,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -60,12 +61,22 @@ import kotlin.math.roundToInt
  * off it.
  *
  * What lifts is the item exactly as it was drawn — see [HeldItem] — so a
- * grid tile comes up as that tile and a search row as that row. It sits on a
- * frosted plate so it reads as picked up rather than pasted over the blur.
+ * grid tile comes up as that tile and a search row as that row. Both surfaces
+ * it lifts onto are the app's liquid glass — see [heldMenuSurface] — so they
+ * read as picked up off the page rather than pasted over its blur, and share
+ * the one backdrop the rest of the app's glass samples instead of taking one
+ * of their own.
  *
  * Only a hold opens this. The ⋮ keeps opening the bottom sheet — a tap on a
  * small button is a request for the full menu, while a hold on the item itself
  * is a gesture about *that item*, answered where the finger is.
+ *
+ * The menu opens *out of* what was pressed rather than appearing beside it:
+ * [HeldItem] is already the record of where the finger was, and the menu starts
+ * as the plate the card is standing on and unfolds into its own rectangle and
+ * its own corner radius. See [heldMenuMorph] and [heldMenuMorphingShape]. The
+ * card keeps scaling about its centre, because it is a picture of the item and
+ * has to stay over the thing it is a picture of.
  *
  * [item] and [held] come and go together: non-null while the menu is wanted,
  * null once anything has closed it. The last pair is kept here so the menu can
@@ -74,7 +85,8 @@ import kotlin.math.roundToInt
  * Both of the app's accessibility switches are honoured: "Reduce animation"
  * (or the system's animator scale at zero) turns the lift into a short fade
  * with nothing moving, and "Reduce dynamic blur" swaps the blurred page for a
- * plain dimming scrim, which is also the cost that setting exists to remove.
+ * plain dimming scrim and the glass for the flat plate — which is also the
+ * cost that setting exists to remove.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -131,10 +143,11 @@ fun <T : Any> HeldContextMenu(
     BackHandler(enabled = open, onBack = onDismiss)
 
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    // Plain white or black at half strength, so the blur shows through as
-    // frost rather than the surface greys reading as a flat slab over it. With
-    // no blur behind there is nothing for that to frost, so the plate firms up
-    // to stay legible over the bare scrim.
+    // What the menu stands on where the app is not drawing glass. Plain white
+    // or black at half strength, so the blur shows through as frost rather
+    // than the surface greys reading as a flat slab over it. With no blur
+    // behind there is nothing for that to frost, so the plate firms up to stay
+    // legible over the bare scrim.
     val plate = (if (dark) Color.Black else Color.White).copy(alpha = if (reduceDynamicBlur) 0.85f else 0.5f)
     val hairline = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
     // The scrim does less work when the blur is there to push the page back,
@@ -145,9 +158,18 @@ fun <T : Any> HeldContextMenu(
         dark -> Color.Black.copy(alpha = 0.30f)
         else -> Color.Black.copy(alpha = 0.10f)
     }
-    val cardShape = RoundedCornerShape(20.dp)
-    val menuShape = RoundedCornerShape(16.dp)
+    val cardShape = RoundedCornerShape(CARD_RADIUS)
+    val menuShape = RoundedCornerShape(MENU_RADIUS)
     val platePadding = 8.dp
+    // The card keeps its own radius for the whole of the lift; the menu's runs
+    // from the card's to its own as it opens, so both are needed in pixels.
+    val density = LocalDensity.current
+    val cardRadiusPx = with(density) { CARD_RADIUS.toPx() }
+    val menuRadiusPx = with(density) { MENU_RADIUS.toPx() }
+    // Glass draws its own elevation shadow, so the lift shadow below is only
+    // paid for on the surfaces that are not getting one — the double render
+    // the nav bar's own comment is about paying for.
+    val glass = heldMenuUsesGlass(reduceDynamicBlur)
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -188,14 +210,20 @@ fun <T : Any> HeldContextMenu(
                     ),
             )
             // The held item, on its plate. Sized by the layout below to the
-            // item's own bounds plus the plate's margin.
+            // item's own bounds plus the plate's margin. Its shape is the
+            // item's own plate radius for the whole lift — only the menu
+            // morphs its corners, because only the menu changes what it is.
             Box(
                 Modifier
-                    .then(if (reduceMotion) Modifier else Modifier.shadow(20.dp, cardShape, clip = false))
+                    .then(
+                        if (reduceMotion || glass) {
+                            Modifier
+                        } else {
+                            Modifier.shadow(20.dp, cardShape, clip = false)
+                        },
+                    )
                     .pointerInput(Unit) {}
-                    .clip(cardShape)
-                    .background(plate)
-                    .border(0.5.dp, hairline, cardShape)
+                    .heldMenuSurface(cardShape, plate, hairline, reduceDynamicBlur)
                     .then(
                         if (onPreviewClick != null) {
                             Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
@@ -214,13 +242,22 @@ fun <T : Any> HeldContextMenu(
                     )
                 }
             }
+            // The menu's own shape for this frame, and with it the surface.
+            // Built here rather than above so that reading the radius is its
+            // own restart scope: what recomposes each frame of the morph is
+            // this one modifier, not the menu's rows underneath it.
+            val menuShapeFrame = heldMenuMorphingShape(
+                animates = !reduceMotion,
+                resting = menuShape,
+                radiusPx = {
+                    heldMenuCornerRadiusPx(progress.value, cardRadiusPx, menuRadiusPx)
+                },
+            )
             Column(
                 Modifier
                     // Taps between rows land on the menu, not the scrim under it.
                     .pointerInput(Unit) {}
-                    .clip(menuShape)
-                    .background(plate)
-                    .border(0.5.dp, hairline, menuShape),
+                    .heldMenuSurface(menuShapeFrame, plate, hairline, reduceDynamicBlur),
             ) {
                 actions(menuItem)
             }
@@ -295,6 +332,26 @@ fun <T : Any> HeldContextMenu(
         val fromDx = itemBounds.center.x - visualCenterX
         val fromDy = itemBounds.center.y - visualCenterY
 
+        // The rectangle the menu opens out of: the plate as it is at the very
+        // start of the lift, when the card is unscaled and sitting exactly
+        // over what was held. Derived rather than measured because it is the
+        // same plate, and reading it off the card's own travel is what keeps
+        // the two ends of the morph agreeing to the pixel.
+        val originRect = Rect(
+            itemBounds.left - pad,
+            itemBounds.top - pad,
+            itemBounds.left - pad + plateW,
+            itemBounds.top - pad + plateH,
+        )
+        // Where the menu ends up, as a rectangle rather than a corner, so the
+        // morph at each end is the shape of something already on screen.
+        val menuRect = Rect(
+            menuX.toFloat(),
+            menuY.toFloat(),
+            (menuX + menu.width).toFloat(),
+            (menuY + menu.height).toFloat(),
+        )
+
         layout(width, height) {
             backdrop.place(0, 0)
             card.placeWithLayer(cardX, cardY) {
@@ -318,17 +375,17 @@ fun <T : Any> HeldContextMenu(
                 val p = progress.value
                 alpha = ((p - 0.1f) / 0.9f).coerceIn(0f, 1f)
                 if (!reduceMotion) {
-                    // Grows out of the corner nearest the item, and travels
-                    // with it.
-                    transformOrigin = TransformOrigin(
-                        pivotFractionX = if (alignEnd) 1f else 0f,
-                        pivotFractionY = if (menuBelow) 0f else 1f,
-                    )
-                    val scale = lerp(0.55f, 1f, p)
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = lerp(fromDx, 0f, p)
-                    translationY = lerp(fromDy, 0f, p)
+                    // The menu is not arriving somewhere: it is the plate the
+                    // finger was on, opening out to where the layout put it.
+                    // Pinned to its top-left corner at that end and to its own
+                    // at this one, so the corner the press happened in stays
+                    // put and the far edges travel — see [heldMenuMorph].
+                    val morph = heldMenuMorph(p, originRect, menuRect)
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    scaleX = morph.scaleX
+                    scaleY = morph.scaleY
+                    translationX = morph.translationX
+                    translationY = morph.translationY
                 }
             }
         }
@@ -342,3 +399,13 @@ private suspend fun PointerInputScope.swallowAll() {
         }
     }
 }
+
+/**
+ * The plate's corner radius, and the menu's — named because the two are the
+ * ends of one animation rather than two unrelated numbers: the menu opens as
+ * the card's plate and closes the corner slightly tighter as it becomes its
+ * own surface. Both the shape and the morph are built from these, so the
+ * drawn corner and the animated one cannot drift apart.
+ */
+private val CARD_RADIUS = 20.dp
+private val MENU_RADIUS = 16.dp

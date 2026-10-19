@@ -16,11 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Bluetooth
-import androidx.compose.material.icons.rounded.Cast
-import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
@@ -305,7 +301,7 @@ private fun CastRow(cast: CastUi, onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = if (casting) Icons.Rounded.CastConnected else Icons.Rounded.Cast,
+                painter = PlayerIcons.AirPlay.painter(),
                 contentDescription = null,
                 tint = Color.White.copy(alpha = if (casting) 1f else 0.7f),
                 modifier = Modifier.size(21.dp),
@@ -463,7 +459,7 @@ private fun VolumeRow(routeKey: Any) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = if (level > 0f) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+            painter = (if (level > 0f) PlayerIcons.VolumeHigh else PlayerIcons.VolumeMuted).painter(),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.6f),
             modifier = Modifier.size(20.dp),

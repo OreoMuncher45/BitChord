@@ -30,9 +30,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -60,7 +57,6 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.music.bitchord.ui.haptics.Haptic
-import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.Song
@@ -315,7 +311,7 @@ internal fun LandscapeArtwork(
         ) {
             if (!artLoaded && !canvasRendered) {
                 Icon(
-                    imageVector = BitChordIcons.MusicNote,
+                    painter = PlayerIcons.NoArtwork.painter(),
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxSize(0.36f),
@@ -461,7 +457,7 @@ internal fun LandscapeCredits(
         if (signedIn && song.localUri == null) {
             val liked = likeStatus == LikeStatus.LIKE
             CircleGlyph(
-                icon = if (liked) BitChordIcons.HeartFilled else BitChordIcons.Heart,
+                icon = if (liked) PlayerIcons.Liked else PlayerIcons.LikedOff,
                 contentDescription = stringResource(
                     if (liked) Res.string.remove_from_liked else Res.string.like,
                 ),
@@ -472,7 +468,7 @@ internal fun LandscapeCredits(
             Spacer(Modifier.width(8.dp))
         }
         CircleGlyph(
-            icon = if (showRevertCue) Icons.AutoMirrored.Rounded.Undo else Icons.Rounded.MoreHoriz,
+            icon = if (showRevertCue) PlayerIcons.Revert else PlayerIcons.More,
             contentDescription = stringResource(Res.string.more),
             onClick = onOpenMenu,
         )
