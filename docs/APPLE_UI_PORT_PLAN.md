@@ -176,3 +176,45 @@ DO NOT MODIFY: status bar, grabber, "Playing from…", Opus/Automix lines,
 lyric-preview row, device label. Info lines overlay the art's lower fade
 (z above art). Title moving down leaves only ~13px to the lyric-preview row —
 reduce its spacing or hide if cramped. VERIFY at 1080px wide, every Y ±3px.
+
+## Playback bug report — one user, SM-S928B, Android 16, build 2.2.2
+
+Symptom: selecting a song does not auto-play (no buffering shown either); track
+switches land paused and must be resumed manually. Log preserved by the owner,
+key line: `id=TFTnJzWRTJ8`, `substitution=true request=Lossless`.
+
+### What the log proves
+
+1. **Track start took ~23 SECONDS, all of it in the resolver, none of it
+   "buffering".** `TIMING track selected` 22:21:45.9 → `first audio` at
+   22:22:08.8 (22936ms). The cost is two 8s `PlayerRequestTimeoutException`s
+   on the same VISIONOS client (45.9→53.8, →62.0), then "no playable clients",
+   then a THIRD attempt on the same client succeeding at 20.4s elapsed. The
+   resolver retried the same client into the same timeout twice before the
+   failover that worked.
+2. **"Doesn't show buffering" is explained: nothing is buffering.** The 20s is
+   resolve time, before any media item reaches the player — the player has no
+   buffering state to report, so the UI correctly shows nothing. The UI needs
+   a resolving state, or the resolve needs to stop taking 20s. Both, ideally.
+3. **Queue warm-up was cancelled**: `queue warm-up skipped TFTnJzWRTJ8:
+   StandaloneCoroutine was cancelled` — so the prefetch of this track never
+   ran, guaranteeing a cold resolve.
+4. **The track-switch path looks different from the first-selection path.** At
+   22:36:20 (the "switch song" case): `audio switch applying 'Naal Nachna
+   (From "Dhurandhar")' (P4UnrmPFPA4)` — the LOSSLESS SUBSTITUTION flow, active
+   because request=Lossless — then decoder init and AudioTrack within 122ms,
+   **but no `TIMING first audio` line ever follows**, plus two tidal searches
+   cancelled mid-flight. Prepared but never started = lands paused = the
+   "must resume" symptom. Prime suspect: the audio-switch/substitution path
+   does not carry playWhenReady.
+5. Tidal addon degraded (`1 of 8 instances live`) — irrelevant to the main bug;
+   it only slows the lossless chase.
+
+### Fixes to investigate (next session, in order of expected payoff)
+
+1. The audio-switch/substitution path carrying `playWhenReady` into the
+   prepared source — the 22:36 event is the smoking gun.
+2. Resolver failover: stop retrying the same VISIONOS client into the same 8s
+   timeout twice; fail over to the next client on first timeout.
+3. A resolving state in the Now Playing UI for the pre-player gap.
+4. Why queue warm-up is being cancelled on selection.
