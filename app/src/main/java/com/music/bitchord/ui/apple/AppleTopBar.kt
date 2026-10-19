@@ -40,7 +40,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -280,7 +279,10 @@ private fun Modifier.appleTapOrSwipe(
                 change.consume()
                 break
             }
-            tracker.onDrag(change.positionChange().x)
+            // Read the raw delta rather than positionChange(): that one returns
+            // zero once anything upstream has consumed the movement, and a
+            // horizontal drag inside a scrolling parent always has.
+            tracker.onDrag(change.position.x - change.previousPosition.x)
         }
     }
 }
