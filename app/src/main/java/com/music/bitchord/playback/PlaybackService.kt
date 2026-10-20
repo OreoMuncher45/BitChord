@@ -7,6 +7,8 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.audiofx.AudioEffect
 import android.net.Uri
@@ -53,6 +55,8 @@ import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -75,7 +79,10 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.guava.future
+import com.music.bitchord.playback.audio.ContainerBitrate
 import com.music.bitchord.playback.audio.DspChain
+import com.music.bitchord.playback.audio.LocalBitrateReading
+import com.music.bitchord.playback.audio.MeasuredBitrateMeter
 import com.music.bitchord.playback.cast.CastController
 import com.music.bitchord.playback.cast.CastPlayback
 import com.music.bitchord.playback.cast.CastSink
@@ -696,7 +703,17 @@ class PlaybackService : MediaLibraryService() {
     private var discordPresenceUp = false
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val localBitrateCache = ConcurrentHashMap<String, Int>()
+    private val localBitrateCache = ConcurrentHashMap<String, LocalBitrateReading>()
+
+    /**
+     * The true encoded bitrate, measured: decoder-input bytes accumulated
+     * against the media time they cover, per track, local files and network
+     * streams alike. This is the figure the owner demanded — what Poweramp
+     * shows, measured from the bytes actually flowing, not the lossless
+     * source's pre-made 1411 kbps claim and not a size-over-duration
+     * average. See [MeasuredBitrateMeter] for how it earns the label.
+     */
+    private val measuredBitrate = MeasuredBitrateMeter()
 
     /**
      * The stream resolver the player's own data source runs, kept so a Cast
@@ -1199,6 +1216,44 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
+        /**
+         * The true-bitrate feed: every completed media load adds its bytes
+         * — and the stretch of the track's timeline those bytes decode to —
+         * to [measuredBitrate], attributed to the track whose window the
+         * load belongs to. Manifest, DRM and initialization loads are not
+         * the audio and are left out.
+         */
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            if (mediaLoadData.dataType != C.DATA_TYPE_MEDIA &&
+                mediaLoadData.dataType != C.DATA_TYPE_MEDIA_PROGRESSIVE_LIVE
+            ) {
+                return
+            }
+            measuredBitrate.onBytesLoaded(
+                mediaId = eventTime.mediaId(),
+                bytes = loadEventInfo.bytesLoaded,
+                mediaStartMs = mediaLoadData.mediaStartTimeMs,
+                mediaEndMs = mediaLoadData.mediaEndTimeMs,
+            )
+        }
+
+        /**
+         * A seek lands here, and so does every other position jump: the
+         * meter must not count the jumped-over stretch as played time.
+         */
+        override fun onPositionDiscontinuity(
+            eventTime: AnalyticsListener.EventTime,
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            measuredBitrate.onDiscontinuity(eventTime.mediaId())
+        }
+
     }
 
     /**
@@ -1237,6 +1292,7 @@ class PlaybackService : MediaLibraryService() {
         // state lives.
         NerdStats.forgetLastSession()
         localBitrateCache.clear()
+        measuredBitrate.forget()
         QualityUpgrade.forgetLastSession()
 
         setMediaNotificationProvider(
@@ -5096,42 +5152,9 @@ class PlaybackService : MediaLibraryService() {
 
         val uri = resolveLocalUri(mediaId, mediaItem) ?: return
         scope.launch(Dispatchers.IO) {
-            val kbps = runCatching {
-                val retriever = MediaMetadataRetriever()
-                var bps: Long? = null
-                var durMs: Long? = null
-                try {
-                    retriever.setDataSource(this@PlaybackService, uri)
-                    bps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull()
-                    durMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-                } finally {
-                    retriever.release()
-                }
-
-                // Size-over-duration first, the container's declared bitrate
-                // only as a fallback. A FLAC-in-MP4 from a lossless source
-                // states the PCM data rate of the master — 1411 kbps for CD —
-                // in the sample entry a retriever reads, which is how a
-                // downloaded file came to show 1411 here while Poweramp,
-                // measuring bytes over time, showed its real 879. Size over
-                // duration cannot lie about the average encoded rate: both
-                // numbers are the file's own.
-                val sizeBytes = durMs?.takeIf { it > 0 }?.let {
-                    when (uri.scheme) {
-                        "file" -> uri.path?.let { path -> java.io.File(path).length() }
-                        "content" -> contentResolver.openFileDescriptor(uri, "r")?.use { fd -> fd.statSize }
-                        else -> null
-                    }
-                }
-                if (sizeBytes != null && sizeBytes > 0 && durMs != null && durMs > 0) {
-                    ((sizeBytes * 8000L) / durMs / 1000L).toInt().takeIf { it > 0 }
-                } else if (bps != null && bps > 0) {
-                    ((bps + 500L) / 1000L).toInt()
-                } else null
-            }.getOrNull()
-
-            if (kbps != null && kbps > 0) {
-                localBitrateCache[mediaId] = kbps
+            val reading = runCatching { extractLocalBitrate(uri) }.getOrNull()
+            if (reading != null && reading.kbps > 0) {
+                localBitrateCache[mediaId] = reading
                 withContext(Dispatchers.Main) {
                     if (player?.currentMediaItem?.mediaId == mediaId) {
                         publishNerdStats()
@@ -5139,6 +5162,118 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    /**
+     * A local file's encoded bitrate, measured off the file itself.
+     *
+     * The measurement is ArchiveTune's, ported: open the file descriptor,
+     * hand it to `android.media.MediaExtractor`, and read the audio track's
+     * own format — `KEY_BIT_RATE` and `KEY_SAMPLE_RATE` — straight out of
+     * the container (ArchiveTune `PlayerConnection.extractLocalAudioProperties`).
+     * That is the rate the file's track format actually states, which for a
+     * locally stored file is a fact about its bytes rather than a promise
+     * from a server.
+     *
+     * One thing ArchiveTune never had to defend against, this pipeline
+     * does: a FLAC written by a lossless provider can state the PCM data
+     * rate of the *master* — 1411 kbps for CD — in the sample entry the
+     * track format reads, which is exactly how a downloaded file once
+     * showed 1411 here while its bytes averaged 879. So the extracted figure
+     * passes [ContainerBitrate.isPlausibleEncodedBitrate] first; a claim
+     * sitting at the master's PCM rate is refused and the file falls to the
+     * honest last resort below.
+     *
+     * The last resort is the file's own size over its own duration —
+     * true arithmetic on the file, but not a measurement of the audio, so
+     * it is published as DERIVED, and only when the extractor could not
+     * produce a plausible track-format rate at all. The pre-made 1411
+     * claim is never published in any rung.
+     */
+    private fun extractLocalBitrate(uri: Uri): LocalBitrateReading? {
+        val extractor = MediaExtractor()
+        try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                extractor.setDataSource(descriptor.fileDescriptor)
+                var durationMs: Long? = null
+                var sizeBytes: Long? = descriptor.statSize.takeIf { it > 0 }
+                for (i in 0 until extractor.trackCount) {
+                    val track = extractor.getTrackFormat(i)
+                    val mime = track.getString(MediaFormat.KEY_MIME) ?: continue
+                    if (!mime.startsWith("audio/")) continue
+                    if (durationMs == null && track.containsKey(MediaFormat.KEY_DURATION)) {
+                        durationMs = track.getLong(MediaFormat.KEY_DURATION) / 1_000L
+                    }
+                    val bitrateBps = if (track.containsKey(MediaFormat.KEY_BIT_RATE)) {
+                        track.getInteger(MediaFormat.KEY_BIT_RATE).toLong()
+                    } else {
+                        0L
+                    }
+                    if (bitrateBps > 0) {
+                        val sampleRate = if (track.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                            track.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        } else {
+                            null
+                        }
+                        val channels = if (track.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                            track.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                        } else {
+                            null
+                        }
+                        val bitDepth = if (track.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                            pcmBitDepthOf(track.getInteger(MediaFormat.KEY_PCM_ENCODING))
+                        } else {
+                            null
+                        }
+                        if (ContainerBitrate.isPlausibleEncodedBitrate(bitrateBps, sampleRate, channels, bitDepth)) {
+                            return LocalBitrateReading(
+                                kbps = ((bitrateBps + 500L) / 1_000L).toInt(),
+                                provenance = TelemetryProvenance.MEASURED,
+                            )
+                        }
+                    }
+                    // An implausible or absent track-format rate: the
+                    // measurement is refused, not laundered — fall to the
+                    // size-over-duration last resort below.
+                    break
+                }
+                // Last resort, DERIVED: the file's own size over its own
+                // duration, only when the track format had nothing
+                // plausible to say. Its duration, read off the audio track
+                // the extractor already parsed.
+                val duration = durationMs ?: retrieverDurationMs(uri)
+                if (sizeBytes != null && duration != null) {
+                    ContainerBitrate.averageKbpsFromSizeAndDuration(sizeBytes, duration)?.let {
+                        return LocalBitrateReading(it, TelemetryProvenance.DERIVED)
+                    }
+                }
+            }
+        } finally {
+            runCatching { extractor.release() }
+        }
+        return null
+    }
+
+    /** Duration only — the retriever's bitrate key is the 1411 lie's original route in and is never read. */
+    private fun retrieverDurationMs(uri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(this@PlaybackService, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } catch (error: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    /** PCM depth of a `KEY_PCM_ENCODING` value, null where it names no integer PCM width. */
+    private fun pcmBitDepthOf(encoding: Int): Int? = when (encoding) {
+        AudioFormat.ENCODING_PCM_8BIT -> 8
+        AudioFormat.ENCODING_PCM_16BIT -> 16
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> 24
+        AudioFormat.ENCODING_PCM_32BIT, AudioFormat.ENCODING_PCM_FLOAT -> 32
+        else -> null
     }
 
     private fun publishNerdStats() {
@@ -5157,21 +5292,46 @@ class PlaybackService : MediaLibraryService() {
         val isRawPcm = NerdStats.isRawPcm(format?.sampleMimeType)
         val pcmDataRate = measured?.pcmBitrateKbps
 
+        // The bitrate chain, honest rung by honest rung:
+        //
+        // 1. MEASURED — decoder-input bytes over the media time they cover
+        //    ([measuredBitrate]), local files and network streams alike.
+        //    This is the true measured bitrate the owner demanded: the
+        //    Poweramp figure, bytes actually flowing, never the lossless
+        //    source's pre-made 1411 kbps claim and never a guess.
+        // 2. A local file's own track-format rate, extracted with
+        //    MediaExtractor (ArchiveTune's measurement, ported) — MEASURED
+        //    when the container stated a plausible encoded rate, DERIVED
+        //    when only the file's size over its duration could say.
+        // 3. The renderer's Format, but only for a lossy codec — AUTHORITATIVE.
+        //    A lossless stream's Format/claim is where the pre-made 1411
+        //    came from, and it stays barred from this chain entirely; the
+        //    true PCM decode rate has its own row below.
+        // 4. The resolver's declared/picked figure, lossy only — DERIVED.
+        // 5. Raw PCM's data rate — DERIVED; for uncompressed audio the
+        //    encoded rate genuinely is the PCM rate.
+        // Anything else is UNKNOWN and the sheet prints "—" rather than a
+        // made-up number.
+        val liveMeasuredKbps = mediaId?.let { measuredBitrate.measuredKbps(it) }
+        val localReading = mediaId?.let { localBitrateCache[it] }
         val (bitrate, provenance) = when {
-            format?.averageBitrate != null && format.averageBitrate > 0 ->
+            liveMeasuredKbps != null ->
+                Pair(liveMeasuredKbps, TelemetryProvenance.MEASURED)
+            localReading != null ->
+                Pair(localReading.kbps, localReading.provenance)
+            !isLossless && dsd == null && format?.averageBitrate != null && format.averageBitrate > 0 ->
                 Pair((format.averageBitrate + 500) / 1000, TelemetryProvenance.AUTHORITATIVE)
-            format?.bitrate != null && format.bitrate > 0 ->
+            !isLossless && dsd == null && format?.bitrate != null && format.bitrate > 0 ->
                 Pair((format.bitrate + 500) / 1000, TelemetryProvenance.AUTHORITATIVE)
-            mediaId != null && localBitrateCache.containsKey(mediaId) ->
-                Pair(localBitrateCache[mediaId], TelemetryProvenance.AUTHORITATIVE)
             // A claim is usable as an encoded bitrate only when the codec is
             // lossy: a lossy source declares the compressed rate it actually
-            // serves (Opus at 147, AAC at 320). A lossless source declares the
-            // PCM data rate of the master — 1411 kbps for CD — which is not
-            // the encoded rate of the file and was shown as one: a downloaded
-            // FLAC read 1411 here while its bytes averaged 879. The lossless
-            // claim stays in [NerdStats.Snapshot.claimed], where it is labelled
-            // a claim, and the true PCM figure has its own row.
+            // serves (Opus at 147, AAC at 320). A lossless source declares
+            // the PCM data rate of the master — 1411 kbps for CD — which is
+            // not the encoded rate of the file and was shown as one: a
+            // downloaded FLAC read 1411 here while its bytes averaged 879.
+            // The lossless claim stays in [NerdStats.Snapshot.claimed], where
+            // it is labelled a claim, and the true PCM figure has its own
+            // row.
             !isLossless && dsd == null && NerdStats.declaredFormat(mediaId)?.let { it.kbps != null && it.isLossless != true } == true ->
                 Pair(NerdStats.declaredFormat(mediaId)?.kbps, TelemetryProvenance.DERIVED)
             !isLossless && dsd == null && NerdStats.pickedBitrateKbps(mediaId) != null ->
@@ -5446,6 +5606,16 @@ class PlaybackService : MediaLibraryService() {
                     lastPositionSeconds = player.currentPosition / 1000
                     player.currentMediaItem?.mediaId?.let {
                         PlaybackTracker.onProgress(it, lastPositionSeconds)
+                        // The played-time half of the true-bitrate meter —
+                        // see [measuredBitrate]. This loop is the only
+                        // place that samples the position exactly while
+                        // audio is coming out, which is what makes its
+                        // deltas honest played time.
+                        measuredBitrate.onPlayTick(
+                            mediaId = it,
+                            positionMs = player.currentPosition,
+                            elapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                        )
                     }
                     // The device's own listening record — see [ListeningRecorder],
                     // which counts wall-clock time between ticks rather than
@@ -6711,6 +6881,7 @@ class PlaybackService : MediaLibraryService() {
         AudioOutputStatus.reset()
         NerdStats.forgetLastSession()
         localBitrateCache.clear()
+        measuredBitrate.forget()
         super.onDestroy()
     }
 
