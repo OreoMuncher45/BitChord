@@ -5108,17 +5108,25 @@ class PlaybackService : MediaLibraryService() {
                     retriever.release()
                 }
 
-                if (bps != null && bps > 0) {
-                    ((bps + 500L) / 1000L).toInt()
-                } else if (durMs != null && durMs > 0) {
-                    val sizeBytes = when (uri.scheme) {
-                        "file" -> uri.path?.let { java.io.File(it).length() }
-                        "content" -> contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+                // Size-over-duration first, the container's declared bitrate
+                // only as a fallback. A FLAC-in-MP4 from a lossless source
+                // states the PCM data rate of the master — 1411 kbps for CD —
+                // in the sample entry a retriever reads, which is how a
+                // downloaded file came to show 1411 here while Poweramp,
+                // measuring bytes over time, showed its real 879. Size over
+                // duration cannot lie about the average encoded rate: both
+                // numbers are the file's own.
+                val sizeBytes = durMs?.takeIf { it > 0 }?.let {
+                    when (uri.scheme) {
+                        "file" -> uri.path?.let { path -> java.io.File(path).length() }
+                        "content" -> contentResolver.openFileDescriptor(uri, "r")?.use { fd -> fd.statSize }
                         else -> null
                     }
-                    if (sizeBytes != null && sizeBytes > 0) {
-                        ((sizeBytes * 8000L) / durMs / 1000L).toInt().takeIf { it > 0 }
-                    } else null
+                }
+                if (sizeBytes != null && sizeBytes > 0 && durMs != null && durMs > 0) {
+                    ((sizeBytes * 8000L) / durMs / 1000L).toInt().takeIf { it > 0 }
+                } else if (bps != null && bps > 0) {
+                    ((bps + 500L) / 1000L).toInt()
                 } else null
             }.getOrNull()
 
@@ -5156,10 +5164,18 @@ class PlaybackService : MediaLibraryService() {
                 Pair((format.bitrate + 500) / 1000, TelemetryProvenance.AUTHORITATIVE)
             mediaId != null && localBitrateCache.containsKey(mediaId) ->
                 Pair(localBitrateCache[mediaId], TelemetryProvenance.AUTHORITATIVE)
-            NerdStats.declaredFormat(mediaId)?.kbps != null ->
-                Pair(NerdStats.declaredFormat(mediaId)?.kbps, TelemetryProvenance.AUTHORITATIVE)
-            NerdStats.pickedBitrateKbps(mediaId) != null ->
-                Pair(NerdStats.pickedBitrateKbps(mediaId), TelemetryProvenance.AUTHORITATIVE)
+            // A claim is usable as an encoded bitrate only when the codec is
+            // lossy: a lossy source declares the compressed rate it actually
+            // serves (Opus at 147, AAC at 320). A lossless source declares the
+            // PCM data rate of the master — 1411 kbps for CD — which is not
+            // the encoded rate of the file and was shown as one: a downloaded
+            // FLAC read 1411 here while its bytes averaged 879. The lossless
+            // claim stays in [NerdStats.Snapshot.claimed], where it is labelled
+            // a claim, and the true PCM figure has its own row.
+            !isLossless && dsd == null && NerdStats.declaredFormat(mediaId)?.let { it.kbps != null && it.isLossless != true } == true ->
+                Pair(NerdStats.declaredFormat(mediaId)?.kbps, TelemetryProvenance.DERIVED)
+            !isLossless && dsd == null && NerdStats.pickedBitrateKbps(mediaId) != null ->
+                Pair(NerdStats.pickedBitrateKbps(mediaId), TelemetryProvenance.DERIVED)
             dsd == null && isRawPcm && pcmDataRate != null ->
                 Pair(pcmDataRate, TelemetryProvenance.DERIVED)
             else ->

@@ -1249,8 +1249,15 @@ class SourcesTest {
      */
     @Test
     fun `prefers the better of two answers that arrive together`() = runBlocking {
-        val worse = FakeSource("Ricky's Addon", answerAfterMs = 5, format = StreamFormat("mp3", kbps = 128))
-        val better = FakeSource("JioSaavn", answerAfterMs = 5, format = StreamFormat("mp4", kbps = 320))
+        // Same-tick answers, not two 5ms timers. "Arrive together" is the
+        // event loop resolving both before the select observes either; two
+        // independent 5ms timers race that fold under load — the first fires,
+        // the select resumes, and the second lands a tick later and outside
+        // the fold, which turned this test into a coin flip on a busy host.
+        // delay(0) completes both in one dispatch batch, so the fold always
+        // sees both and the assertion measures the ranking, not the scheduler.
+        val worse = FakeSource("Ricky's Addon", answerAfterMs = 0, format = StreamFormat("mp3", kbps = 128))
+        val better = FakeSource("JioSaavn", answerAfterMs = 0, format = StreamFormat("mp4", kbps = 320))
         val (source, stream) = SourceResolver.bestAcross(
             listOf(worse, better), raceTarget(), StreamRequest.Lossless,
         )!!
