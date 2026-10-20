@@ -2168,6 +2168,39 @@ fun NowPlayingScreen(
             Modifier.graphicsLayer { alpha = fullArtworkBackdropAlpha },
         )
 
+        // The wash the controls stand on, from the art's bottom edge down.
+        //
+        // ArchiveTune's Immersive theme grades the region under the stage
+        // rather than leaving the backdrop bare: transparent where the art
+        // ends, deepening to 40% black at the bottom of the screen. It is what
+        // makes the transport read as sitting ON the picture instead of
+        // floating over an ungraded one — the same reason the art itself
+        // dissolves into the backdrop instead of stopping at a hard edge.
+        //
+        // Stops are its own: 0/3%/14%/40%, measured off the reference. The
+        // gradient is drawn from the stage's bottom edge, not the screen's
+        // top, so it moves with the art.
+        if (heroMode && heroHeight > 0.dp) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    0.38f to Color.Black.copy(alpha = 0.03f),
+                                    0.68f to Color.Black.copy(alpha = 0.14f),
+                                    1f to Color.Black.copy(alpha = 0.40f),
+                                ),
+                                startY = heroHeight.toPx(),
+                                endY = size.height,
+                            ),
+                        )
+                    },
+            )
+        }
+
         // Mount once, behind the controls. A known portrait aspect changes the
         // invisible view to full-player bounds before its first frame is shown.
         if (heroMode && heroHeight > 0.dp) {
