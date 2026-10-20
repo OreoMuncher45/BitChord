@@ -316,34 +316,18 @@ private val VERSION_PILL_ART_INSET = 12.dp
  */
 private const val HERO_FADE_FRACTION = 0.42f
 /**
- * Where the still art's fade-to-blur sits, as shares of the ART BOX's own
- * height — measured, Round 2: crisp to 830px of the 1355px box (60%), a plain
- * linear ramp from there, fully dissolved by 1250px (91%), only blurred
- * background below. The previous single 0.42 put the ramp where the card used
- * to sit and covered a third too much of the art.
- */
-/**
- * Where the ramp begins: where the title is.
+ * Where the still art's dissolve finishes: the stage's own bottom edge.
  *
- * Measured, not guessed: the art box runs y 17 to 1372 on a 1080-wide
- * reference and the title's cap-top is at 1174, so the ramp starts
- * (1174 - 17) / 1355 = 85.4% of the art's height. The art is crisp over all
- * of itself and the gradient begins exactly where the title begins, which is
- * what keeps it off the picture: at 58% it covered the lower half of the
- * album art, which is not what anyone asked for.
+ * The stage used to stop at the title's row, so a ramp that ended there could
+ * only start *above* the title — which is exactly what it did. The banner is
+ * now carried past the credits by [HERO_ART_ZOOM], the same factor the artwork
+ * was zoomed by before, so the crop covers the taller stage at the identical
+ * scale and the dissolve can run all the way through the title instead of
+ * eating the picture above it.
  *
- * The art does not move for this. Only the ramp does.
- */
-private const val ART_FADE_START_FRACTION = 0.854f
-/**
- * Where the ramp finishes: the stage's own bottom edge, not short of it.
- *
- * ArchiveTune's Immersive theme draws the art crisp to 58% of the stage and
- * ramps across the remaining 42% — the gradient reaches the bottom of the art,
- * which is what makes the stage read as one tall, zoomed crop dissolving into
- * the blurred backdrop rather than as a card with a stripe worn across it.
- * Stopping at 91% left the last ninth of the art fully transparent, so the
- * art's bottom edge vanished and the stage looked cut off.
+ * The ramp begins at the title's row and is eased (see the draw below): a
+ * linear dissolve starts and stops with a visible crease, and over a stage
+ * this tall the crease is the only thing the eye caught.
  */
 private const val ART_FADE_END_FRACTION = 1.0f
 /** Kept transparent so the cover remains edge-to-edge, while aiding icon contrast. */
@@ -2751,13 +2735,20 @@ fun NowPlayingScreen(
                 } ?: regularTitleTop()
                 fun titleStart(): Dp = lerp(0.dp, THUMB_SIZE + 12.dp, p())
 
-                // How far down the *screen* the sleeve's bottom edge sits, which
-                // is where the full-bleed banner has to stop for the credits
-                // below it not to move when it appears. Everything between the
-                // screen's top and this box's own top is fixed padding, so it
-                // can simply be added back up rather than measured.
-                val bannerBottom = statusBarTop + topStrip + ART_BOX_TOP_PAD +
-                    groupTop + fullArt + ART_TITLE_GAP / 2
+                // How far down the *screen* the sleeve's bottom edge sits.
+                // Everything between the screen's top and this box's own top is
+                // fixed padding, so it can simply be added back up rather than
+                // measured.
+                //
+                // The stage then runs on past the title by [HERO_ART_ZOOM], the
+                // factor the still art used to be zoomed by in a graphicsLayer.
+                // The zoom and the extension are the same pixel for pixel: the
+                // taller Crop supplies exactly the scale the layer used to, and
+                // the dissolve gets a stage that reaches through the credits
+                // instead of stopping short of them. Nothing above the title
+                // changes size or place.
+                val bannerBottom = (statusBarTop + topStrip + ART_BOX_TOP_PAD +
+                    groupTop + fullArt + ART_TITLE_GAP / 2) * HERO_ART_ZOOM
                 // Frozen while lyrics are up. The controls now retain their full
                 // footprint across the transition, so this answer is identical
                 // on both sides; avoiding writes during the panel keeps the
@@ -2990,21 +2981,33 @@ fun NowPlayingScreen(
                                 CompositingStrategy.Auto
                             }
                         }
-                        // The banner dissolves into the backdrop where the
-                        // card's bottom edge would have been, and firms back
-                        // up into that edge as it collapses.
+                        // The banner dissolves into the backdrop from the title
+                        // down to the stage's bottom, and firms back up as it
+                        // collapses.
                         .drawWithContent {
                             drawContent()
                             val shown = sleeveShown()
                             if (shown > 0f) {
+                                // The title's row, in the sleeve's own pixels:
+                                // the old stage bottom recovered out of the
+                                // [HERO_ART_ZOOM] extension, plus the half
+                                // [ART_TITLE_GAP] the row sits below it.
+                                val fadeStart = size.height / HERO_ART_ZOOM +
+                                    ART_TITLE_GAP.toPx() / 2f
+                                // Eased, not linear: alpha holds near full as
+                                // the title begins, gives way through the
+                                // credits and settles at the stage's bottom
+                                // with no crease at either end.
+                                val steps = 16
+                                val colorStops = Array(steps + 1) { index ->
+                                    val t = index / steps.toFloat()
+                                    val eased = t * t * (3f - 2f * t)
+                                    t to Color.Black.copy(alpha = 1f - shown * eased)
+                                }
                                 drawRect(
-                                    // The art box's own percentages — see
-                                    // [ART_FADE_START_FRACTION]. Anchored here on
-                                    // the sleeve, so the ramp moves and scales
-                                    // with the art and never with the screen.
                                     brush = Brush.verticalGradient(
-                                        colors = listOf(Color.Black, Color.Black.copy(alpha = 1f - shown)),
-                                        startY = size.height * ART_FADE_START_FRACTION,
+                                        colorStops = colorStops,
+                                        startY = fadeStart,
                                         endY = size.height * ART_FADE_END_FRACTION,
                                     ),
                                     blendMode = BlendMode.DstIn,
@@ -3112,18 +3115,28 @@ fun NowPlayingScreen(
                         // [PlayerArtwork.loaded] still flips the moment it does.
                         modifier = Modifier
                             .fillMaxSize()
-                            // In the banner, the art is zoomed past its frame
-                            // — [HERO_ART_ZOOM] — so Crop takes a tighter slice
-                            // and the edges fall outside the clip. The sleeve
-                            // keeps its fitted card; the zoom is a banner idea.
+                            // In the banner, Crop still takes the tighter slice
+                            // the old [HERO_ART_ZOOM] layer took — the stage is
+                            // taller by exactly that factor, so the same source
+                            // occupies the same pixels and only its bottom, which
+                            // the credits now stand on, is uncovered. The sleeve
+                            // keeps its fitted card; the crop is a banner idea.
                             .then(
                                 if (heroMode) Modifier.graphicsLayer {
-                                    // Top-centre origin, then drift: the scale
-                                    // takes the top edge with it, so the crop
-                                    // grows at the sides and the bottom rather
-                                    // than lifting the art off the status bar.
-                                    scaleX = HERO_ART_ZOOM
-                                    scaleY = HERO_ART_ZOOM
+                                    // The stage is taller by [HERO_ART_ZOOM],
+                                    // so in portrait Crop already supplies the
+                                    // scale the removed layer did. Where the
+                                    // stage is still width-bound — the banner
+                                    // shorter than the player is wide — Crop
+                                    // cannot, and the zoom is put back.
+                                    val oldBottom = size.height / HERO_ART_ZOOM
+                                    val zoom = maxOf(size.width, oldBottom) * HERO_ART_ZOOM /
+                                        maxOf(size.width, size.height)
+                                    scaleX = zoom
+                                    scaleY = zoom
+                                    // Top-centre, then drift: the crop grows at
+                                    // the bottom rather than lifting the art off
+                                    // the status bar.
                                     transformOrigin = TransformOrigin(0.5f, 0f)
                                     translationY = size.width * HERO_ART_DRIFT
                                 } else Modifier,
