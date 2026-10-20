@@ -360,3 +360,36 @@ softened to "warn if missing" rather than refuse to load.
   existing Tidal/Qobuz addons.
 - Version gates: registry entries carry `min_app_version` (e.g. 4.9.1) —
   honour or ignore deliberately, don't crash on mismatch.
+
+## ArchiveTune port targets (cloned /home/ubuntu/archivetune, MIT lineage app)
+
+Owner: BitChord looks like ArchiveTune; their "Immersive" theme has the perfect
+album art zoom and gradient. **Immersive ONLY — "Immersive Extended" is
+explicitly forbidden ("it sucks").**
+
+### Immersive portrait layout (ImmersivePlayerScreen.kt, ~844 lines)
+- BoxWithConstraints; art stage: `artWidth = maxWidth` (FULL WIDTH),
+  `stageHeight = maxHeight * 0.64f` — the "zoom" is Crop into a full-width
+  64%-height portrait stage, NOT a scaled square.
+- `contentStartFraction` 0.40 (<700dp) / 0.44 (<900dp) / 0.46 else, content
+  starts at `maxHeight * fraction + 16.dp`, minus 18.dp top pad.
+- Backdrop: blurred copy offset to start exactly at the art's bottom
+  (`backdropOffsetY = stageHeight`), rotationZ 180, Haze blur
+  (backdropBlurAmount dp coerced 0..100, noiseFactor 0).
+- Scrims (the "perfect gradient"): stageScrim on the art =
+  verticalGradient(0.58f transparent -> 1f black 12%); lowerScrim below =
+  0f transparent -> 0.38f black 3% -> 0.68f 14% -> 1f 40%.
+- Controls: plain Column — FormatSeam, +52dp, MetadataRow, +20dp,
+  ProgressSection, weight(1f), TransportControls, weight(1f), VolumeControls,
+  +32dp. NO absolute positioning.
+
+### True-bitrate code to port
+- `mediainfo/MediaInfoRepository.kt` + `MediaInfoModels.kt` (their pipeline
+  truth source) and `localmedia/LocalSongScanner.kt` (local files).
+- BitChord's "—" regression: barring lossless claims left streams with no
+  encoded figure; port ArchiveTune's measurement approach.
+
+### Reverted this session
+Round-2's fraction-scaled transport (squished icons) — PlayerControls restored
+to the 38dp play / 42dp skip / 0.85 scale / 32dp centred gap the owner liked.
+ArchiveTune's TransportControls sizes to be measured during the port.

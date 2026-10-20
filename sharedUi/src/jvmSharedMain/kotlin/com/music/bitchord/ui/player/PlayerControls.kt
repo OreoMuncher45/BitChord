@@ -414,33 +414,22 @@ internal fun TransportRow(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     compact: Boolean = false,
-) = BoxWithConstraints(Modifier.fillMaxWidth()) {
-    // Round 2, measured in px on a 1080-wide reference and held as fractions
-    // of the player's width, so the geometry survives density and screen size
-    // by construction rather than by luck: the skips 105x60px (9.72%W wide,
-    // 5.56%W tall — a 0.57 height scale), the pause bars 79x107px (7.31%W x
-    // 9.91%W — bars stretched 1.36x taller than the box is wide), and the
-    // three centred at 23.4% / 50% / 76.5% of the width, 195px between glyph
-    // edges. The touch boxes are untouched, so the buttons hit exactly as
-    // they ever did.
-    // BoxWithConstraints for the width itself: these are fractions of the
-    // player, and a dp constant would only be right on one device.
-    val playSize = if (compact) 30.dp else maxWidth * 0.0731f
-    val playSizeHeightScale = if (compact) 1f else 9.91f / 7.31f
+) {
+    // The pause glyph, measured against Apple's player: 0.60x the height it
+    // had when the measurements were taken — 38.3pt tall on Apple's own
+    // numbers. The touch box is untouched, so the button hits exactly as it
+    // ever did.
+    val playSize = if (compact) 30.dp else 38.dp
     val playTouch = if (compact) 76.dp else 92.dp
-    val skipSize = if (compact) 36.dp else maxWidth * 0.0972f
-    val skipHeightScale = if (compact) PLAYER_SKIP_HEIGHT_SCALE else 5.56f / 9.72f
+    val skipSize = if (compact) 36.dp else PLAYER_SKIP_ICON_SIZE
     Row(
-        // A tight, centred cluster, spaced so the glyph edges sit 195px apart
-        // on the 1080 reference — centre distance 26.57% of the width minus
-        // the touch boxes' halves, because spacedBy measures boxes, not
-        // glyphs. BoxWithConstraints above provides the width.
+        // A tight, centred cluster — the shrink to 59/42dp left SpaceAround
+        // stretching the empty space between the buttons across the whole
+        // width, which read as the row falling apart rather than the icons
+        // getting smaller. spacedBy holds a fixed gap instead, and the
+        // alignment centres the cluster where the three sat before.
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(
-            (maxWidth * 0.2657f - PLAYER_SKIP_TOUCH_SIZE * 0.5f - playTouch * 0.5f)
-                .coerceAtLeast(12.dp),
-            Alignment.CenterHorizontally,
-        ),
+        horizontalArrangement = Arrangement.spacedBy(TRANSPORT_GAP, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TransportGlyph(
@@ -448,7 +437,7 @@ internal fun TransportRow(
             contentDescription = stringResource(Res.string.widget_previous),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
-            heightScale = skipHeightScale,
+            heightScale = PLAYER_SKIP_HEIGHT_SCALE,
             onClick = onPrevious,
             enabled = previousEnabled,
             haptic = Haptic.SkipPrevious,
@@ -468,7 +457,6 @@ internal fun TransportRow(
                 icon = if (isPlaying) PlayerIcons.Pause else PlayerIcons.Play,
                 contentDescription = stringResource(if (isPlaying) Res.string.pause else Res.string.play),
                 size = playSize,
-                heightScale = playSizeHeightScale,
                 touchSize = playTouch,
                 onClick = onPlayPause,
                 haptic = if (isPlaying) Haptic.Pause else Haptic.Resume,
@@ -479,7 +467,7 @@ internal fun TransportRow(
             contentDescription = stringResource(Res.string.widget_next),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
-            heightScale = skipHeightScale,
+            heightScale = PLAYER_SKIP_HEIGHT_SCALE,
             onClick = onNext,
             enabled = nextEnabled,
             haptic = Haptic.SkipNext,
