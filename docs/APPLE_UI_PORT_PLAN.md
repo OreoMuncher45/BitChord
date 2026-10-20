@@ -218,3 +218,55 @@ key line: `id=TFTnJzWRTJ8`, `substitution=true request=Lossless`.
    timeout twice; fail over to the next client on first timeout.
 3. A resolving state in the Now Playing UI for the pre-player gap.
 4. Why queue warm-up is being cancelled on selection.
+
+## SpotiFLAC glass study — cloned, analysed (MIT, /home/ubuntu/spotiflac)
+
+Owner request: copy SpotiFLAC's navbar + their "10x smoother" liquid glass as a
+v2 engine option with a customisable intensity setting. Complaint driving it:
+our glass janks during the player sheet's swipe up/down on low-end devices.
+
+### The hard finding: nothing copies, three things port
+
+SpotiFLAC is **Flutter**. Their navbar is not glass at all — it is Material 3
+Expressive's `M3ENavigationBar` (springy pill, themed background). Their glass
+(`MornyeLiquidBackdrop`, package `liquid_glass_easy` v5) is a separate bounded
+lens. Zero lines move into Kotlin/Compose. What ports:
+
+1. **Their glass parameters** — 1:1 onto our `GlassEffectConfig`:
+   clarity→vibrancy, blurSigma→blurRadius, refractionDepth/Width→
+   lensHeight/lensAmount, dispersion→chromaticAberration,
+   highlightIntensity→highlightOpacity, progress(effect scale)→an intensity
+   multiplier. An intensity setting is therefore a straight multiplier at the
+   `LocalGlassEffectConfig` provider site in MainActivity.
+
+2. **Shader warmup** (`MornyeGlassWarmup`): their shaders load and a detached
+   scene rasterises once, scheduled AFTER first-frame rasterised and away from
+   entrance/scroll, never competing with animation. Ours (AGSL
+   `RuntimeShader`s, `RuntimeShaderCache.kt`) compile lazily on first use —
+   the first-swipe jank. Port: build every shader once at startup.
+
+3. **Interaction gating**: their lens takes `interaction: false` while a
+   gesture runs, or scales the effect by `progress`. Our ported engine already
+   HAS the machinery and nothing drives it: `LocalAppBackdropFrozen`,
+   `BackdropFreeze`, `NavTransitionFreeze` are declared and never provided.
+   Drive them during the player sheet swipe — the swipe jank fix.
+
+### Why theirs is smoother, in one sentence
+
+Their lens never captures the screen — it is procedural over compositor
+content; ours re-records the page layer and re-blurs real content per surface,
+per frame, throughout the sheet transition.
+
+### Build order (next session)
+
+1. Glass intensity setting (0–100% slider; also the low-end performance lever).
+2. Shader warmup at startup.
+3. Freeze the backdrop during the sheet swipe (drive the existing locals).
+4. Navbar alternative as a Settings option — lowest value; our
+   FloatingTabBar already does the springy pill their navbar has.
+5. NOTICE: add SpotiFLAC (MIT, zarzet 2026), `liquid_glass_easy`, `mornye`.
+
+### License note
+
+SpotiFLAC is MIT — techniques and design port legally with attribution;
+their Dart code itself is not being copied.
