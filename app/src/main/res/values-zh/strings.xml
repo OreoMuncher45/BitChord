@@ -832,6 +832,8 @@
     <string name="liquid_glass_subtitle">浮动导航栏上的折射玻璃效果。仅限 Android 12+；会占用更多 GPU。</string>
 
     <string name="liquid_glass_unavailable">需要 Android 12 或更高版本</string>
+    <string name="liquid_glass_intensity">液态玻璃强度</string>
+    <string name="liquid_glass_intensity_subtitle">调整模糊与折射；强度越低渲染开销越小，可修复低端设备上的玻璃卡顿</string>
 
     <string name="listen_as">以该身份收听</string>
 

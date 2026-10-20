@@ -854,6 +854,8 @@
     <string name="liquid_glass_subtitle">Effet de verre réfracté sur la barre flottante. Android 12+ uniquement.</string>
 
     <string name="liquid_glass_unavailable">Nécessite Android 12 ou plus récent</string>
+    <string name="liquid_glass_intensity">Intensité du verre liquide</string>
+    <string name="liquid_glass_intensity_subtitle">Ajuste le flou et la réfraction ; moins intense coûte moins cher à rendre et corrige les saccades du verre sur les appareils modestes</string>
 
     <string name="listen_as">Écouter en tant que</string>
 

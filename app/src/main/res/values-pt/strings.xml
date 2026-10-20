@@ -858,6 +858,8 @@
     <string name="liquid_glass_subtitle">Efeito de vidro na barra de navegação. Requer Android 12+.</string>
 
     <string name="liquid_glass_unavailable">Requer Android 12 ou superior</string>
+    <string name="liquid_glass_intensity">Intensidade do Vidro Líquido</string>
+    <string name="liquid_glass_intensity_subtitle">Ajusta desfoque e refração; quanto mais baixo, mais barato de renderizar, corrigindo o engasgamento do vidro em dispositivos de entrada</string>
 
     <string name="listen_as">Ouvir como</string>
 

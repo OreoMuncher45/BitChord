@@ -858,6 +858,8 @@
     <string name="liquid_glass_subtitle">אפקט זכוכית בסרגל הניווט. Android 12+ בלבד.</string>
 
     <string name="liquid_glass_unavailable">דורש Android 12 ומעלה</string>
+    <string name="liquid_glass_intensity">עוצמת זכוכית נוזלית</string>
+    <string name="liquid_glass_intensity_subtitle">שולט על הטשטוש והשבירה; עוצמה נמוכה זולה יותר לעיבוד ומפחיתה את הקפיצות במכשירים חלשים</string>
 
     <string name="listen_as">האזן כ-</string>
 

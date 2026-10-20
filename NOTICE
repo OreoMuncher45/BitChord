@@ -79,3 +79,21 @@ Convx vendored this upstream into its own tree before BitChord took its copy,
 and its attribution is preserved verbatim in the header of
 ui/components/backdrop/Backdrop.kt and the other engine files. Apache-2.0 is
 permissive and compatible with GPL-3.0.
+
+================================================================================
+SpotiFLAC Mobile — MIT License
+================================================================================
+Source:  https://github.com/spotiflacapp/SpotiFLAC-Mobile
+License: MIT (Copyright (c) 2026 zarzet)
+
+BitChord copies no SpotiFLAC code — the app is Flutter and this one is Kotlin.
+What is derived from studying it: the shader-warmup technique (their
+MornyeGlassWarmup rasterises the glass pipeline once before any frame needs
+it; GlassShaderWarmup does the equivalent for this app's AGSL shaders at
+startup) and the interaction-gating trade (their liquid lens takes
+`interaction: false` for the duration of a gesture; this app freezes its
+backdrop during the Now Playing sheet's motion for the same reason). Their
+liquid_glass_easy parameter mapping (clarity -> vibrancy, blurSigma ->
+blurRadius, refraction -> lens, dispersion -> chromaticAberration,
+highlightIntensity -> highlightOpacity) informed the Liquid Glass intensity
+setting's scaling.

@@ -222,6 +222,8 @@
     <string name="liquid_glass">Liquid Glass</string>
     <string name="liquid_glass_subtitle">Cristal refractante real en la barra de navegación flotante. Solo Android 12+; usa más GPU.</string>
     <string name="liquid_glass_unavailable">Requiere Android 12 o posterior</string>
+    <string name="liquid_glass_intensity">Intensidad de Liquid Glass</string>
+    <string name="liquid_glass_intensity_subtitle">Escala el desenfoque y la refracción; cuanto más bajo, más barato de renderizar, lo que corrige el tirón del cristal en dispositivos de gama baja</string>
     <string name="full_screen_cover_art">Portada a pantalla completa</string>
     <string name="animated_cover_art">Portada animada</string>
     <string name="synced_lyrics">Letras sincronizadas</string>

@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.WindowInfo
+import com.music.bitchord.ui.components.GlassMotion
 import com.music.bitchord.ui.components.MiniPlayerPull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -62,6 +63,14 @@ private const val WINDOW_ENTER_MS = 600L
  * Opened with [open] from a tap, pulled with [drag] / [release], closed with
  * [close] — which the sheet itself is routed through too, for a drag released
  * low, a back press or a tap on the scrim (see the sheet's `confirmValueChange`).
+ *
+ * Every point where this class moves the sheet also stamps [GlassMotion]'s
+ * sheet clock, and every point where the motion ends clears it — so the
+ * app's glass holds its last backdrop capture for the whole of a swipe
+ * instead of re-recording it on every frame of the spring. The stamping is
+ * per frame, not per gesture, so however long a motion runs the freeze
+ * follows it; see [GlassMotion] for why the clock's own expiry is the
+ * guarantee that a cancelled slide can never leave the glass frozen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Stable
@@ -153,6 +162,13 @@ class PlayerSheetMotion(
     private fun sampleSheet(at: Float) {
         val now = System.nanoTime()
         if (!sheetSampleAt.isNaN()) {
+            // The sheet moving under M3's own hand — a drag of its body, a
+            // settle back to open — is motion too, and [holding] cannot see
+            // it: the docked artwork follows the sheet in the app window
+            // ([position]), so the content under the glass changes every
+            // frame of it all the same. This runs every frame the sheet
+            // lays out, so a changed offset is exactly a moving frame.
+            if (at != sheetSampleAt) GlassMotion.sheet.moved()
             val seconds = (now - sheetSampleNanos) / 1e9f
             if (seconds > 0f) {
                 val instant = (at - sheetSampleAt) / seconds
@@ -174,6 +190,12 @@ class PlayerSheetMotion(
         closing = false
         val travel = travel()
         held = travel
+        // The raise is motion from its first frame: the docked artwork is
+        // placed at the bottom of its travel and the sheet's window comes
+        // up over the app's content. Stamped once here because the slide
+        // below cannot stamp for its first [LAYOUT_WAIT_MS] — the clock's
+        // window is what carries the freeze across that wait.
+        GlassMotion.sheet.moved()
         // Raised already open: [held] is what slides it up.
         setShown(true)
         settle = scope.launch {
@@ -182,6 +204,8 @@ class PlayerSheetMotion(
             withTimeoutOrNull(LAYOUT_WAIT_MS) { snapshotFlow { laidOut }.first { it } }
             slide(from = travel, to = 0f)
             held = Float.NaN
+            // Open, and still — the glass may capture live again.
+            GlassMotion.sheet.settled()
         }
     }
 
@@ -229,6 +253,8 @@ class PlayerSheetMotion(
         }
         val velocity = if (holding) 0f else recentSheetVelocity()
         held = from
+        // The slide stamps per frame; this covers the handoff into it.
+        GlassMotion.sheet.moved()
         settle = scope.launch {
             slide(from = from, to = travel(), velocity = velocity.coerceAtLeast(0f))
             dismissQuietly()
@@ -249,6 +275,10 @@ class PlayerSheetMotion(
         }
         settle?.cancel()
         held = (held + delta).coerceIn(0f, travel())
+        // Every finger movement is motion, stamped as it happens — the
+        // glass holds its capture from the first pixel of the pull until
+        // [release] hands the sheet to the spring.
+        GlassMotion.sheet.moved()
     }
 
     override fun release(velocity: Float) {
@@ -268,12 +298,21 @@ class PlayerSheetMotion(
             quietWindow()
         }
         val from = held
+        // The spring stamps per frame; this covers the handoff into it.
+        GlassMotion.sheet.moved()
         settle = scope.launch {
             // The finger's own speed goes into the spring, so the player
             // carries on as it was moving and then settles — a flick fast,
             // a slow pull gently.
             slide(from = from, to = if (open) 0f else travel, velocity = speed)
-            if (open) held = Float.NaN else dismissQuietly()
+            if (open) {
+                held = Float.NaN
+                // Released open, and still — the glass may capture live
+                // again.
+                GlassMotion.sheet.settled()
+            } else {
+                dismissQuietly()
+            }
         }
     }
 
@@ -288,6 +327,13 @@ class PlayerSheetMotion(
         laidOut = false
         sheet = null
         window = null
+        // The net under every other clear: whatever ended here — the close
+        // finishing, a slide cancelled by the host tearing the sheet down
+        // mid-gesture, a configuration change — the motion is over and the
+        // glass must be allowed to capture again. The clock would lift on
+        // its own; this makes the end immediate, and certain even if some
+        // future path cancels a settle without starting another motion.
+        GlassMotion.sheet.settled()
     }
 
     private suspend fun slide(from: Float, to: Float, velocity: Float = 0f) {
@@ -306,6 +352,10 @@ class PlayerSheetMotion(
             // enough at its target it can pass it once: never past open or
             // past the bar.
             held = value.coerceIn(0f, travel)
+            // The spring's own heartbeat: stamped every frame, so the
+            // glass freeze lasts exactly as long as the animation runs —
+            // however long a hard flick makes it.
+            GlassMotion.sheet.moved()
         }
     }
 
@@ -313,5 +363,7 @@ class PlayerSheetMotion(
     private fun dismissQuietly() {
         quietWindow()
         setShown(false)
+        // However the close went, the motion is over with it.
+        GlassMotion.sheet.settled()
     }
 }

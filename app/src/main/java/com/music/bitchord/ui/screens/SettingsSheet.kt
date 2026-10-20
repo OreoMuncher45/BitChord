@@ -207,6 +207,7 @@ fun SettingsScreen(
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
+    val liquidGlassIntensity by AppSettings.liquidGlassIntensity.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -892,6 +893,25 @@ fun SettingsScreen(
                     },
                     onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
                 )
+            }
+            // The slider below the toggle, shown only where the toggle itself
+            // can be on: on a device the engine can't run on, the intensity is
+            // a knob with nothing to turn.
+            if (liquidGlassSupported) {
+                val liquidGlassIntensityTitle = stringResource(R.string.liquid_glass_intensity)
+                row(liquidGlassIntensityTitle, "glass", "intensity", "performance") {
+                    SliderRow(
+                        icon = Icons.Rounded.Tune,
+                        title = liquidGlassIntensityTitle,
+                        subtitle = stringResource(R.string.liquid_glass_intensity_subtitle),
+                        value = "${(liquidGlassIntensity * 100).roundToInt()}%",
+                        sliderValue = liquidGlassIntensity,
+                        onSliderValue = { AppSettings.setLiquidGlassIntensity(it) },
+                        valueRange = AppSettings.MIN_LIQUID_GLASS_INTENSITY..
+                            AppSettings.MAX_LIQUID_GLASS_INTENSITY,
+                        steps = 8,
+                    )
+                }
             }
             // Left out where the player won't honour it: a window too wide for
             // the player to fill and too narrow to stand a page beside it keeps

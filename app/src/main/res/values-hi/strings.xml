@@ -853,6 +853,8 @@
     <string name="liquid_glass_subtitle">नेविगेशन बार पर ग्लास प्रभाव। केवल Android 12+।</string>
 
     <string name="liquid_glass_unavailable">Android 12 या नए की आवश्यकता है</string>
+    <string name="liquid_glass_intensity">लिक्विड ग्लास की तीव्रता</string>
+    <string name="liquid_glass_intensity_subtitle">ब्लर और अपवर्तन को स्केल करता है; कम तीव्रता का रेंडरिंग लागत कम होती है, जिससे कमज़ोर डिवाइस पर अटकन ठीक होती है</string>
 
     <string name="listen_as">इस रूप में सुनें</string>
 

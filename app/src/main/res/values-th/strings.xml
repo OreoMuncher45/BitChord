@@ -228,6 +228,8 @@
     <string name="liquid_glass">Liquid Glass</string>
     <string name="liquid_glass_subtitle">กระจกหักเหแสงจริงบนแถบนำทางแบบลอย ใช้ได้เฉพาะ Android 12 ขึ้นไป และใช้ GPU มากขึ้น</string>
     <string name="liquid_glass_unavailable">ต้องใช้ Android 12 ขึ้นไป</string>
+    <string name="liquid_glass_intensity">ความเข้มของ Liquid Glass</string>
+    <string name="liquid_glass_intensity_subtitle">ปรับขนาดของเบลอและการหักเห ยิ่งต่ำยิ่งเรนเดอร์ได้ถูกกว่า แก้อาการกระตุกของกระจกบนอุปกรณ์ระดับต้น</string>
     <string name="full_screen_cover_art">ปกอัลบั้มเต็มจอ</string>
     <string name="animated_cover_art">ปกอัลบั้มเคลื่อนไหว</string>
     <string name="synced_lyrics">เนื้อเพลงซิงค์</string>

@@ -252,6 +252,8 @@
     <string name="liquid_glass">Liquid Glass</string>
     <string name="liquid_glass_subtitle">Vetro rifrangente reale sulla barra di navigazione flottante. Solo Android 12+; usa più GPU.</string>
     <string name="liquid_glass_unavailable">Richiede Android 12 o versioni successive</string>
+    <string name="liquid_glass_intensity">Intensità di Liquid Glass</string>
+    <string name="liquid_glass_intensity_subtitle">Regola sfocatura e rifrazione; valori più bassi costano meno da renderizzare, risolvendo lo scatto del vetro su dispositivi di fascia bassa</string>
     <string name="full_screen_cover_art">Copertina a tutto schermo</string>
     <string name="animated_cover_art">Copertina animata</string>
     <string name="synced_lyrics">Testi sincronizzati</string>

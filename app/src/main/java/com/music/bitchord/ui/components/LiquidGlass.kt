@@ -134,7 +134,49 @@ fun Modifier.lightweightLiquidGlass(
  * see [LocalLiquidGlassEnabled]. The Apple shell's chrome is glass rather than
  * a glass option over something else, so gating it left the whole Convx engine
  * unreachable behind a switch that defaults off.
+ *
+ * The freeze this delegate drives, which the engine always had the machinery
+ * for and nothing in the app used: while the Now Playing sheet is in motion —
+ * pulled up from the mini player, opened from a tap, closed by anything, or
+ * dragged by hand — every surface here holds its last backdrop capture
+ * instead of re-recording it per frame. That is the swipe jank fix. The swipe
+ * moves the very content these surfaces sample — the docked artwork flies
+ * between the mini player and the player, changing the app window every frame
+ * of the spring — so each surface was paying a full layer record per frame
+ * for the whole of the motion (the measured cost this pattern exists for:
+ * ~47ms of record per frame without a freeze, ~2ms with one held). SpotiFLAC
+ * makes the same trade by another door: their lens takes `interaction: false`
+ * for the duration of a gesture. The signal is [GlassMotion.sheet], stamped
+ * per frame from [com.music.bitchord.ui.player.PlayerSheetMotion].
+ *
+ * The cost of that is intended, and must not be "fixed": frozen glass shows
+ * the capture it already holds — a static snapshot, without live refraction —
+ * so during the swipe the lens does not track what passes underneath it. A
+ * swipe that stays smooth is worth far more than a lens that tracks the
+ * finger at the price of the swipe itself. The sheet's settle clears the
+ * freeze, and the engine's thaw poll redraws the surface the moment it
+ * lifts, so the glass goes live again with nothing left over.
+ *
+ * [LocalAppBackdropFrozen] is composed with, not replaced: a provider above
+ * may one day freeze for its own reasons (a nav transition, say), and either
+ * freeze is enough on its own.
  */
 @Composable
-fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier =
-    liquidGlass(GlassEffectConfig(), shape)
+fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
+    // The provider's flag is read here in composition and closed over, not
+    // read inside the lambda: CompositionLocals belong to composition, and
+    // the frozen lambda runs in the draw phase.
+    val appFrozen = LocalAppBackdropFrozen.current
+    return liquidGlass(
+        // The provider, not a fresh default: [AppSettings.liquidGlassIntensity]
+        // scales every knob the engine has — blur, lens, vibrancy, rim — at
+        // the one site MainActivity provides it, so the setting is live for
+        // every surface that routes through this delegate and intensity 1 is
+        // bit-identical to the old defaults. Without this line the setting
+        // persists, the config is provided, and nothing consumes it — the
+        // dead-control failure mode.
+        LocalGlassEffectConfig.current,
+        shape,
+        frozen = { GlassMotion.sheet.frozen() || appFrozen() },
+    )
+}

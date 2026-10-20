@@ -234,6 +234,8 @@
     <string name="liquid_glass">Liquid Glass</string>
     <string name="liquid_glass_subtitle">Yüzen gezinme çubuğunda gerçek kırılan cam. Yalnızca Android 12+; daha fazla GPU kullanır.</string>
     <string name="liquid_glass_unavailable">Android 12 veya daha yenisini gerektirir</string>
+    <string name="liquid_glass_intensity">Liquid Glass yoğunluğu</string>
+    <string name="liquid_glass_intensity_subtitle">Bulanıklığı ve kırınımı ölçekler; ne kadar düşükse o kadar ucuza render edilir ve düşük donanımlı cihazlarda takılmayı giderir</string>
     <string name="full_screen_cover_art">Tam ekran kapak resmi</string>
     <string name="animated_cover_art">Hareketli kapak resmi</string>
     <string name="synced_lyrics">Senkronize sözler</string>

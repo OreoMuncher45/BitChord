@@ -238,6 +238,8 @@
     <string name="liquid_glass">Kính lỏng (Liquid Glass)</string>
     <string name="liquid_glass_subtitle">Hiệu ứng kính khúc xạ trên thanh điều hướng nổi. Chỉ dành cho Android 12+; sử dụng nhiều GPU hơn.</string>
     <string name="liquid_glass_unavailable">Yêu cầu Android 12 trở lên</string>
+    <string name="liquid_glass_intensity">Cường độ kính lỏng</string>
+    <string name="liquid_glass_intensity_subtitle">Điều chỉnh độ mờ và khúc xạ; cường độ càng thấp càng ít tốn tài nguyên kết xuất, khắc phục giật kính trên thiết bị yếu</string>
     <string name="full_screen_cover_art">Ảnh bìa toàn màn hình</string>
     <string name="legacy_mesh_gradient">Dải màu lưới kiểu cũ</string>
     <string name="legacy_mesh_gradient_subtitle">Mang lại các đốm màu chuyển động phía sau trình phát từ phiên bản 1.5</string>

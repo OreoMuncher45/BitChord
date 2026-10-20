@@ -948,6 +948,8 @@
     <string name="liquid_glass_subtitle">フローティング ナビゲーション バーの屈折ガラス効果。Android 12 以降のみ。</string>
 
     <string name="liquid_glass_unavailable">Android 12 以降が必要です</string>
+    <string name="liquid_glass_intensity">リキッド グラスの強度</string>
+    <string name="liquid_glass_intensity_subtitle">ぼかしと屈折を調整します。低いほどレンダリング負荷が下がり、低スペック端末でのカクつきを解消します</string>
 
 
     <string name="playlist_action">プレイリスト</string>

@@ -853,6 +853,8 @@
     <string name="liquid_glass_subtitle">Echtes brechendes Glas auf der Navigationsleiste. Nur Android 12+.</string>
 
     <string name="liquid_glass_unavailable">Erfordert Android 12 oder neuer</string>
+    <string name="liquid_glass_intensity">Intensität des flüssigen Glases</string>
+    <string name="liquid_glass_intensity_subtitle">Skaliert Unschärfe und Brechung; schwächer ist günstiger zu rendern und behebt das Glas-Ruckeln auf schwächeren Geräten</string>
 
     <string name="listen_as">Hören als</string>
 

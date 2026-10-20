@@ -881,6 +881,8 @@
     <string name="liquid_glass_subtitle">Эффект стекла на панели навигации. Только Android 12+.</string>
 
     <string name="liquid_glass_unavailable">Требуется Android 12 или новее</string>
+    <string name="liquid_glass_intensity">Интенсивность жидкого стекла</string>
+    <string name="liquid_glass_intensity_subtitle">Масштабирует размытие и преломление; чем ниже, тем дешевле отрисовка, что устраняет подёргивания стекла на слабых устройствах</string>
 
     <string name="listen_as">Слушать как</string>
 

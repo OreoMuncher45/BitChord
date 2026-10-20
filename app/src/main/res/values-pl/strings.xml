@@ -891,6 +891,8 @@
     <string name="liquid_glass_subtitle">Efekt szkła na pasku nawigacyjnym. Tylko Android 12+.</string>
 
     <string name="liquid_glass_unavailable">Wymaga systemu Android 12 lub nowszego</string>
+    <string name="liquid_glass_intensity">Intensywność płynnego szkła</string>
+    <string name="liquid_glass_intensity_subtitle">Skaluje rozmycie i załamanie; niższa wartość jest tańsza w renderowaniu i usuwa przycinki szkła na słabszych urządzeniach</string>
 
     <string name="listen_as">Słuchaj jako</string>
 

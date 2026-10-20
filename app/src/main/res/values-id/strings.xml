@@ -832,6 +832,8 @@
     <string name="liquid_glass_subtitle">Efek kaca pada bilah navigasi. Khusus Android 12+.</string>
 
     <string name="liquid_glass_unavailable">Memerlukan Android 12 atau yang lebih baru</string>
+    <string name="liquid_glass_intensity">Intensitas Kaca Cair</string>
+    <string name="liquid_glass_intensity_subtitle">Menskala blur dan refraksi; semakin rendah semakin murah dirender, memperbaiki patahan kaca di perangkat kelas bawah</string>
 
     <string name="listen_as">Dengarkan sebagai</string>
 

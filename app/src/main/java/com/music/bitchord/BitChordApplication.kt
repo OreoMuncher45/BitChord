@@ -16,6 +16,7 @@ import com.music.bitchord.data.flow.FlowStore
 import com.music.bitchord.data.liked.LikedCache
 import com.music.bitchord.data.lyrics.LyricsTranslation
 import androidx.appcompat.app.AppCompatDelegate
+import com.music.bitchord.ui.components.backdrop.GlassShaderWarmup
 import com.music.bitchord.ui.player.AndroidPlayerHost
 import com.music.bitchord.ui.player.PlayerPlatform
 import com.music.bitchord.data.canvas.CanvasCache
@@ -62,6 +63,15 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                 }
             }
         }
+        // The glass engine compiles its AGSL shaders lazily, on the UI thread,
+        // the first time a surface draws with one — on a low-end device that
+        // first time can land inside the player sheet's swipe. Compiling all
+        // five here moves the cost to process start, the one moment where no
+        // window exists yet: there is no first frame to delay and no
+        // animation for a background-priority thread to compete with. See
+        // GlassShaderWarmup for why a background thread is safe and what this
+        // does and does not warm.
+        GlassShaderWarmup.warmUp()
         // The per-app language picker, which YouTube Music's `hl` follows.
         Innertube.appLanguage = { AppCompatDelegate.getApplicationLocales().get(0)?.language }
         LyricsTranslation.cacheDir = cacheDir

@@ -235,6 +235,8 @@ import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.LastfmLoginAlert
 import com.music.bitchord.ui.components.LocalAppBackdrop
 import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
+import com.music.bitchord.ui.components.GlassEffectConfig
+import com.music.bitchord.ui.components.LocalGlassEffectConfig
 import com.music.bitchord.ui.components.backdrop.backdrops.LayerBackdrop
 import com.music.bitchord.ui.components.backdrop.backdrops.layerBackdrop
 import com.music.bitchord.ui.components.backdrop.backdrops.rememberLayerBackdrop
@@ -350,6 +352,7 @@ class MainActivity : AppCompatActivity() {
             val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
             val highPerformance by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
             val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
+            val liquidGlassIntensity by AppSettings.liquidGlassIntensity.collectAsStateWithLifecycle()
             val iosOverscrollFactory = rememberIosOverscrollFactory()
             val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
             val composeView = LocalView.current
@@ -382,6 +385,21 @@ class MainActivity : AppCompatActivity() {
                 CompositionLocalProvider(
                     LocalOverscrollFactory provides iosOverscrollFactory,
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
+                    // The engine's own defaults (see [GlassEffectConfig]) with
+                    // every effect parameter multiplied by the Liquid Glass
+                    // intensity setting: 100% is identical to the no-arg
+                    // config, and each step down is the same material cheaper
+                    // to render — the low-end lever against the sheet-swipe
+                    // glass jank. Dispersion stays off at any intensity.
+                    LocalGlassEffectConfig provides GlassEffectConfig(
+                        blurRadius = 3f * liquidGlassIntensity,
+                        lensHeight = 0.60f * liquidGlassIntensity,
+                        lensAmount = 0.69f * liquidGlassIntensity,
+                        chromaticAberration = false,
+                        highlightOpacity = 0.55f * liquidGlassIntensity,
+                        surfaceOpacity = 0.5f * liquidGlassIntensity,
+                        vibrancy = 2f * liquidGlassIntensity,
+                    ),
                     LocalAppBackdrop provides appBackdrop,
                 ) {
                 // The window's width, measured rather than asked for.
