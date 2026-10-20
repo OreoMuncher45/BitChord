@@ -322,7 +322,19 @@ private const val HERO_FADE_FRACTION = 0.42f
  * background below. The previous single 0.42 put the ramp where the card used
  * to sit and covered a third too much of the art.
  */
-private const val ART_FADE_START_FRACTION = 0.58f
+/**
+ * Where the ramp begins: where the title is.
+ *
+ * Measured, not guessed: the art box runs y 17 to 1372 on a 1080-wide
+ * reference and the title's cap-top is at 1174, so the ramp starts
+ * (1174 - 17) / 1355 = 85.4% of the art's height. The art is crisp over all
+ * of itself and the gradient begins exactly where the title begins, which is
+ * what keeps it off the picture: at 58% it covered the lower half of the
+ * album art, which is not what anyone asked for.
+ *
+ * The art does not move for this. Only the ramp does.
+ */
+private const val ART_FADE_START_FRACTION = 0.854f
 /**
  * Where the ramp finishes: the stage's own bottom edge, not short of it.
  *
