@@ -322,8 +322,18 @@ private const val HERO_FADE_FRACTION = 0.42f
  * background below. The previous single 0.42 put the ramp where the card used
  * to sit and covered a third too much of the art.
  */
-private const val ART_FADE_START_FRACTION = 0.60f
-private const val ART_FADE_END_FRACTION = 0.91f
+private const val ART_FADE_START_FRACTION = 0.58f
+/**
+ * Where the ramp finishes: the stage's own bottom edge, not short of it.
+ *
+ * ArchiveTune's Immersive theme draws the art crisp to 58% of the stage and
+ * ramps across the remaining 42% — the gradient reaches the bottom of the art,
+ * which is what makes the stage read as one tall, zoomed crop dissolving into
+ * the blurred backdrop rather than as a card with a stripe worn across it.
+ * Stopping at 91% left the last ninth of the art fully transparent, so the
+ * art's bottom edge vanished and the stage looked cut off.
+ */
+private const val ART_FADE_END_FRACTION = 1.0f
 /** Kept transparent so the cover remains edge-to-edge, while aiding icon contrast. */
 /** A modest floor while a subview replaces the hero with its artwork-derived mesh. */
 private const val SUBVIEW_STATUS_SCRIM_MIN_ALPHA = 0.40f
