@@ -270,3 +270,93 @@ per frame, throughout the sheet transition.
 
 SpotiFLAC is MIT — techniques and design port legally with attribution;
 their Dart code itself is not being copied.
+
+## SpotiFLAC extension registry — investigation complete, integration plan
+
+Owner request: add https://raw.githubusercontent.com/spotiflacapp/spotiflac-extension/main/registry.json
+as a fourth backup source ("BitChord Backup Addon"), Tidal and Qobuz especially,
+configured to STREAM rather than download.
+
+### What the ecosystem actually is
+
+- `registry.json`: 12 extensions, each with `download_url` (a `.sflx`), `sha256`,
+  `min_app_version`. Tidal = `tidal-web` v1.2.9, Qobuz = `qobuz-web` v1.2.23.
+- `.sflx` = a ZIP of `manifest.json` + `index.js`. Nothing else.
+- **Full readable sources exist**, Apache-2.0: `/home/ubuntu/spotiflac-ext-src/sources/<id>/`
+  (built by `scripts/build_packages.py`). Mornye (the runner app) is MIT.
+  Both permissive → compatible with our GPL-3.0 with NOTICE attribution.
+- Mornye's runtime is NOT QuickJS — it is a Go/Rust backend (Goja) whose host
+  bridge is `rust_backend/crates/extensions/src/prelude.js` (763 lines).
+- BitChord's own module system (`data/sources/module/`, QuickJsExecutor +
+  ModuleManager) is a port of Convx's ModuleManager — same lineage, different
+  host API. It evaluates an IIFE into `__spine_mod` and calls exactly two
+  exports: `searchTracks` and `getTrackStreamUrl`.
+
+### The host contract a .sflx needs (the gap to close)
+
+The extension's top level calls `registerExtension({...})` — BitChord's executor
+would throw on load today. Required host surface, from prelude.js + the tidal
+extension source:
+
+1. `globalThis.registerExtension(value)` — stores the export object.
+2. **`globalThis.session = { signedFetch(method, path, body, headers) }`** — the
+   core. Per manifest: baseUrl `https://api.zarz.moe/v2`, scheme `ZARZ-HMAC-V1`,
+   header prefix `X-Zarz-`, 300s time window, endpoints
+   bootstrap/challenge/exchange/refresh. Mornye implements the handshake
+   host-side (crate `extensions/src/environment.rs` + `auth/`); the extension
+   never sees keys. Flow used for streaming: `POST /tickets` → ticket id →
+   `POST /dl/tid` with `X-Zarz-Ticket` → playback URL(s)/manifest.
+3. `globalThis.storage` (get/set/remove) and `globalThis.credentials`
+   (get/store/remove/has) — prefs-backed, per-extension namespacing.
+4. Network `fetch` gated by the manifest's `permissions.network` host allowlist
+   (tidal.com, resources.tidal.com, *.audio.tidal.com, *.manifest.tidal.com,
+   api.zarz.moe, …).
+5. `log` (info/warn/error), and `file.downloadSegments` — only genuinely needed
+   for real downloads; NOT needed if we only stream (see below).
+6. Manifest fields we must honour: `type` (metadata_provider /
+   download_provider), `qualityOptions`, `requiredRuntimeFeatures`
+   (`signedSession@3`, `sessionGrant@1`, `downloadSegments@1`), `minAppVersion`.
+
+### How "stream instead of download" works
+
+The tidal/qobuz extensions acquire playback URLs INSIDE their `download()`
+export (signedJSON → /dl/tid → manifest with apiURL + mirrors). For streaming
+we call the same export and hand the returned URL/manifest to the player as a
+stream, never invoking `file.downloadSegments`. That makes `downloadSegments@1`
+unreachable in our build — acceptable; the feature check should then be
+softened to "warn if missing" rather than refuse to load.
+
+### Build order (subagent-shaped, disjoint files)
+
+1. **Registry loader** (new file(s) under `data/sources/addon/`): fetch
+   registry.json, download `.sflx`, sha256-verify, unzip, parse manifest,
+   expose for install. UI: a fourth backup source entry — "BitChord Backup
+   Addon" — in the Sources settings, listing registry extensions.
+2. **Extension host in QuickJsExecutor**: prelude adaptation — define the
+   globals above BEFORE evaluating index.js; after evaluation read
+   `globalThis.extension` instead of `__spine_mod`. Bridge `session.signedFetch`
+   to a Kotlin implementation of the zarz HMAC scheme (read Mornye
+   `environment.rs` + `auth/` first — the exact signing recipe lives there).
+   Keep our existing two-export modules working: the prelude is additive.
+3. **Source integration**: a new `SflxSource` joining the existing fallback
+   chain (see `data/sources/SourceRegistry.kt`, `TidalSource.kt`,
+   `QobuzQueueSource.kt`, `AddonOrderTest` / `AddonPolicyTest` for the
+   ordering/policy rules). Stream path: `download()` → feed URL to player.
+   Search path: `searchTracks`. Skip `downloadSegments`.
+4. **Settings + policy**: enable/disable per extension; the existing
+   substitution chain ("sources: substitution=true request=Lossless") treats
+   the new source as the fourth rung.
+5. **NOTICE**: SpotiFLAC-Extension (Apache-2.0) + Mornye (MIT) attribution.
+
+### Risks / honest notes
+
+- The zarz.moe broker is a third-party service. "Consistently always works" is
+  the broker's reliability, not something our code can guarantee — we inherit
+  an upstream dependency and should degrade gracefully when it is down
+  (mirror URLs exist in the extension config as fallbacks).
+- Legal: we are running Apache-2.0 code under GPL-3.0 with attribution — clean.
+  The STREAMING of the content itself is exactly what the extensions were
+  built to enable; no new exposure beyond what BitChord already does with its
+  existing Tidal/Qobuz addons.
+- Version gates: registry entries carry `min_app_version` (e.g. 4.9.1) —
+  honour or ignore deliberately, don't crash on mismatch.
