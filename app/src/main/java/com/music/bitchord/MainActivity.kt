@@ -1266,6 +1266,15 @@ private fun BitChordApp(
             // that never got this far, where nothing else would release it.
             if (holdUntilAligned) AppSettings.versionAlignmentInProgress.value = false
             c.swapToVersion(target)
+            // The service-side swap conditions its own resume on the player's
+            // playWhenReady at swap time — which this function has already
+            // paused, on purpose, while it resolved the other version. The
+            // failure paths above carry resumeAfterResolution for exactly
+            // this reason; the success path has to carry it too, or every
+            // automatic swap lands the track paused and the listener presses
+            // play by hand. Reported on-device: track switches sitting paused
+            // with a prepared, never-started stream.
+            if (resumeAfterResolution) c.play()
         } finally {
             if (holdUntilAligned) AppSettings.versionAlignmentInProgress.value = false
             switchingAudioVersion = false
@@ -1333,6 +1342,15 @@ private fun BitChordApp(
             // the finally only exists for the paths that never send.
             if (holdUntilAligned) AppSettings.versionAlignmentInProgress.value = false
             c.swapToVersion(target)
+            // The service-side swap conditions its own resume on the player's
+            // playWhenReady at swap time — which this function has already
+            // paused, on purpose, while it resolved the other version. The
+            // failure paths above carry resumeAfterResolution for exactly
+            // this reason; the success path has to carry it too, or every
+            // automatic swap lands the track paused and the listener presses
+            // play by hand. Reported on-device: track switches sitting paused
+            // with a prepared, never-started stream.
+            if (resumeAfterResolution) c.play()
         } finally {
             if (holdUntilAligned) AppSettings.versionAlignmentInProgress.value = false
             switchingAudioVersion = false
