@@ -315,6 +315,15 @@ private val VERSION_PILL_ART_INSET = 12.dp
  * that was cut off rather than one that ran out.
  */
 private const val HERO_FADE_FRACTION = 0.42f
+/**
+ * Where the still art's fade-to-blur sits, as shares of the ART BOX's own
+ * height — measured, Round 2: crisp to 830px of the 1355px box (60%), a plain
+ * linear ramp from there, fully dissolved by 1250px (91%), only blurred
+ * background below. The previous single 0.42 put the ramp where the card used
+ * to sit and covered a third too much of the art.
+ */
+private const val ART_FADE_START_FRACTION = 0.60f
+private const val ART_FADE_END_FRACTION = 0.91f
 /** Kept transparent so the cover remains edge-to-edge, while aiding icon contrast. */
 /** A modest floor while a subview replaces the hero with its artwork-derived mesh. */
 private const val SUBVIEW_STATUS_SCRIM_MIN_ALPHA = 0.40f
@@ -2934,10 +2943,14 @@ fun NowPlayingScreen(
                             val shown = sleeveShown()
                             if (shown > 0f) {
                                 drawRect(
+                                    // The art box's own percentages — see
+                                    // [ART_FADE_START_FRACTION]. Anchored here on
+                                    // the sleeve, so the ramp moves and scales
+                                    // with the art and never with the screen.
                                     brush = Brush.verticalGradient(
                                         colors = listOf(Color.Black, Color.Black.copy(alpha = 1f - shown)),
-                                        startY = size.height * (1f - HERO_FADE_FRACTION),
-                                        endY = size.height,
+                                        startY = size.height * ART_FADE_START_FRACTION,
+                                        endY = size.height * ART_FADE_END_FRACTION,
                                     ),
                                     blendMode = BlendMode.DstIn,
                                 )
