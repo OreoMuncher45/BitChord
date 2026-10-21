@@ -267,6 +267,7 @@ import com.music.bitchord.ui.components.FieldConfig
 import com.music.bitchord.ui.icons.BitChordIcons
 import androidx.media3.common.Player
 import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.ui.player.ListenTogetherMembersSheet
 import com.music.bitchord.ui.player.NowPlayingScreen
 import com.music.bitchord.ui.player.PlayerSheetMotion
 import androidx.compose.ui.geometry.Offset
@@ -575,6 +576,9 @@ private fun BitChordApp(
     var showAccountScrobbling by rememberSaveable { mutableStateOf(false) }
     var showSources by rememberSaveable { mutableStateOf(false) }
     var showListenTogether by rememberSaveable { mutableStateOf(false) }
+    // The player's member drawer, reachable from the track menu as well once
+    // there is a party.
+    var showListenTogetherMembers by rememberSaveable { mutableStateOf(false) }
     var showEqualizer by rememberSaveable { mutableStateOf(false) }
     var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
 
@@ -2645,6 +2649,9 @@ private fun BitChordApp(
             showSources = false
             if (settingsSubScreen == "sources") settingsSubScreen = null
         }
+        BackHandler(enabled = showListenTogetherMembers) {
+            showListenTogetherMembers = false
+        }
         BackHandler(enabled = showListenTogether) {
             showListenTogether = false
             if (settingsSubScreen == "listen_together") settingsSubScreen = null
@@ -4634,6 +4641,25 @@ private fun BitChordApp(
                 } else {
                     null
                 },
+                onOpenListenTogether = if (fromPlayer) {
+                    {
+                        songActions = null
+                        if (partyState.inParty) {
+                            showListenTogetherMembers = true
+                        } else {
+                            dismissPlayer()
+                            showSettings = true
+                            showListenTogether = true
+                        }
+                    }
+                } else {
+                    null
+                },
+                listenTogetherMembers = if (fromPlayer && partyState.inParty) {
+                    partyState.members.size
+                } else {
+                    null
+                },
             )
         }
         songActions?.takeIf { songMenuOrigin == null }?.let { song ->
@@ -4663,6 +4689,18 @@ private fun BitChordApp(
             },
         ) { song ->
             songMenuBody(song, SongActionsPresentation.Menu)
+        }
+        if (showListenTogetherMembers) {
+            ListenTogetherMembersSheet(
+                hazeState = hazeState,
+                onDismiss = { showListenTogetherMembers = false },
+                onManage = {
+                    showListenTogetherMembers = false
+                    dismissPlayer()
+                    showSettings = true
+                    showListenTogether = true
+                },
+            )
         }
         // A closed menu forgets where it was held, so whatever opens it next
         // — the ⋮, the player — starts from the sheet.

@@ -3,9 +3,7 @@ package com.music.bitchord.ui.player
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -68,38 +66,24 @@ sealed interface PlayerIcon {
  * better lookalikes, with anything — is an edit to this file and nothing else.
  * No call site names a drawable, and no layout names a glyph.
  *
- * ## Where the drawables come from
+ * ## Where the glyphs come from
  *
- * The vectors under `sharedUi/src/commonMain/composeResources/drawable/` were
- * vendored from Convx (GPL-3.0, see `NOTICE`) and carry Convx's file names, so
- * each one is traceable back to `/home/ubuntu/convx-repo/app/src/main/res/drawable/`.
- * They are copies rather than references because this module cannot see the app
- * module's `R` — and because the desktop draws the player from this module too.
- * Each was normalised twice on the way in, and only twice: `android:tint` is an
- * Android theme attribute with no meaning elsewhere, and Compose Multiplatform's
- * vector parser throws on a colour that is not written `#`. The paths are the
- * ones Convx shipped, unaltered.
- *
- * Not every role is a Convx glyph. Those without one stay on [BitChordIcons]
- * and say so where they are declared — see [Shuffle].
+ * The Now Playing controls are hand-built vectors in [BitChordIcons]: one
+ * family so the transport, bottom row, volume and mode controls share a weight
+ * and optical size. A handful of roles still use the vendored drawables under
+ * `sharedUi/src/commonMain/composeResources/drawable/` (originally from Convx,
+ * GPL-3.0 — see `NOTICE`); those are the skip arrows, translate and the
+ * sing-along microphone.
  */
 object PlayerIcons {
 
     // ---- Transport -------------------------------------------------------
 
-    /**
-     * The play button, while paused.
-     *
-     * Convx's `flamingo_play` is laid out on a 38-unit box and `flamingo_pause`
-     * on a 32, and neither fills its own, so the pair does not read at one
-     * weight. Left as shipped: the glyph is not this file's to redraw, and
-     * pointing [Play] and [Pause] at a matched pair is the fix when there is
-     * one.
-     */
-    val Play = PlayerIcon.Drawable(Res.drawable.flamingo_play)
+    /** The play button, while paused. */
+    val Play = PlayerIcon.Vector(BitChordIcons.PlayerPlay)
 
     /** The play button, while playing. See [Play]. */
-    val Pause = PlayerIcon.Drawable(Res.drawable.flamingo_pause)
+    val Pause = PlayerIcon.Vector(BitChordIcons.PlayerPause)
 
     /** Step forward. `apple_skip_next`. */
     val SkipNext = PlayerIcon.Drawable(Res.drawable.apple_skip_next)
@@ -109,56 +93,39 @@ object PlayerIcons {
 
     // ---- Volume ----------------------------------------------------------
 
-    /**
-     * The speaker at the low end of the volume row.
-     *
-     * `volume_down` and `volume_up` are not the same family — the first is
-     * Convx's thin Material-derived speaker, the second a filled glyph off the
-     * 960 box the skip arrows come from — so the row's two ends do not match.
-     * Muted shares the low glyph's body and so does read as its pair. Swapping
-     * the row as a unit means changing these three together.
-     */
-    val VolumeLow = PlayerIcon.Drawable(Res.drawable.volume_down)
+    /** The speaker at the low end of the volume row. */
+    val VolumeLow = PlayerIcon.Vector(BitChordIcons.PlayerVolumeLow)
 
     /** The speaker at the high end of the volume row. See [VolumeLow]. */
-    val VolumeHigh = PlayerIcon.Drawable(Res.drawable.volume_up)
+    val VolumeHigh = PlayerIcon.Vector(BitChordIcons.PlayerVolumeHigh)
 
     /** The volume row's speaker at zero, and the output sheet's. See [VolumeLow]. */
-    val VolumeMuted = PlayerIcon.Drawable(Res.drawable.volume_mute)
+    val VolumeMuted = PlayerIcon.Vector(BitChordIcons.PlayerVolumeMuted)
 
     // ---- Queue, lyrics, ellipsis -----------------------------------------
 
-    /** The queue, in the player's bottom row. `apple_queue`. */
-    val Queue = PlayerIcon.Drawable(Res.drawable.apple_queue)
+    /** The queue, in the player's bottom row. */
+    val Queue = PlayerIcon.Vector(BitChordIcons.PlayerQueue)
 
-    /** Lyrics, in the player's bottom row. `flamingo_lyrics`. */
-    val Lyrics = PlayerIcon.Drawable(Res.drawable.flamingo_lyrics)
+    /** Lyrics, in the player's bottom row. */
+    val Lyrics = PlayerIcon.Vector(BitChordIcons.PlayerLyrics)
 
-    /**
-     * The three-dot menu, in the credits row.
-     *
-     * `flamingo_more` carries its own 10%-alpha disc behind the dots. That is
-     * drawn on top of the disc [CircleGlyph] already paints behind it, so this
-     * one is a little heavier than its neighbour's.
-     */
-    val More = PlayerIcon.Drawable(Res.drawable.flamingo_more)
+    /** The three-dot menu, in the credits row. */
+    val More = PlayerIcon.Vector(BitChordIcons.PlayerEllipsis)
 
     // ---- Like ------------------------------------------------------------
 
     /**
-     * The star, liked. Apple's is `star.fill`; Material's [Icons.Rounded.Star]
-     * is the same five-point star, so it is taken from the vector pool rather
-     * than a Convx drawable — Convx's `favorite` is a heart, and it shipped as
-     * the Liked glyph while its own comment called it a star.
+     * The star, liked.
      *
      * Filled rather than merely tinted, which is why it is two entries and not
      * one tinted twice: the player draws every glyph white on album artwork,
      * and a colour change is the one signal the backdrop can swallow.
      */
-    val Liked = PlayerIcon.Vector(Icons.Rounded.Star)
+    val Liked = PlayerIcon.Vector(BitChordIcons.PlayerStarFilled)
 
-    /** The star, not liked — Apple's `star`, the same outline. */
-    val LikedOff = PlayerIcon.Vector(Icons.Rounded.StarBorder)
+    /** The star, not liked — the same sharp outline. */
+    val LikedOff = PlayerIcon.Vector(BitChordIcons.PlayerStar)
 
     // ---- The credits row's second button ---------------------------------
 
@@ -174,47 +141,34 @@ object PlayerIcons {
     // ---- Output ----------------------------------------------------------
 
     /**
-     * AirPlay, as a route the player can hand the sound to. `cast`.
+     * AirPlay, as a route the player can hand the sound to.
      *
      * The output sheet shows one glyph whether or not a route is connected, and
      * carries the state in the row's own tint — so this is the plain AirPlay
      * mark rather than the connected variant.
      */
-    val AirPlay = PlayerIcon.Drawable(Res.drawable.cast)
+    val AirPlay = PlayerIcon.Vector(BitChordIcons.PlayerAirPlay)
 
     // ---- Playback modes --------------------------------------------------
 
-    /**
-     * Shuffle, in the three-up capsule.
-     *
-     * Convx ships no shuffle glyph, so this stays on [BitChordIcons] — which is
-     * also why it stays a [PlayerIcon.Vector] until there is one to swap in.
-     */
-    val Shuffle = PlayerIcon.Vector(BitChordIcons.Shuffle)
+    /** Shuffle, in the three-up capsule. */
+    val Shuffle = PlayerIcon.Vector(BitChordIcons.PlayerShuffle)
 
-    /** Repeat all / off, in the three-up capsule. As [Shuffle]. */
-    val Repeat = PlayerIcon.Vector(BitChordIcons.Repeat)
+    /** Repeat all / off, in the three-up capsule. */
+    val Repeat = PlayerIcon.Vector(BitChordIcons.PlayerRepeat)
 
-    /** Autoplay's lemniscate, in the three-up capsule. As [Shuffle]. */
-    val Autoplay = PlayerIcon.Vector(BitChordIcons.Infinity)
+    /** Autoplay's lemniscate, in the three-up capsule. */
+    val Autoplay = PlayerIcon.Vector(BitChordIcons.PlayerAutoplay)
 
     /**
-     * Where the sound leaves by, in the output capsule. As [Shuffle].
+     * A neutral audio-output glyph, for the quality label's fallback.
      *
-     * Drawn below the capsule's nominal icon size, because Headphones is a
-     * tall, narrow glyph — `PILL_HEADPHONES_SIZE` in `PlayerControls.kt` is
-     * the optical correction, and it belongs there with the row.
+     * The player's output control is now AirPlay — see [AirPlay].
      */
     val Output = PlayerIcon.Vector(Icons.Rounded.Headphones)
 
-    /**
-     * Who else the sound reaches, in the output capsule. As [Shuffle].
-     *
-     * Person rather than Groups: the three-person glyph is drawn half the
-     * height of Headphones and wider than the segment holding it, so the two
-     * halves of the capsule never looked like a pair.
-     */
-    val Party = PlayerIcon.Vector(Icons.Rounded.Person)
+    /** The party row in the output sheet and the Listen Together menu row. */
+    val Party = PlayerIcon.Vector(Icons.Rounded.Groups)
 
     // ---- Placeholder -----------------------------------------------------
 

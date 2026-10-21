@@ -50,7 +50,7 @@ import dev.chrisbanes.haze.HazeState
  * party, switching servers, leaving.
  */
 @Composable
-internal fun ListenTogetherMembersSheet(
+fun ListenTogetherMembersSheet(
     hazeState: HazeState,
     onDismiss: () -> Unit,
     onManage: () -> Unit,

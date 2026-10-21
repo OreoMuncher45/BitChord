@@ -80,6 +80,10 @@ internal fun AudioOutputSheet(
     onDismiss: () -> Unit,
     onOpenPipeline: () -> Unit,
     onOpenCast: () -> Unit,
+    /** Opens the create/join page, unless there is already a party to show. */
+    onListenTogether: (() -> Unit)? = null,
+    /** Opens [ListenTogetherMembersSheet] for the current party. */
+    onOpenListenTogetherMembers: (() -> Unit)? = null,
     /** Current spatial-audio state; the toggle row hides without a setter. */
     spatialOn: Boolean = false,
     onToggleSpatial: (() -> Unit)? = null,
@@ -87,6 +91,7 @@ internal fun AudioOutputSheet(
 ) {
     val outputs = rememberAudioOutputs()
     val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
+    val party = rememberPartyBadge()
 
     PlayerDrawer(
         hazeState = hazeState,
@@ -113,6 +118,20 @@ internal fun AudioOutputSheet(
             // receivers behind it are chosen in a popup of their own — there
             // can be any number of them, and they come and go while it is open.
             if (cast.supported) CastRow(cast = cast, onClick = onOpenCast)
+            // A party is another place the music reaches. Once there is one,
+            // the row says who is listening and opens the member list; before
+            // that it opens the page that creates or joins one.
+            onListenTogether?.let { openParty ->
+                PartyRow(
+                    inParty = party.inParty,
+                    members = party.members,
+                    onClick = if (party.inParty && onOpenListenTogetherMembers != null) {
+                        onOpenListenTogetherMembers
+                    } else {
+                        openParty
+                    },
+                )
+            }
         }
 
         Spacer(Modifier.height(10.dp))
@@ -127,6 +146,74 @@ internal fun AudioOutputSheet(
             Spacer(Modifier.height(6.dp))
         }
         AudioPipelineRow(onClick = onOpenPipeline)
+    }
+}
+
+/**
+ * Listen Together, in the output list because a party is another place the
+ * sound reaches. The row carries the count once there is a party, and opens
+ * the members rather than the create/join page.
+ */
+@Composable
+private fun PartyRow(inParty: Boolean, members: Int, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ROW_SHAPE)
+            .background(Color.White.copy(alpha = if (inParty) 0.10f else 0.05f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptics.play(Haptic.Select)
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (inParty) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = PlayerIcons.Party.painter(),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = if (inParty) 1f else 0.7f),
+                modifier = Modifier.size(21.dp),
+            )
+        }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.listen_together),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (inParty) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = if (inParty) 1f else 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (inParty) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.listen_together_open_count, members),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.35f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

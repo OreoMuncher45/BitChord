@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Image
@@ -202,6 +203,13 @@ fun SongActionsSheet(
     spatialAudioOn: Boolean? = null,
     /** Flips spatial audio. Player-only. */
     onToggleSpatialAudio: (() -> Unit)? = null,
+    /**
+     * Opens Listen Together — the member list when there is a party, the
+     * create/join page otherwise. Player-only.
+     */
+    onOpenListenTogether: (() -> Unit)? = null,
+    /** Party size while listening together, or null when there is no party. */
+    listenTogetherMembers: Int? = null,
     /**
      * True while a lookup for this track's album/artist ids is still in
      * flight, so it isn't yet known whether "Open album" and "Open artist"
@@ -378,9 +386,9 @@ fun SongActionsSheet(
                 onClick = it,
             )
         }
-        // Sing, Replay and Spatial sit together: all three are about the
-        // listening session in progress rather than the song as a library
-        // entry, and all three are player-only for that reason.
+        // Sing, Replay, Spatial and Listen Together sit together: all four
+        // are about the listening session in progress rather than the song as
+        // a library entry, and all four are player-only for that reason.
         onOpenSing?.let {
             ActionRow(
                 icon = Icons.Rounded.Mic,
@@ -406,6 +414,15 @@ fun SongActionsSheet(
                 value = stringResource(if (on) R.string.on else R.string.off),
                 accent = palette.accent,
                 onClick = onToggleSpatialAudio,
+            )
+        }
+        onOpenListenTogether?.let {
+            ActionRow(
+                icon = Icons.Rounded.Groups,
+                label = stringResource(R.string.listen_together),
+                value = listenTogetherMembers?.toString(),
+                accent = palette.accent,
+                onClick = it,
             )
         }
         if (!isOffline) {

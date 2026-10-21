@@ -772,7 +772,8 @@ fun NowPlayingScreen(
     /** Return to the queue-level page named by the caption above the player. */
     onOpenPlaybackSource: () -> Unit,
     /**
-     * Open Listen Together, from the party half of the output capsule.
+     * Open Listen Together, from the party row in the output sheet or the
+     * track menu.
      *
      * The player does not decide whether it has to get out of the way first:
      * the settings page it opens is drawn under the player sheet, and closing
@@ -1555,8 +1556,6 @@ fun NowPlayingScreen(
             onCycleRepeat = onCycleRepeat,
             onToggleAutoplay = onToggleAutoplay,
             onOpenOutput = openAudioOutput,
-            onListenTogether = onListenTogether,
-            onOpenListenTogetherMembers = openListenTogetherMembers,
         )
         // Keep the current output caption visible in every state.
         Spacer(Modifier.height(18.dp))
@@ -1583,6 +1582,8 @@ fun NowPlayingScreen(
                 onDismiss = { showAudioOutput = false },
                 onOpenPipeline = { showAudioPipeline = true },
                 onOpenCast = { showCast = true },
+                onListenTogether = onListenTogether,
+                onOpenListenTogetherMembers = openListenTogetherMembers,
                 spatialOn = spatialAudioOn,
                 onToggleSpatial = onToggleSpatial,
             )
@@ -3410,6 +3411,7 @@ fun NowPlayingScreen(
                             onClick = onToggleLike,
                             active = liked,
                             haptic = if (liked) Haptic.ToggleOff else Haptic.ToggleOn,
+                            glyphSize = 22.dp,
                         )
                         Spacer(Modifier.width(8.dp))
                     }

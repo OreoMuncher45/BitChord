@@ -5,9 +5,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Thick-stroke, round-capped icons in the spirit of Telegram's modern icon set.
@@ -732,4 +736,406 @@ object BitChordIcons {
             }
         }.build()
     }
+
+    // ---- Player -----------------------------------------------------------
+    //
+    // Hand-built lookalikes for the Now Playing screen: one optical family for
+    // the transport, bottom row, volume, like and menu controls. These are
+    // vectors rather than vendored drawables so their weights, corners and
+    // proportions can move together. They deliberately are not SF Symbols.
+
+    /** A filled play triangle, with rounded points. */
+    val PlayerPlay: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_play",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4.8f, 1.2f)
+                lineTo(21.0f, 12f)
+                lineTo(4.8f, 22.8f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Two wide, rounded pause bars, matched to [PlayerPlay]. */
+    val PlayerPause: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_pause",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(3.0f, 0.4f)
+                lineTo(9.6f, 0.4f)
+                lineTo(9.6f, 23.6f)
+                lineTo(3.0f, 23.6f)
+                close()
+                moveTo(14.4f, 0.4f)
+                lineTo(21.0f, 0.4f)
+                lineTo(21.0f, 23.6f)
+                lineTo(14.4f, 23.6f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Three rows of a dot and a line — Apple Music's queue mark. */
+    val PlayerQueue: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_queue",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                for (y in listOf(6.4f, 12f, 17.6f)) {
+                    moveTo(8.7f, y)
+                    lineTo(20.5f, y)
+                }
+            }
+            path(fill = stroke) {
+                for (y in listOf(6.4f, 12f, 17.6f)) {
+                    circle(4.7f, y, 1.0f)
+                }
+            }
+        }.build()
+    }
+
+    /** A rounded quote bubble with two marks: the lyrics button. */
+    val PlayerLyrics: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_lyrics",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(7.2f, 4.4f)
+                lineTo(16.8f, 4.4f)
+                quadTo(20.6f, 4.4f, 20.6f, 8.2f)
+                lineTo(20.6f, 14.4f)
+                quadTo(20.6f, 18.2f, 16.8f, 18.2f)
+                lineTo(10.8f, 18.2f)
+                lineTo(6.9f, 21.6f)
+                lineTo(6.9f, 18.2f)
+                quadTo(3.4f, 18.2f, 3.4f, 14.4f)
+                lineTo(3.4f, 8.2f)
+                quadTo(3.4f, 4.4f, 7.2f, 4.4f)
+                close()
+            }
+            path(fill = stroke) {
+                quoteMark(7.6f)
+                quoteMark(12.4f)
+            }
+        }.build()
+    }
+
+    /** Three dots, with no disc of their own — [CircleGlyph] paints that. */
+    val PlayerEllipsis: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_ellipsis",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(fill = stroke) {
+                circle(5.9f, 12f, 1.75f)
+                circle(12f, 12f, 1.75f)
+                circle(18.1f, 12f, 1.75f)
+            }
+        }.build()
+    }
+
+    /** Apple's sharp, five-point outline star. */
+    val PlayerStar: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_star",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                star()
+            }
+        }.build()
+    }
+
+    /** The filled state of [PlayerStar]. */
+    val PlayerStarFilled: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_star_filled",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                star()
+            }
+        }.build()
+    }
+
+    /** AirPlay: concentric rings with a filled triangle at the base. */
+    val PlayerAirPlay: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_airplay",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.7f,
+            ) {
+                circle(12f, 11.8f, 9.2f)
+                circle(12f, 11.8f, 5.8f)
+                circle(12f, 11.8f, 2.8f)
+            }
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.2f,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(7.0f, 20.9f)
+                lineTo(17.0f, 20.9f)
+                lineTo(12f, 12.2f)
+                close()
+            }
+        }.build()
+    }
+
+    /** A small filled speaker cone, the body shared by the volume glyphs. */
+    val PlayerVolumeLow: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_volume_low",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.4f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                speakerBody()
+            }
+        }.build()
+    }
+
+    /** The low speaker plus two sound-wave arcs. */
+    val PlayerVolumeHigh: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_volume_high",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.4f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                speakerBody()
+            }
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(14.4f, 8.9f)
+                quadTo(16.5f, 12f, 14.4f, 15.1f)
+                moveTo(17.5f, 6.6f)
+                quadTo(20.8f, 12f, 17.5f, 17.4f)
+            }
+        }.build()
+    }
+
+    /** The low speaker with a small cross where the waves would be. */
+    val PlayerVolumeMuted: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_volume_muted",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = stroke,
+                stroke = stroke,
+                strokeLineWidth = 1.4f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                speakerBody()
+            }
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(14.9f, 9.8f)
+                lineTo(19.1f, 14.2f)
+                moveTo(19.1f, 9.8f)
+                lineTo(14.9f, 14.2f)
+            }
+        }.build()
+    }
+
+    /** Two crossing arrows, matching the wider, lighter player row. */
+    val PlayerShuffle: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_shuffle",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(3.3f, 7.2f)
+                lineTo(6.7f, 7.2f)
+                lineTo(17.3f, 16.8f)
+                lineTo(19.2f, 16.8f)
+                moveTo(3.3f, 16.8f)
+                lineTo(6.7f, 16.8f)
+                lineTo(9.4f, 14.4f)
+                moveTo(13.9f, 9.6f)
+                lineTo(17.3f, 7.2f)
+                lineTo(19.2f, 7.2f)
+            }
+            path(fill = stroke) {
+                moveTo(17.7f, 5.0f); lineTo(21.0f, 7.2f); lineTo(17.7f, 9.4f); close()
+                moveTo(17.7f, 14.6f); lineTo(21.0f, 16.8f); lineTo(17.7f, 19.0f); close()
+            }
+        }.build()
+    }
+
+    /** A repeat loop with arrowheads on its straight runs. */
+    val PlayerRepeat: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_repeat",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(8.2f, 7.2f)
+                lineTo(16.0f, 7.2f)
+                arcToRelative(4.8f, 4.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, 0f, 9.6f)
+                lineTo(8.2f, 16.8f)
+                arcToRelative(4.8f, 4.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, 0f, -9.6f)
+                close()
+            }
+            path(fill = stroke) {
+                moveTo(14.0f, 5.0f); lineTo(17.4f, 7.2f); lineTo(14.0f, 9.4f); close()
+                moveTo(10.4f, 14.6f); lineTo(7.0f, 16.8f); lineTo(10.4f, 19.0f); close()
+            }
+        }.build()
+    }
+
+    /** Autoplay's lemniscate, widened to sit with [PlayerRepeat]. */
+    val PlayerAutoplay: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_player_autoplay",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(12f, 12f)
+                curveTo(10.12f, 9.1f, 8.7f, 8f, 7.1f, 8f)
+                arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, 0f, 8f)
+                curveTo(8.7f, 16f, 10.12f, 14.9f, 12f, 12f)
+                curveTo(13.88f, 9.1f, 15.3f, 8f, 16.9f, 8f)
+                arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, 0f, 8f)
+                curveTo(15.3f, 16f, 13.88f, 14.9f, 12f, 12f)
+            }
+        }.build()
+    }
+
+    private fun PathBuilder.circle(cx: Float, cy: Float, radius: Float) {
+        moveTo(cx - radius, cy)
+        arcToRelative(radius, radius, 0f, isMoreThanHalf = true, isPositiveArc = true, radius * 2f, 0f)
+        arcToRelative(radius, radius, 0f, isMoreThanHalf = true, isPositiveArc = true, -radius * 2f, 0f)
+        close()
+    }
+
+    private fun PathBuilder.speakerBody() {
+        moveTo(3.3f, 9.2f)
+        lineTo(5.9f, 9.2f)
+        lineTo(10.4f, 5.5f)
+        lineTo(10.4f, 18.5f)
+        lineTo(5.9f, 14.8f)
+        lineTo(3.3f, 14.8f)
+        close()
+    }
+
+    private fun PathBuilder.quoteMark(x: Float) {
+        moveTo(x + 0.5f, 9.0f)
+        curveTo(x + 2.2f, 9.0f, x + 2.6f, 10.0f, x + 2.6f, 10.9f)
+        curveTo(x + 2.6f, 12.3f, x + 1.7f, 13.4f, x + 0.5f, 14.2f)
+        lineTo(x - 0.2f, 13.4f)
+        curveTo(x + 0.8f, 12.7f, x + 1.2f, 12.0f, x + 1.2f, 11.3f)
+        lineTo(x + 0.5f, 11.3f)
+        curveTo(x - 0.3f, 11.3f, x - 0.3f, 10.5f, x - 0.3f, 10.1f)
+        curveTo(x - 0.3f, 9.4f, x + 0.1f, 9.0f, x + 0.5f, 9.0f)
+        close()
+    }
+
+    private fun PathBuilder.star() {
+        val cx = 12f
+        val cy = 12.3f
+        val outer = 10.3f
+        val inner = 4.35f
+        moveTo(cx, cy - outer)
+        for (index in 1..10) {
+            val radius = if (index % 2 == 1) inner else outer
+            val angle = -PI / 2 + index * PI / 5
+            lineTo(
+                (cx + radius * cos(angle)).toFloat(),
+                (cy + radius * sin(angle)).toFloat(),
+            )
+        }
+        close()
+    }
+
 }

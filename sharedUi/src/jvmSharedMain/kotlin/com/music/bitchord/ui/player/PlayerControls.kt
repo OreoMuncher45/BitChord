@@ -1,8 +1,5 @@
 package com.music.bitchord.ui.player
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CastConnected
-import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -519,12 +516,12 @@ internal fun VolumeRow(
 }
 
 /**
- * Lyrics, the capsule, and the queue — the row both layouts end on.
+ * Lyrics, AirPlay, and the queue — the row both layouts end on.
  *
  * Lyrics and queue are the two things that are true of the player in every
- * state, so they are simply always here. Only the capsule between them swaps:
- * output and party normally, the three playback modes while the queue is up,
- * since that is when they are what you are about to reach for.
+ * state, so they are simply always here. The centre glyph is AirPlay normally,
+ * and the three playback modes while the queue is up, since that is when they
+ * are what you are about to reach for.
  */
 @Composable
 internal fun PlayerActionRow(
@@ -539,12 +536,9 @@ internal fun PlayerActionRow(
     onCycleRepeat: () -> Unit,
     onToggleAutoplay: () -> Unit,
     onOpenOutput: () -> Unit,
-    onListenTogether: () -> Unit,
-    /** Opens [ListenTogetherMembersSheet] rather than settings directly. */
-    onOpenListenTogetherMembers: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        // Sized for the wider of the two capsules — the three-up one — in both
+        // Sized for the wider centre control — the three-up capsule — in both
         // states. Computed for whichever was on screen it would change as they
         // swap, and the lyrics and queue glyphs would slide with it.
         val widestRow = BOTTOM_ACTION_SIZE * 2 + pillWidth(3)
@@ -574,9 +568,6 @@ internal fun PlayerActionRow(
                 label = "playerBottomPill",
             ) { showQueueModes ->
                 if (showQueueModes) {
-                    // Always three-up, unlike the output/party capsule — so it
-                    // always takes the narrower spacing. See
-                    // [PILL_SEGMENT_WIDTH_TRIPLE].
                     Pill {
                         PillSegment(
                             icon = PlayerIcons.Shuffle,
@@ -625,10 +616,10 @@ internal fun PlayerActionRow(
                         )
                     }
                 } else {
-                    OutputPartyPill(
-                        onOutput = onOpenOutput,
-                        onParty = onListenTogether,
-                        onOpenMembers = onOpenListenTogetherMembers,
+                    BottomGlyph(
+                        icon = PlayerIcons.AirPlay,
+                        contentDescription = stringResource(Res.string.audio_output),
+                        onClick = onOpenOutput,
                     )
                 }
             }
@@ -658,6 +649,8 @@ internal fun CircleGlyph(
     onClick: () -> Unit,
     active: Boolean = false,
     haptic: Haptic = Haptic.Tap,
+    /** Optical size override for glyphs that sit small or large in their box. */
+    glyphSize: Dp = 19.dp,
 ) {
     val haptics = rememberHaptics()
     val discAlpha by animateFloatAsState(
@@ -687,7 +680,7 @@ internal fun CircleGlyph(
                 painter = glyph.painter(),
                 contentDescription = contentDescription,
                 tint = Color.White,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(glyphSize),
             )
         }
     }
@@ -763,45 +756,25 @@ private const val PLAYER_SKIP_HEIGHT_SCALE = 0.85f
 private val BOTTOM_ACTION_SIZE = 44.dp
 
 /**
- * One half of the output capsule — wider than it is tall, so the capsule reads
- * as a capsule rather than as two circles that have been pushed together.
- */
-// The count reserve is kept on both halves, so entering a party never makes
-// the capsule lopsided or shifts the queue control beside it.
-private val PILL_SEGMENT_WIDTH = 64.dp
-
-/**
  * Segment width for the Shuffle/Repeat/Autoplay capsule, which is always
- * three icons: the two-up spacing left each glyph with room the eye read as
- * empty even at two, and a third icon at the same width just multiplied that
- * empty space instead of tightening it.
+ * three icons: the spacing leaves each glyph room without letting the capsule
+ * read as three separate circles.
  */
 private val PILL_SEGMENT_WIDTH_TRIPLE = 52.dp
-
-/**
- * Optical sizes, not equal ones.
- *
- * Headphones is a tall, narrow glyph and Person a taller, narrower one, so
- * drawn at the same nominal size the second reads as the bigger of the two.
- * These are the numbers at which they look like a matched pair.
- */
-private val PILL_HEADPHONES_SIZE = 23.dp
-private val PILL_PARTY_SIZE = 22.dp
 
 /** What a segment's glyph is drawn at when it has no optical quirk to correct. */
 private val PILL_ICON_SIZE = 24.dp
 
 /** How wide a capsule of [segments] comes out, dividers included. */
 private fun pillWidth(segments: Int): Dp =
-    PILL_SEGMENT_WIDTH * segments + 1.dp * (segments - 1)
+    PILL_SEGMENT_WIDTH_TRIPLE * segments + 1.dp * (segments - 1)
 
 /**
  * A row of controls joined into one capsule.
  *
  * The join is a hairline rather than a gap, which is what makes several
  * controls read as a single object — the shape the player uses for a set of
- * choices that all answer the same question. There are two: where the sound is
- * going, and how the queue is played.
+ * choices that all answer the same question: how the queue is played.
  */
 @Composable
 private fun Pill(
@@ -835,85 +808,6 @@ private fun PillDivider() {
 }
 
 /**
- * The two ends of "where is this playing": the output capsule.
- *
- * Both halves answer the same question and so belong to one control rather than
- * two glyphs that happen to sit side by side — headphones for which speaker the
- * sound leaves by, the party for which *people* it reaches.
- *
- * Video vs audio-only used to live here as a third segment; it now lives in
- * the player's own three-dot menu, beside Revert to original and Upgrade
- * quality — the same kind of choice, offered the same way. This capsule is
- * back to the two icons it always otherwise had, at their original spacing.
- */
-/**
- * What the output segment shows: the thing the music is actually coming out of,
- * the way Apple Music's AirPlay button does — the phone, buds, a speaker —
- * rather than headphones whatever is playing it. Ported from upstream v1.8.1's
- * rememberOutputGlyph, less the watch and Bluetooth-form branches this fork's
- * [PlayerHost] has no state for: cast first, because while casting the phone's
- * own route is not where anybody is listening, then the active output's kind.
- */
-@Composable
-private fun rememberOutputGlyph(): PlayerIcon {
-    val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
-    val active = rememberAudioOutputs().firstOrNull { it.isActive }
-    return when {
-        cast.connectedName != null -> PlayerIcon.Vector(Icons.Rounded.CastConnected)
-        else -> when (active?.kind) {
-            null, AudioOutputKind.PHONE -> PlayerIcon.Drawable(Res.drawable.ic_output_phone)
-            AudioOutputKind.BLUETOOTH -> PlayerIcon.Drawable(Res.drawable.ic_output_buds)
-            AudioOutputKind.HDMI -> PlayerIcon.Vector(Icons.Rounded.Tv)
-            AudioOutputKind.OTHER -> PlayerIcon.Drawable(Res.drawable.ic_output_speaker)
-            // Wired and USB double as the neutral "some audio device" glyph:
-            // a device that will not say what it is gets that, not a guess.
-            else -> PlayerIcons.Output
-        }
-    }
-}
-
-@Composable
-private fun OutputPartyPill(
-    onOutput: () -> Unit,
-    onParty: () -> Unit,
-    /** Who's in it, before the settings page — see [ListenTogetherMembersSheet]. */
-    onOpenMembers: () -> Unit,
-) {
-    val badge = rememberPartyBadge()
-    val output = rememberOutputGlyph()
-    Pill {
-        PillSegment(
-            icon = output,
-            iconSize = PILL_HEADPHONES_SIZE,
-            contentDescription = stringResource(Res.string.audio_output),
-            onClick = onOutput,
-        )
-        PillDivider()
-        PillSegment(
-            // Person rather than Groups: the three-person glyph is drawn half
-            // the height of Headphones and wider than the segment holding it,
-            // so the two halves of the capsule never looked like a pair.
-            icon = PlayerIcons.Party,
-            iconSize = PILL_PARTY_SIZE,
-            // The count is here and nowhere else: spoken, it is the whole
-            // point of the control; drawn, it would cost the capsule its
-            // symmetry for something the caption below already implies.
-            contentDescription = if (badge.inParty) {
-                stringResource(Res.string.listen_together_open_count, badge.members)
-            } else {
-                stringResource(Res.string.listen_together_open)
-            },
-            // Already in a party, this opens who's in it rather than the
-            // settings page directly; there is nothing to create or join once
-            // there is a party, so [onParty] only ever fires beforehand.
-            onClick = if (badge.inParty) onOpenMembers else onParty,
-            highlighted = badge.inParty,
-            trailingLabel = badge.members.takeIf { badge.inParty }?.toString(),
-        )
-    }
-}
-
-/**
  * One control inside a [Pill] — [BottomGlyph]'s twin, squared off.
  *
  * Same behaviour down to the tap window, and deliberately not the same
@@ -928,14 +822,12 @@ private fun PillSegment(
     icon: PlayerIcon? = null,
     iconSize: Dp = PILL_ICON_SIZE,
     label: String? = null,
-    trailingLabel: String? = null,
     highlighted: Boolean = false,
     haptic: Haptic = Haptic.Tap,
     loading: Boolean = false,
     /** See [BottomGlyph], where the same window means the same thing. */
     tapWindowMs: Long = 0L,
-    /** Per-segment override — see [OutputPartyPill]'s three-up capsule. */
-    width: Dp = PILL_SEGMENT_WIDTH,
+    width: Dp = PILL_SEGMENT_WIDTH_TRIPLE,
 ) {
     val haptics = rememberHaptics()
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
@@ -983,15 +875,6 @@ private fun PillSegment(
                             contentDescription = null,
                             tint = tint,
                             modifier = Modifier.size(iconSize),
-                        )
-                    }
-                    if (trailingLabel != null) {
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = trailingLabel,
-                            color = tint,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
@@ -1080,8 +963,8 @@ internal fun OutputCaption(
     }
 }
 
-/** The three fields of a party the player draws — see [OutputPartyPill]. */
-private data class PartyBadge(
+/** The three fields of a party [OutputCaption] draws. */
+internal data class PartyBadge(
     val inParty: Boolean,
     val members: Int,
     val hostFirstName: String?,
@@ -1125,7 +1008,7 @@ internal fun rememberControlsLocked(): Boolean {
  * of these three fields.
  */
 @Composable
-private fun rememberPartyBadge(): PartyBadge {
+internal fun rememberPartyBadge(): PartyBadge {
     val badges = remember {
         PlayerPlatform.host.party.map { it.badge() }.distinctUntilChanged()
     }
