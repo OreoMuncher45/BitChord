@@ -151,6 +151,17 @@ fun rememberArtworkTopBandLuminance(
     artPx: Int = CARD_ART_PX,
 ): Float? = rememberArtworkSeed(imageUrl, artPx)?.topBandLuminance
 
+/**
+ * Relative luminance of the artwork's lower half, where the player's transport
+ * and action icons sit. Unlike [rememberArtworkTopBandLuminance] this is not
+ * about the status bar.
+ */
+@Composable
+fun rememberArtworkControlLuminance(
+    imageUrl: String?,
+    artPx: Int = CARD_ART_PX,
+): Float? = rememberArtworkSeed(imageUrl, artPx)?.controlBandLuminance
+
 @Composable
 private fun rememberArtworkSeed(imageUrl: String?, artPx: Int): Seed? {
     val context = LocalPlatformContext.current
@@ -201,6 +212,7 @@ private data class Seed(
     val vibrant: Color,
     val edge: Color,
     val topBandLuminance: Float,
+    val controlBandLuminance: Float,
 )
 
 private fun seedOf(bitmap: ImageBitmap): Seed? {
@@ -231,6 +243,7 @@ private fun seedOf(bitmap: ImageBitmap): Seed? {
         vibrant = Color(vibrant.rgb),
         edge = bitmap.bottomEdgeColor(),
         topBandLuminance = bitmap.topBandRelativeLuminance(),
+        controlBandLuminance = bitmap.controlBandRelativeLuminance(),
     )
 }
 
@@ -243,6 +256,7 @@ private fun ArtworkKeyColors.toSeed() = Seed(
     vibrant = accent,
     edge = background,
     topBandLuminance = relativeLuminance(background.toArgb()),
+    controlBandLuminance = relativeLuminance(background.toArgb()),
 )
 
 private const val SWATCH_COUNT = 24
@@ -290,6 +304,18 @@ private fun ImageBitmap.topBandRelativeLuminance(): Float {
     val band = (height * TOP_BAND).toInt().coerceIn(1, height)
     val pixels = IntArray(width * band)
     readPixels(pixels, startX = 0, startY = 0, width = width, height = band)
+    return averageRelativeLuminance(pixels)
+}
+
+/** The lower half is where the player's controls sit over the sleeve. */
+private const val CONTROL_BAND_START = 0.50f
+
+private fun ImageBitmap.controlBandRelativeLuminance(): Float {
+    if (width <= 0 || height <= 0) return 0f
+    val start = (height * CONTROL_BAND_START).toInt().coerceIn(0, height - 1)
+    val band = height - start
+    val pixels = IntArray(width * band)
+    readPixels(pixels, startX = 0, startY = start, width = width, height = band)
     return averageRelativeLuminance(pixels)
 }
 

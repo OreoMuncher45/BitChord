@@ -71,6 +71,7 @@ import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.ViewWeek
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Waves
@@ -208,6 +209,7 @@ fun SettingsScreen(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
     val liquidGlassIntensity by AppSettings.liquidGlassIntensity.collectAsStateWithLifecycle()
+    val foldingNavBar by AppSettings.foldingNavBar.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -910,6 +912,27 @@ fun SettingsScreen(
                         valueRange = AppSettings.MIN_LIQUID_GLASS_INTENSITY..
                             AppSettings.MAX_LIQUID_GLASS_INTENSITY,
                         steps = 8,
+                    )
+                }
+            }
+            if (liquidGlassSupported) {
+                val foldingNavTitle = stringResource(R.string.folding_nav_bar)
+                row(foldingNavTitle, "glass", "fold", "nav") {
+                    SettingsRow(
+                        icon = Icons.Rounded.ViewWeek,
+                        title = foldingNavTitle,
+                        subtitle = stringResource(R.string.folding_nav_bar_subtitle),
+                        trailing = {
+                            Switch(
+                                checked = foldingNavBar,
+                                onCheckedChange = AppSettings::setFoldingNavBar,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                        },
+                        onClick = { AppSettings.setFoldingNavBar(!foldingNavBar) },
                     )
                 }
             }

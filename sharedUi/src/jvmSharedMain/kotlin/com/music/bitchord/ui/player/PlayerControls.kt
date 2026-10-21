@@ -149,6 +149,7 @@ internal fun PlaybackOriginCaption(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
+    val ink = LocalPlayerInk.current
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall.copy(
@@ -158,7 +159,7 @@ internal fun PlaybackOriginCaption(
                 blurRadius = 4f,
             ),
         ),
-        color = Color.White,
+        color = ink,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = textAlign,
@@ -190,6 +191,7 @@ internal fun PlayerScrubber(
     centerLabel: @Composable BoxScope.() -> Unit = {},
 ) {
     val shown = shown()
+    val ink = LocalPlayerInk.current
     // Held as a State and read only inside the bar's draw: the blend republishes
     // every fade tick, and collecting it by value here would recompose the
     // scrubber and its labels thirty times a second for a change only the
@@ -222,12 +224,12 @@ internal fun PlayerScrubber(
                 Text(
                     text = formatTime((shown * durationMs).toLong()),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = ink.copy(alpha = 0.55f),
                 )
                 Text(
                     text = "-" + formatTime(durationMs - (shown * durationMs).toLong()),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = ink.copy(alpha = 0.55f),
                 )
             }
             // Pinned to the box's own centre rather than squeezed into the gap
@@ -257,6 +259,7 @@ internal fun PlayerScrubber(
  */
 @Composable
 private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
+    val ink = LocalPlayerInk.current
     Text(
         text = stringResource(Res.string.mixing),
         modifier = modifier.graphicsLayer { alpha = pulse.cover * pulse.alpha(1f, restShare = MIXING_LABEL_REST) },
@@ -264,7 +267,7 @@ private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.SemiBold,
             fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
         ),
-        color = Color.White.copy(alpha = 0.85f),
+        color = ink.copy(alpha = 0.85f),
         maxLines = 1,
     )
 }
@@ -313,6 +316,7 @@ internal fun PlaybackQualityLabel(
  */
 @Composable
 internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
+    val ink = LocalPlayerInk.current
     val showNerdStats by PlayerSettings.showNerdStats.collectAsStateWithLifecycle()
     if (!showNerdStats) return
     val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
@@ -348,7 +352,7 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
             Text(
                 text = stats,
                 style = nerdStyle,
-                color = Color.White.copy(alpha = 0.65f),
+                color = ink.copy(alpha = 0.65f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -380,7 +384,7 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
                 // Dimmer than the measured line above it: that one describes
                 // the audio, this one describes the app, and the ranking
                 // should show.
-                color = Color.White.copy(alpha = 0.5f),
+                color = ink.copy(alpha = 0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -416,6 +420,7 @@ internal fun TransportRow(
     // had when the measurements were taken — 38.3pt tall on Apple's own
     // numbers. The touch box is untouched, so the button hits exactly as it
     // ever did.
+    val ink = LocalPlayerInk.current
     val playSize = if (compact) 30.dp else 38.dp
     val playTouch = if (compact) 76.dp else 92.dp
     val skipSize = if (compact) 36.dp else PLAYER_SKIP_ICON_SIZE
@@ -444,7 +449,7 @@ internal fun TransportRow(
             // would shunt everything below it on every load.
             Box(Modifier.size(playTouch), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
-                    color = Color.White,
+                    color = ink,
                     strokeWidth = 3.dp,
                     modifier = Modifier.size(if (compact) 30.dp else 38.dp),
                 )
@@ -486,6 +491,7 @@ internal fun VolumeRow(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -493,7 +499,7 @@ internal fun VolumeRow(
         Icon(
             painter = PlayerIcons.VolumeLow.painter(),
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.5f),
+            tint = ink.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(10.dp))
@@ -509,7 +515,7 @@ internal fun VolumeRow(
         Icon(
             painter = PlayerIcons.VolumeHigh.painter(),
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.5f),
+            tint = ink.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp),
         )
     }
@@ -653,6 +659,7 @@ internal fun CircleGlyph(
     glyphSize: Dp = 19.dp,
 ) {
     val haptics = rememberHaptics()
+    val ink = LocalPlayerInk.current
     val discAlpha by animateFloatAsState(
         targetValue = if (active) 0.34f else 0.18f,
         label = "glyphDisc",
@@ -661,7 +668,7 @@ internal fun CircleGlyph(
         modifier = Modifier
             .size(34.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = discAlpha))
+            .background(ink.copy(alpha = discAlpha))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -679,7 +686,7 @@ internal fun CircleGlyph(
             Icon(
                 painter = glyph.painter(),
                 contentDescription = contentDescription,
-                tint = Color.White,
+                tint = ink,
                 modifier = Modifier.size(glyphSize),
             )
         }
@@ -704,6 +711,7 @@ private fun TransportGlyph(
     heightScale: Float = 1f,
 ) {
     val haptics = rememberHaptics()
+    val ink = LocalPlayerInk.current
     // Faded rather than hidden: the row keeps its shape at the ends of a queue.
     val alpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.3f,
@@ -725,7 +733,7 @@ private fun TransportGlyph(
         Icon(
             painter = icon.painter(),
             contentDescription = contentDescription,
-            tint = Color.White.copy(alpha = alpha),
+            tint = ink.copy(alpha = alpha),
             modifier = Modifier
                 .size(size)
                 .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
@@ -781,11 +789,12 @@ private fun Pill(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     Row(
         modifier = modifier
             .height(BOTTOM_ACTION_SIZE)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.12f))
+            .background(ink.copy(alpha = 0.12f))
             .animateContentSize(
                 animationSpec = spring(
                     dampingRatio = 0.82f,
@@ -799,11 +808,12 @@ private fun Pill(
 
 @Composable
 private fun PillDivider() {
+    val ink = LocalPlayerInk.current
     Box(
         Modifier
             .width(1.dp)
             .fillMaxHeight()
-            .background(Color.White.copy(alpha = 0.20f)),
+            .background(ink.copy(alpha = 0.20f)),
     )
 }
 
@@ -830,12 +840,13 @@ private fun PillSegment(
     width: Dp = PILL_SEGMENT_WIDTH_TRIPLE,
 ) {
     val haptics = rememberHaptics()
+    val ink = LocalPlayerInk.current
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
     Box(
         modifier = Modifier
             .width(width)
             .height(BOTTOM_ACTION_SIZE)
-            .background(if (highlighted) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+            .background(if (highlighted) ink.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -851,7 +862,7 @@ private fun PillSegment(
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        val tint = Color.White.copy(alpha = if (highlighted) 1f else 0.75f)
+        val tint = ink.copy(alpha = if (highlighted) 1f else 0.75f)
         Crossfade(
             targetState = loading,
             animationSpec = tween(durationMillis = 200),
@@ -860,7 +871,7 @@ private fun PillSegment(
             if (isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(17.dp),
-                    color = Color.White,
+                    color = ink,
                     strokeWidth = 2.dp,
                 )
             } else if (icon != null) {
@@ -907,6 +918,7 @@ internal fun OutputCaption(
     /** Who's in it, before the settings page — see [ListenTogetherMembersSheet]. */
     onOpenMembers: () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     val badge = rememberPartyBadge()
     val outputName = rememberAudioOutputName(accountName)
     val outputFormat by PlayerPlatform.host.outputFormat.collectAsStateWithLifecycle()
@@ -954,7 +966,7 @@ internal fun OutputCaption(
         Text(
             text = if (badge.inParty) jamName else outputName,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-            color = Color.White.copy(alpha = 0.55f),
+            color = ink.copy(alpha = 0.55f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -1035,6 +1047,7 @@ private fun BottomGlyph(
     tapWindowMs: Long = 0L,
 ) {
     val haptics = rememberHaptics()
+    val ink = LocalPlayerInk.current
     // Read only from the click handler, never during composition, so writing it
     // costs no recomposition. Starts a full window in the past so the first tap
     // is never the one that gets swallowed.
@@ -1044,7 +1057,7 @@ private fun BottomGlyph(
             .size(BOTTOM_ACTION_SIZE)
             .clip(CircleShape)
             .background(
-                if (highlighted) Color.White.copy(alpha = 0.20f) else Color.Transparent,
+                if (highlighted) ink.copy(alpha = 0.20f) else Color.Transparent,
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1060,7 +1073,7 @@ private fun BottomGlyph(
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        val tint = Color.White.copy(alpha = if (highlighted) 1f else 0.75f)
+        val tint = ink.copy(alpha = if (highlighted) 1f else 0.75f)
         if (icon != null) {
             Icon(
                 painter = icon.painter(),
@@ -1526,12 +1539,13 @@ private fun LosslessLabel(
     icon: PlayerIcon? = PlayerIcons.Output,
     iconPainter: Painter? = null,
 ) {
+    val ink = LocalPlayerInk.current
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val tint = Color.White.copy(alpha = if (animated) 0.7f else 0.45f)
+        val tint = ink.copy(alpha = if (animated) 0.7f else 0.45f)
         if (iconPainter != null) {
             Icon(
                 painter = iconPainter,
@@ -1556,7 +1570,7 @@ private fun LosslessLabel(
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
                 ),
-                color = Color.White.copy(alpha = 0.45f),
+                color = ink.copy(alpha = 0.45f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1586,6 +1600,7 @@ private fun ShimmerText(
     ),
     baseAlpha: Float = 0.55f,
 ) {
+    val ink = LocalPlayerInk.current
     val transition = rememberInfiniteTransition(label = "lossless-shimmer")
     val progress = transition.animateFloat(
         initialValue = 0f,
@@ -1596,7 +1611,7 @@ private fun ShimmerText(
         ),
         label = "lossless-shimmer-progress",
     )
-    val baseColor = Color.White.copy(alpha = baseAlpha)
+    val baseColor = ink.copy(alpha = baseAlpha)
     // The glyphs are laid out and drawn once, in plain white, and the moving
     // band is painted over them in the draw phase with SrcIn — which keeps the
     // glyphs' coverage and takes the gradient's colour, the same pixels a
@@ -1606,7 +1621,7 @@ private fun ShimmerText(
     Text(
         text = text,
         style = style,
-        color = Color.White,
+        color = ink,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
@@ -1618,7 +1633,7 @@ private fun ShimmerText(
                 val center = -band + progress.value * (width + 2 * band)
                 drawRect(
                     brush = Brush.linearGradient(
-                        colorStops = arrayOf(0f to baseColor, 0.5f to Color.White, 1f to baseColor),
+                        colorStops = arrayOf(0f to baseColor, 0.5f to ink, 1f to baseColor),
                         start = Offset(center - band, 0f),
                         end = Offset(center + band, 0f),
                     ),

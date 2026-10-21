@@ -336,6 +336,8 @@
     <string name="liquid_glass_unavailable">Requires Android 12 or newer</string>
     <string name="liquid_glass_intensity">Liquid Glass intensity</string>
     <string name="liquid_glass_intensity_subtitle">Scales the blur and refraction; lower is cheaper to render, which fixes glass stutter on low-end devices</string>
+    <string name="folding_nav_bar">Folding nav bar</string>
+    <string name="folding_nav_bar_subtitle">Convx-style bar that folds into a single row and searches inline. Off restores the previous glass bar.</string>
     <string name="full_screen_cover_art">Full-screen cover art</string>
     <string name="legacy_mesh_gradient">Legacy mesh gradient</string>
     <string name="legacy_mesh_gradient_subtitle">Brings back the drifting colour blobs behind the player from v1.5</string>

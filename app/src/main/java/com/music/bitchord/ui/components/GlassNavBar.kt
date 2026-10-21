@@ -275,7 +275,7 @@ fun GlassNavBar(
  * a surface you can push on is the whole point of the material.
  */
 @Composable
-private fun GlassNowPlaying(
+internal fun GlassNowPlaying(
     song: Song,
     isInline: Boolean,
     isPlaying: Boolean,

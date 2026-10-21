@@ -24,6 +24,7 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -63,6 +64,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -134,6 +136,7 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.music.bitchord.ui.theme.StatusBarIcons
+import com.music.bitchord.ui.theme.rememberArtworkControlLuminance
 import com.music.bitchord.ui.theme.rememberArtworkTopBandLuminance
 import com.music.bitchord.ui.theme.topBandScrimAlpha
 import com.music.bitchord.ui.LyricsProviderState
@@ -817,6 +820,16 @@ fun NowPlayingScreen(
     // samples the upper band rather than the whole sleeve because that is what
     // lies beneath the status bar when the player expands to full bleed.
     val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
+    val artControlLuminance = rememberArtworkControlLuminance(remoteArt, ART_PX)
+    val playerInk by animateColorAsState(
+        targetValue = if ((artControlLuminance ?: 0f) >= 0.55f) {
+            Color(0xFF0B0B0C)
+        } else {
+            Color.White
+        },
+        animationSpec = tween(durationMillis = 320),
+        label = "playerInk",
+    )
     val artworkStatusScrimAlpha = topBandScrimAlpha(artTopLuminance)
 
     // Media-player convention: the player always owns light status icons. The
@@ -2101,6 +2114,7 @@ fun NowPlayingScreen(
             .then(dockHost)
             .background(Color.Black),
     ) {
+        CompositionLocalProvider(LocalPlayerInk provides playerInk) {
         // Anchored to the sleeve's bottom edge, so the screen carries on in the
         // colours the artwork ended in rather than in a quantiser's idea of what
         // the artwork was about. Position ticks recompose this screen twice a
@@ -3068,7 +3082,7 @@ fun NowPlayingScreen(
                             Icon(
                                 painter = PlayerIcons.NoArtwork.painter(),
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.35f),
+                                tint = LocalPlayerInk.current.copy(alpha = 0.35f),
                                 modifier = Modifier
                                     .size(40.dp)
                                     .graphicsLayer {
@@ -3258,7 +3272,7 @@ fun NowPlayingScreen(
                     Icon(
                         painter = (if (showNext) PlayerIcons.SkipNext else PlayerIcons.SkipPrevious).painter(),
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = LocalPlayerInk.current,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .offset {
@@ -3762,6 +3776,7 @@ fun NowPlayingScreen(
             }
         }
         playerOverlays()
+        }
     }
 }
 

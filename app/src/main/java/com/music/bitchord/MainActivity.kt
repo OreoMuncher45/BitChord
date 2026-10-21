@@ -229,7 +229,10 @@ import com.music.bitchord.ui.components.FloatingBarsTapGuard
 import com.music.bitchord.ui.components.BottomTab
 import com.music.bitchord.ui.components.FLOATING_BAR_MAX_WIDTH
 import com.music.bitchord.ui.components.FloatingBottomBar
+import com.music.bitchord.ui.components.GlassFoldingNavBar
 import com.music.bitchord.ui.components.GlassNavBar
+import com.music.bitchord.ui.components.NavSearchState
+import com.music.bitchord.ui.components.floatingtabbar.FloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.LastfmLoginAlert
@@ -494,6 +497,8 @@ private fun BitChordApp(
     // solid (see [Modifier.liquidGlass]) and the whole-page layer recording
     // below goes with them, which is the part that costs a draw pass.
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val foldingNavBar by AppSettings.foldingNavBar.collectAsStateWithLifecycle()
+    val useFoldingNav = foldingNavBar && glassActive
     val glassSamplesBackdrop = glassActive && !reduceDynamicBlur
     // What folds [GlassNavBar] between its expanded and inline shapes. Held here
     // rather than inside the bar because the page's scroll is what drives it,
@@ -695,6 +700,10 @@ private fun BitChordApp(
     // signal to focus the input field.
     var searchFocusRequested by remember { mutableStateOf(false) }
     val searchFieldFocus = remember { FocusRequester() }
+    var searchVisualActive by rememberSaveable { mutableStateOf(false) }
+    var searchKeyboardActive by rememberSaveable { mutableStateOf(false) }
+    var lastSearchTab by rememberSaveable { mutableIntStateOf(TAB_HOME) }
+    val searchNavFocus = remember { FocusRequester() }
     // Invalidates an in-flight radio lookup when a later play request wins.
     var playRequestGeneration by remember { mutableIntStateOf(0) }
     // Starting radio from the item already playing must not replace that media
@@ -789,6 +798,14 @@ private fun BitChordApp(
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == TAB_SEARCH) {
+            searchVisualActive = true
+        } else {
+            searchVisualActive = false
+            searchKeyboardActive = false
+        }
+    }
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val incomingJamInvite by JamInviteLink.pending.collectAsStateWithLifecycle()
     var activeJamInviteCode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -2088,6 +2105,48 @@ private fun BitChordApp(
         }
         viewModel.setSearchSource(source)
     }
+    val navSearchState = NavSearchState(
+        visualActive = searchVisualActive,
+        keyboardActive = searchKeyboardActive,
+        query = query,
+        onQueryChange = viewModel::onQueryChange,
+        onSubmit = {
+            searchKeyboardActive = false
+            viewModel.submitSearch()
+        },
+        searchSource = searchSource,
+        onToggleSource = {
+            onSearchSourceChange(
+                if (searchSource == SearchSource.LIBRARY) SearchSource.YOUTUBE else SearchSource.LIBRARY,
+            )
+        },
+        onTapSearchIcon = {
+            if (selectedTab != TAB_SEARCH) lastSearchTab = selectedTab
+            viewModel.clearDetail()
+            viewModel.closeMoodGenre()
+            showSettings = false
+            showAccountScrobbling = false
+            showSources = false
+            showListenTogether = false
+            showEqualizer = false
+            showReplay = false
+            settingsSubScreen = null
+            showHistory = false
+            showFlow = false
+            libraryShowAll = null
+            selectedTab = TAB_SEARCH
+            searchVisualActive = true
+            searchKeyboardActive = false
+        },
+        onTapBar = { searchKeyboardActive = true },
+        onExit = {
+            searchKeyboardActive = false
+            searchVisualActive = false
+            selectedTab = lastSearchTab.takeIf { it != TAB_SEARCH } ?: TAB_HOME
+        },
+        onCloseKeyboard = { searchKeyboardActive = false },
+        focusRequester = searchNavFocus,
+    )
     // Shared by the Library tab itself and by a shelf's "Show all" page, so a
     // card opens the same way from either.
     val onLibraryItemClick: (ShelfItem) -> Unit = { item ->
@@ -3767,6 +3826,7 @@ private fun BitChordApp(
                     modifier = Modifier.align(Alignment.TopCenter),
                     // Only on the Search tab itself, not on anything pushed over it.
                     accessory = if (
+                        !useFoldingNav &&
                         selectedTab == TAB_SEARCH && detail == null && selectedMoodGenre == null &&
                         libraryShowAll == null && !showSettings && !showAccountScrobbling &&
                         !showSources && !showListenTogether && !showEqualizer && !showDiscord &&
@@ -4026,13 +4086,26 @@ private fun BitChordApp(
                     showHistory = false
                     showFlow = false
                     libraryShowAll = null
-                    selectedTab = index
 
-                    // Every search tab tap resets the field, focuses it, and opens
-                    // the keyboard through SearchScreen's focus request.
                     if (index == TAB_SEARCH) {
-                        viewModel.onQueryChange("")
-                        searchFocusRequested = true
+                        if (useFoldingNav) {
+                            if (selectedTab != TAB_SEARCH) {
+                                lastSearchTab = selectedTab
+                                selectedTab = TAB_SEARCH
+                                searchVisualActive = true
+                                searchKeyboardActive = false
+                            } else {
+                                searchKeyboardActive = true
+                            }
+                        } else {
+                            selectedTab = TAB_SEARCH
+                            viewModel.onQueryChange("")
+                            searchFocusRequested = true
+                        }
+                    } else {
+                        searchVisualActive = false
+                        searchKeyboardActive = false
+                        selectedTab = index
                     }
                 }
 
@@ -4048,17 +4121,24 @@ private fun BitChordApp(
                     // component they are stacked to imitate: the now playing
                     // controls dock into the tab bar rather than riding above it,
                     // and the pair folds together on scroll. See [GlassNavBar].
-                    GlassNavBar(
+                    AppGlassNav(
+                        useFoldingNav = useFoldingNav,
                         tabs = tabs,
                         selectedIndex = selectedTab,
                         onTabSelected = onTabSelected,
                         scrollConnection = navBarScroll,
+                        search = navSearchState,
+                        placeholder = org.jetbrains.compose.resources.stringResource(
+                            if (searchSource == SearchSource.LIBRARY) {
+                                SharedRes.string.search_library_hint
+                            } else {
+                                SharedRes.string.search_hint
+                            },
+                        ),
                         song = player.song,
                         isPlaying = player.isPlaying,
                         isLoading = playPauseBusy,
-                        onPlayPause = {
-                            togglePlayPause()
-                        },
+                        onPlayPause = { togglePlayPause() },
                         onNext = { controller?.seekToNextMediaItem() },
                         onPrevious = { controller?.seekToPrevious() },
                         onExpand = if (reducePlayerMotion) {
@@ -4070,7 +4150,6 @@ private fun BitChordApp(
                         onBlockedControl = showHostOnlyNotice,
                         dock = activeDock,
                         pull = playerSheetMotion.takeIf { !reducePlayerMotion },
-                        modifier = Modifier.fillMaxWidth(),
                     )
                 } else Column(
                     modifier = Modifier
@@ -5788,6 +5867,70 @@ private const val PLAYER_SCRIM_ALPHA = 0.32f
 private object PlayerSheetShape : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
         Outline.Rectangle(Rect(0f, -size.height, size.width, size.height))
+}
+
+@Composable
+private fun AppGlassNav(
+    useFoldingNav: Boolean,
+    tabs: List<BottomTab>,
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    scrollConnection: FloatingTabBarScrollConnection,
+    search: NavSearchState,
+    placeholder: String,
+    song: Song?,
+    isPlaying: Boolean,
+    isLoading: Boolean,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onExpand: () -> Unit,
+    controlsLocked: Boolean,
+    onBlockedControl: () -> Unit,
+    dock: PlayerDock?,
+    pull: MiniPlayerPull?,
+) {
+    if (useFoldingNav) {
+        GlassFoldingNavBar(
+            tabs = tabs,
+            selectedIndex = selectedIndex,
+            onTabSelected = onTabSelected,
+            scrollConnection = scrollConnection,
+            search = search,
+            placeholder = placeholder,
+            song = song,
+            isPlaying = isPlaying,
+            isLoading = isLoading,
+            onPlayPause = onPlayPause,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onExpand = onExpand,
+            controlsLocked = controlsLocked,
+            onBlockedControl = onBlockedControl,
+            dock = dock,
+            pull = pull,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    } else {
+        GlassNavBar(
+            tabs = tabs,
+            selectedIndex = selectedIndex,
+            onTabSelected = onTabSelected,
+            scrollConnection = scrollConnection,
+            song = song,
+            isPlaying = isPlaying,
+            isLoading = isLoading,
+            onPlayPause = onPlayPause,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onExpand = onExpand,
+            controlsLocked = controlsLocked,
+            onBlockedControl = onBlockedControl,
+            dock = dock,
+            pull = pull,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 private const val TAB_HOME = 0

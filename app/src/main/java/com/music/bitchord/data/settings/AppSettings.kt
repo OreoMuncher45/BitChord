@@ -448,6 +448,14 @@ object AppSettings {
     val liquidGlass = MutableStateFlow(false)
 
     /**
+     * Convx's folding nav bar and inline search, default on wherever liquid
+     * glass is enabled. Off keeps the previous glass bar and its top-bar
+     * search field as the legacy layout; with liquid glass off the app keeps
+     * its non-glass bars regardless of this value.
+     */
+    val foldingNavBar = MutableStateFlow(true)
+
+    /**
      * How strong the [liquidGlass] material is,
      * [MIN_LIQUID_GLASS_INTENSITY]..[MAX_LIQUID_GLASS_INTENSITY], multiplied
      * onto the glass engine's blur, refraction and vibrancy where the config
@@ -972,6 +980,7 @@ object AppSettings {
         smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
         liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
+        foldingNavBar.value = prefs.getBoolean(KEY_FOLDING_NAV_BAR, true)
         liquidGlassIntensity.value = prefs.getFloat(KEY_LIQUID_GLASS_INTENSITY, 1f)
             .coerceIn(MIN_LIQUID_GLASS_INTENSITY, MAX_LIQUID_GLASS_INTENSITY)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
@@ -1447,6 +1456,11 @@ object AppSettings {
     fun setLiquidGlass(value: Boolean) {
         liquidGlass.value = value
         prefs.edit().putBoolean(KEY_LIQUID_GLASS, value).apply()
+    }
+
+    fun setFoldingNavBar(value: Boolean) {
+        foldingNavBar.value = value
+        prefs.edit().putBoolean(KEY_FOLDING_NAV_BAR, value).apply()
     }
 
     fun setLiquidGlassIntensity(value: Float) {
@@ -2208,6 +2222,7 @@ object AppSettings {
     private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
+    private const val KEY_FOLDING_NAV_BAR = "folding_nav_bar"
     private const val KEY_LIQUID_GLASS_INTENSITY = "liquid_glass_intensity"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
     private const val KEY_LYRICS_OFFSET_MS = "lyrics_offset_ms"
