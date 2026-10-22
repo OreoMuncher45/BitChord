@@ -500,7 +500,6 @@ internal fun VolumeRow(
     onValueChangeFinished: () -> Unit,
 ) {
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -510,8 +509,7 @@ internal fun VolumeRow(
             contentDescription = null,
             tint = ink.copy(alpha = 0.5f),
             modifier = Modifier
-                .size(20.dp)
-                .playerGlow(glow),
+                .size(20.dp),
         )
         Spacer(Modifier.width(10.dp))
         ThinSlider(
@@ -531,8 +529,7 @@ internal fun VolumeRow(
             contentDescription = null,
             tint = ink.copy(alpha = 0.5f),
             modifier = Modifier
-                .size(20.dp)
-                .playerGlow(glow),
+                .size(20.dp),
         )
     }
 }
@@ -676,7 +673,6 @@ internal fun CircleGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     val discAlpha by animateFloatAsState(
         targetValue = if (active) 0.34f else 0.18f,
         label = "glyphDisc",
@@ -705,8 +701,7 @@ internal fun CircleGlyph(
                 contentDescription = contentDescription,
                 tint = ink,
                 modifier = Modifier
-                    .size(glyphSize)
-                    .playerGlow(glow),
+                    .size(glyphSize),
             )
         }
     }
@@ -731,7 +726,6 @@ private fun TransportGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     // Faded rather than hidden: the row keeps its shape at the ends of a queue.
     val alpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.3f,
@@ -756,7 +750,6 @@ private fun TransportGlyph(
             tint = ink.copy(alpha = alpha),
             modifier = Modifier
                 .size(size)
-                .playerGlow(glow)
                 .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
         )
     }
@@ -862,7 +855,6 @@ private fun PillSegment(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
     Box(
         modifier = Modifier
@@ -908,8 +900,7 @@ private fun PillSegment(
                             contentDescription = null,
                             tint = tint,
                             modifier = Modifier
-                                .size(iconSize)
-                                .playerGlow(glow),
+                                .size(iconSize),
                         )
                     }
                 }
@@ -1072,7 +1063,6 @@ private fun BottomGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     // Read only from the click handler, never during composition, so writing it
     // costs no recomposition. Starts a full window in the past so the first tap
     // is never the one that gets swallowed.
@@ -1105,8 +1095,7 @@ private fun BottomGlyph(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(26.dp)
-                    .playerGlow(glow),
+                    .size(26.dp),
             )
         } else if (label != null) {
             Text(
@@ -1567,7 +1556,6 @@ private fun LosslessLabel(
     iconPainter: Painter? = null,
 ) {
     val ink = LocalPlayerInk.current
-    val glow = LocalPlayerInkGlow.current
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Center,
@@ -1580,8 +1568,7 @@ private fun LosslessLabel(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(width = 13.dp, height = 10.dp)
-                    .playerGlow(glow),
+                    .size(width = 13.dp, height = 10.dp),
             )
         } else if (icon != null) {
             Icon(
@@ -1589,8 +1576,7 @@ private fun LosslessLabel(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(13.dp)
-                    .playerGlow(glow),
+                    .size(13.dp),
             )
         }
         Spacer(Modifier.width(4.dp))
