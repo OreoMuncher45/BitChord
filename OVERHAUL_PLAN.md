@@ -710,6 +710,26 @@ CI artifacts:
   every build on one machine/keystore. No `keystore.properties` exists on the
   build server, so `prod` release builds are unsigned and cannot be shipped.
 
+## Release gate (do not break this)
+
+- **Nothing is published until the paying early-access testers stress test a
+  build and the user says go.** No GitHub Release, no version tag.
+- The only sanctioned way to produce a *installable-over-the-old-app* APK is the
+  `Flow Debug APK` workflow (`workflow_dispatch`, artifact only). It builds
+  `:app:assembleDevRelease` and signs with the fork's stable key from the
+  `ANDROID_KEYSTORE_B64` secret — certificate `CN=BitChord Next Fork`.
+  2026-10-22 verification: `apksigner verify --print-certs` on the CI artifact
+  reports that DN; `aapt2 dump badging` reports `com.dev.bitchord`,
+  `versionCode 76`, `versionName 2.2.14`.
+- Local `:app:assembleDevDebug` builds on the server are signed with the
+  *server's auto-generated* `~/.android/debug.keystore`. That is a different key,
+  so a debug APK **cannot** be installed over a CI-built app: Android reports
+  "App not installed as package conflicts with an existing package". This is a
+  signature mismatch and no versionCode bump can fix it. Do not hand the user a
+  debug APK when the installed app came from CI.
+- Pushing a `v*.*.*` tag fires both `flow-debug-apk.yml` and `release.yml`, so
+  tagging publishes. Do not tag while the release gate above is closed.
+
 ## What a future session must not forget
 
 1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the user
