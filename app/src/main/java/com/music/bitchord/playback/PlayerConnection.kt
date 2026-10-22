@@ -441,6 +441,18 @@ const val EXTRA_QUEUE_TIER = "bitchord.queueTier"
 const val EXTRA_QUEUE_ENTRY_ID = "bitchord.queueEntryId"
 
 /**
+ * The browsable folder a song was listed in, carried onto each child so a
+ * tap in Android Auto can be turned back into the whole playlist.
+ *
+ * Android Auto plays the item it was handed — often the single song under the
+ * thumb, not the folder around it — and a one-item queue is indistinguishable
+ * from a radio station, so AutoPlay used to take over from the second track.
+ * The parent id lets the session rebuild the full ordered list and start at
+ * the tapped song instead.
+ */
+const val EXTRA_AUTO_PARENT = "bitchord.autoParent"
+
+/**
  * Marks a queue entry as AutoPlay's rather than the user's. Carried on the
  * MediaItem so it survives the trip through the session — the queue belongs to
  * the player, and the UI only ever sees it back through a MediaController.
@@ -609,7 +621,7 @@ internal fun shouldPlayLocalFile(hasLocalFile: Boolean): Boolean =
         canStream = !AppSettings.effectiveOffline.value,
     )
 
-fun Song.toMediaItem(): MediaItem {
+fun Song.toMediaItem(parentBrowseId: String? = null): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
     // A row from search or a playlist carries no file of its own, but the track
     // may still be on disk from a download — see [Downloads.saved].
@@ -720,13 +732,15 @@ fun Song.toMediaItem(): MediaItem {
                     sourceQuality != null ||
                     artistId != null || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
-                    playbackSource != null || playbackSourceType != null || playbackSourceId != null
+                    playbackSource != null || playbackSourceType != null || playbackSourceId != null ||
+                    parentBrowseId != null
                 ) {
                     setExtras(
                         bundleOf(
                             EXTRA_QUEUE_TIER to queueTier.name,
                             EXTRA_QUEUE_ENTRY_ID to queueEntryId,
                             EXTRA_FROM_AUTOPLAY to fromAutoplay,
+                            EXTRA_AUTO_PARENT to parentBrowseId,
                             EXTRA_RADIO_NAME to radioName,
                             EXTRA_PLAYBACK_SOURCE to playbackSource,
                             EXTRA_PLAYBACK_SOURCE_TYPE to playbackSourceType?.name,

@@ -9,6 +9,7 @@ import com.music.bitchord.data.model.ArtistRef
 import com.music.bitchord.data.model.completeArtistCredits
 import com.music.bitchord.data.model.BrowseItem
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.GenAiDisclosure
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LibraryState
 import com.music.bitchord.data.model.LikeStatus
@@ -686,6 +687,7 @@ object InnertubeParser {
             // art where a catalogue track has square album cover art.
             isVideo = rowType == "video" || thumbnails.isNotSquare(),
             isExplicit = renderer.hasExplicitBadge(),
+            genAi = renderer.detectGenAi(),
         )
     }
 
@@ -729,6 +731,7 @@ object InnertubeParser {
             albumName = credits.albumName,
             isVideo = rowType == "video" || thumbnails.isNotSquare(),
             isExplicit = renderer["subtitleBadges"].hasExplicitBadge(),
+            genAi = renderer.detectGenAi(),
         )
     }
 
@@ -1429,6 +1432,38 @@ object InnertubeParser {
                 null -> false
             }
         }
+
+    /**
+     * The Gen AI disclosure, where a row or player action carries one.
+     *
+     * YouTube does not publish a stable catalogue field for this yet. The
+     * marker is text on an action or badge — "Made with AI", "Fully Gen AI",
+     * "Partly Gen AI", or the player's longer "altered or fully generated
+     * using AI" — so only those explicit phrases count. Anything less is
+     * NONE, because guessing from a name or genre would label real artists.
+     */
+    private fun JsonElement?.detectGenAi(): GenAiDisclosure {
+        val text = buildString {
+            fun walk(value: JsonElement?) {
+                when (value) {
+                    is JsonPrimitive -> value.contentOrNull?.let { append(' ').append(it) }
+                    is JsonArray -> value.forEach(::walk)
+                    is JsonObject -> value.values.forEach(::walk)
+                    else -> Unit
+                }
+            }
+            walk(this@detectGenAi)
+        }.lowercase(Locale.ROOT)
+
+        return when {
+            "fully gen ai" in text ||
+                "fully generated" in text ||
+                "altered or fully generated using ai" in text -> GenAiDisclosure.FULLY
+            "partly gen ai" in text || "partly generated" in text -> GenAiDisclosure.PARTLY
+            "made with ai" in text || "generated using ai" in text -> GenAiDisclosure.UNKNOWN
+            else -> GenAiDisclosure.NONE
+        }
+    }
 
     private val DURATION = Regex("""\d+:\d{2}""")
     private val YEAR = Regex("""\d{4}""")

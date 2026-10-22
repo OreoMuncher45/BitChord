@@ -104,6 +104,7 @@ suspend fun loadAutoplayTracks(
     val seed = youtubeSeedFor(seedSong) ?: return Result.success(emptyList())
     val related = YtMusicRepository.radio(seed).getOrElse { return Result.failure(it) }
     val extra = QueueBuilder.extend(existing, related, limit)
+        .filterNot(com.music.bitchord.data.settings.AppSettings::isSongBlocked)
     if (extra.isEmpty()) return Result.success(emptyList())
 
     return Result.success(extra.map {

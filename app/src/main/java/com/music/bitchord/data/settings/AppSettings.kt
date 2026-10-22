@@ -12,6 +12,7 @@ import com.music.bitchord.BuildConfig
 import com.music.bitchord.auth.AuthStore
 import com.music.bitchord.data.canvas.SpotifyToken
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
@@ -28,6 +29,7 @@ import com.music.bitchord.playback.SingMethod
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.Locale
 
 
 /**
@@ -398,6 +400,29 @@ object AppSettings {
     /** Keep playing similar music once the queue runs out. */
     val autoplay = MutableStateFlow(true)
 
+    // ---- Now Playing customisation ---------------------------------------
+    //
+    // Null means "follow the artwork", which is the behaviour the player has
+    // always had. A stored ARGB value pins one role; the three roles are kept
+    // apart so a listener can recolour the transport without also recolouring
+    // the title or the scrubber.
+    val playerAccentColor = MutableStateFlow<Int?>(null)
+    val playerSeekbarColor = MutableStateFlow<Int?>(null)
+    val playerTextColor = MutableStateFlow<Int?>(null)
+
+    /** Most recently picked colours, newest first, shared by all three roles. */
+    val recentPlayerColors = MutableStateFlow<List<Int>>(emptyList())
+
+    /**
+     * Home shelf titles in the listener's order. Titles not present in the
+     * feed are ignored; shelves missing from the list keep their feed order
+     * after the ones that are listed. Empty means "leave YouTube's order".
+     */
+    val homeShelfOrder = MutableStateFlow<List<String>>(emptyList())
+
+    /** Never play a track YouTube has labelled as generated with AI. */
+    val blockAiMusic = MutableStateFlow(false)
+
     /** Whether the queue is held in shuffled order (Mix button). */
     val shuffleEnabled = MutableStateFlow(false)
 
@@ -638,6 +663,86 @@ object AppSettings {
     val downloadedMusicViewType = MutableStateFlow(LibraryViewType.LIST)
     /** Layout used by the Recents shelf on Play; compact tracks are the default. */
     val homeRecentsViewType = MutableStateFlow(LibraryViewType.LIST)
+
+    /**
+     * Whether the synthetic Flow card is offered on Home.
+     *
+     * The Flow feature itself is untouched: this hides only the Home entry, so
+     * the Flow route and an in-progress mix survive turning the card off.
+     * Quick Picks is deliberately not part of this switch.
+     */
+    val homeFlowVisible = MutableStateFlow(true)
+
+    /**
+     * Artists the listener has hidden, encoded as `<identity>\t<display name>`.
+     *
+     * An identity is the artist's own channel id when a row carried one, or the
+     * normalised name when it didn't — never both, so hiding the same act from a
+     * song, a search row and an artist page collapses to one entry. The display
+     * name is kept beside it so the settings list can say who was hidden
+     * without a network lookup.
+     */
+    val blockedArtists = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Every identity currently hidden, for cheap membership tests. */
+    private val blockedArtistKeys: Set<String>
+        get() = blockedArtists.value.mapTo(HashSet()) { it.substringBefore('\t') }
+
+    fun blockArtist(artistId: String?, name: String?) {
+        val entry = artistEntry(artistId, name) ?: return
+        blockedArtists.value = blockedArtists.value + entry
+        prefs.edit().putStringSet(KEY_BLOCKED_ARTISTS, blockedArtists.value).apply()
+    }
+
+    fun unblockArtist(entry: String) {
+        blockedArtists.value = blockedArtists.value - entry
+        prefs.edit().putStringSet(KEY_BLOCKED_ARTISTS, blockedArtists.value).apply()
+    }
+
+    fun isArtistBlocked(artistId: String?, name: String?): Boolean {
+        val keys = blockedArtistKeys
+        if (keys.isEmpty()) return false
+        if (!artistId.isNullOrBlank() && "id:$artistId" in keys) return true
+        val normalized = normalizeArtistName(name) ?: return false
+        return "name:$normalized" in keys
+    }
+
+    /** True when any credit on [song] is hidden, including a collaboration. */
+    fun isSongBlocked(song: Song): Boolean {
+        if (blockAiMusic.value &&
+            (song.genAi == com.music.bitchord.data.model.GenAiDisclosure.FULLY ||
+                song.genAi == com.music.bitchord.data.model.GenAiDisclosure.PARTLY)
+        ) return true
+        if (blockedArtists.value.isEmpty()) return false
+        if (isArtistBlocked(song.artistId, song.artist)) return true
+        if (song.artists.any { isArtistBlocked(it.browseId, it.name) }) return true
+        // A byline that never linked its artists still names them.
+        return song.artist.split(CREDIT_ARTIST_SEPARATOR).any {
+            isArtistBlocked(null, it)
+        }
+    }
+
+    /** What the settings list shows for one stored entry. */
+    fun blockedArtistName(entry: String): String =
+        entry.substringAfter('\t', entry.substringAfter(':'))
+
+    private fun artistEntry(artistId: String?, name: String?): String? {
+        if (!artistId.isNullOrBlank()) return "id:$artistId\t${name.orEmpty().cleanArtistName()}"
+        val normalized = normalizeArtistName(name) ?: return null
+        return "name:$normalized\t${name.orEmpty().cleanArtistName()}"
+    }
+
+    private fun normalizeArtistName(name: String?): String? =
+        name?.trim()?.lowercase(Locale.ROOT)?.replace(Regex("\\s+"), " ")?.takeIf { it.isNotEmpty() }
+
+    private fun String.cleanArtistName(): String =
+        replace('\t', ' ').replace('\n', ' ').trim()
+
+    private val CREDIT_ARTIST_SEPARATOR = Regex(
+        """,\s*|\s*&\s*|\s+(?:x|and|feat\.?|ft\.?|with)\s+""",
+        RegexOption.IGNORE_CASE,
+    )
+
     val librarySort = MutableStateFlow(LibrarySort.DEFAULT)
 
     /**
@@ -972,6 +1077,23 @@ object AppSettings {
         classipodClicks.value = prefs.getBoolean(KEY_CLASSIPOD_CLICKS, true)
         classipodWheelSteps.value = prefs.getInt(KEY_CLASSIPOD_WHEEL_STEPS, 36).coerceIn(12, 72)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
+        playerAccentColor.value = prefs.getInt(KEY_PLAYER_ACCENT, RESET_COLOR)
+            .takeUnless { it == RESET_COLOR }
+        playerSeekbarColor.value = prefs.getInt(KEY_PLAYER_SEEKBAR, RESET_COLOR)
+            .takeUnless { it == RESET_COLOR }
+        playerTextColor.value = prefs.getInt(KEY_PLAYER_TEXT, RESET_COLOR)
+            .takeUnless { it == RESET_COLOR }
+        recentPlayerColors.value = prefs.getString(KEY_RECENT_PLAYER_COLORS, null)
+            ?.split(',')
+            ?.mapNotNull { it.toIntOrNull() }
+            ?.take(MAX_RECENT_PLAYER_COLORS)
+            .orEmpty()
+        homeShelfOrder.value = prefs.getString(KEY_HOME_SHELF_ORDER, null)
+            ?.split('\u001F')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+        blockAiMusic.value = prefs.getBoolean(KEY_BLOCK_AI_MUSIC, false)
         shuffleEnabled.value = prefs.getBoolean(KEY_SHUFFLE_ENABLED, false)
         repeatMode.value = prefs.getInt(KEY_REPEAT_MODE, Player.REPEAT_MODE_OFF)
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
@@ -1043,6 +1165,9 @@ object AppSettings {
         localMusicViewType.value = readLibraryViewType(KEY_LOCAL_MUSIC_VIEW_TYPE)
         downloadedMusicViewType.value = readLibraryViewType(KEY_DOWNLOADED_MUSIC_VIEW_TYPE)
         homeRecentsViewType.value = readLibraryViewType(KEY_HOME_RECENTS_VIEW_TYPE)
+        homeFlowVisible.value = prefs.getBoolean(KEY_HOME_FLOW_VISIBLE, true)
+        blockedArtists.value = prefs.getStringSet(KEY_BLOCKED_ARTISTS, emptySet())
+            ?.filter { it.isNotBlank() }?.toSet().orEmpty()
         librarySort.value = prefs.getString(KEY_LIBRARY_SORT, null)
             ?.let { saved -> LibrarySort.entries.firstOrNull { it.name == saved } }
             ?: LibrarySort.DEFAULT
@@ -1220,6 +1345,58 @@ object AppSettings {
     fun setAutoplay(value: Boolean) {
         autoplay.value = value
         prefs.edit().putBoolean(KEY_AUTOPLAY, value).apply()
+    }
+
+    /** Which part of Now Playing a colour pick applies to. */
+    enum class PlayerColorTarget { ACCENT, SEEKBAR, TEXT }
+
+    fun setPlayerColor(target: PlayerColorTarget, argb: Int?) {
+        when (target) {
+            PlayerColorTarget.ACCENT -> playerAccentColor.value = argb
+            PlayerColorTarget.SEEKBAR -> playerSeekbarColor.value = argb
+            PlayerColorTarget.TEXT -> playerTextColor.value = argb
+        }
+        prefs.edit()
+            .putInt(
+                when (target) {
+                    PlayerColorTarget.ACCENT -> KEY_PLAYER_ACCENT
+                    PlayerColorTarget.SEEKBAR -> KEY_PLAYER_SEEKBAR
+                    PlayerColorTarget.TEXT -> KEY_PLAYER_TEXT
+                },
+                argb ?: RESET_COLOR,
+            )
+            .apply()
+        if (argb != null) rememberPlayerColor(argb)
+    }
+
+    fun resetPlayerColors() {
+        playerAccentColor.value = null
+        playerSeekbarColor.value = null
+        playerTextColor.value = null
+        prefs.edit()
+            .putInt(KEY_PLAYER_ACCENT, RESET_COLOR)
+            .putInt(KEY_PLAYER_SEEKBAR, RESET_COLOR)
+            .putInt(KEY_PLAYER_TEXT, RESET_COLOR)
+            .apply()
+    }
+
+    private fun rememberPlayerColor(argb: Int) {
+        val next = (listOf(argb) + recentPlayerColors.value)
+            .distinct()
+            .take(MAX_RECENT_PLAYER_COLORS)
+        recentPlayerColors.value = next
+        prefs.edit().putString(KEY_RECENT_PLAYER_COLORS, next.joinToString(",")).apply()
+    }
+
+    fun setHomeShelfOrder(titles: List<String>) {
+        val clean = titles.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        homeShelfOrder.value = clean
+        prefs.edit().putString(KEY_HOME_SHELF_ORDER, clean.joinToString("\u001F")).apply()
+    }
+
+    fun setBlockAiMusic(value: Boolean) {
+        blockAiMusic.value = value
+        prefs.edit().putBoolean(KEY_BLOCK_AI_MUSIC, value).apply()
     }
 
     fun setShuffleEnabled(value: Boolean) {
@@ -1926,6 +2103,11 @@ object AppSettings {
         prefs.edit().putString(KEY_HOME_RECENTS_VIEW_TYPE, value.name).apply()
     }
 
+    fun setHomeFlowVisible(value: Boolean) {
+        homeFlowVisible.value = value
+        prefs.edit().putBoolean(KEY_HOME_FLOW_VISIBLE, value).apply()
+    }
+
     fun setLocalMusicFolderUri(value: String) {
         localMusicFolderUri.value = value
         prefs.edit().putString(KEY_LOCAL_MUSIC_FOLDER_URI, value).apply()
@@ -2221,6 +2403,16 @@ object AppSettings {
     private const val KEY_CLASSIPOD_CLICKS = "classipod_clicks"
     private const val KEY_CLASSIPOD_WHEEL_STEPS = "classipod_wheel_steps"
     private const val KEY_AUTOPLAY = "autoplay"
+    private const val KEY_PLAYER_ACCENT = "player_accent_color"
+    private const val KEY_PLAYER_SEEKBAR = "player_seekbar_color"
+    private const val KEY_PLAYER_TEXT = "player_text_color"
+    private const val KEY_RECENT_PLAYER_COLORS = "recent_player_colors"
+    private const val KEY_HOME_SHELF_ORDER = "home_shelf_order"
+    private const val KEY_BLOCK_AI_MUSIC = "block_ai_music"
+
+    /** Sentinel for "no override"; distinct from every opaque ARGB value. */
+    private const val RESET_COLOR = Int.MIN_VALUE
+    private const val MAX_RECENT_PLAYER_COLORS = 12
     private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"
     private const val KEY_REPEAT_MODE = "repeat_mode"
     private const val KEY_NERD_STATS = "show_nerd_stats"
@@ -2266,6 +2458,8 @@ object AppSettings {
     private const val KEY_LOCAL_MUSIC_VIEW_TYPE = "local_music_view_type"
     private const val KEY_DOWNLOADED_MUSIC_VIEW_TYPE = "downloaded_music_view_type"
     private const val KEY_HOME_RECENTS_VIEW_TYPE = "home_recents_view_type"
+    private const val KEY_HOME_FLOW_VISIBLE = "home_flow_visible"
+    private const val KEY_BLOCKED_ARTISTS = "blocked_artists"
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"

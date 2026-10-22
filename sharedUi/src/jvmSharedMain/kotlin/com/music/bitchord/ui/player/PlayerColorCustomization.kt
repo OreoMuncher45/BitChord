@@ -1,0 +1,22 @@
+package com.music.bitchord.ui.player
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Colours the listener pinned on the Now Playing screen.
+ *
+ * A null role means "follow the artwork", which is the player's original
+ * behaviour. The roles are separate on purpose: recolouring the scrubber should
+ * not also recolour the artist name, and the transport is the part most people
+ * mean when they say the buttons are the wrong colour.
+ */
+data class PlayerColorOverrides(
+    val accent: Color? = null,
+    val seekbar: Color? = null,
+    val text: Color? = null,
+)
+
+internal val LocalPlayerAccent = staticCompositionLocalOf<Color?> { null }
+internal val LocalPlayerSeekbar = staticCompositionLocalOf<Color?> { null }
+internal val LocalPlayerText = staticCompositionLocalOf<Color?> { null }

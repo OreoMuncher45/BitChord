@@ -754,13 +754,13 @@ object BitChordIcons {
             path(
                 fill = stroke,
                 stroke = stroke,
-                strokeLineWidth = 1.8f,
+                strokeLineWidth = 2.8f,
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-                moveTo(4.8f, 1.2f)
-                lineTo(21.0f, 12f)
-                lineTo(4.8f, 22.8f)
+                moveTo(5.2f, 2.0f)
+                lineTo(20.6f, 12f)
+                lineTo(5.2f, 22.0f)
                 close()
             }
         }.build()

@@ -50,6 +50,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.ui.graphics.luminance
 import com.music.bitchord.data.model.LibraryState
+import com.music.bitchord.data.spotify.SpotifyArtistStats
+import com.music.bitchord.data.spotify.SpotifyArtistStatsProvider
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -57,6 +59,9 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -157,6 +162,7 @@ import com.music.bitchord.ui.theme.ArtworkPalette
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
 import java.util.Locale
+import kotlin.math.roundToLong
 
 private const val MAX_ARTIST_SONGS = 20
 private const val SONGS_PER_COLUMN = 4
@@ -220,6 +226,9 @@ private const val LOGO_RETRY_DELAY_MS = 800L
 
 private val CREDIT_SEPARATOR = Regex(""",\s|\s&\s|\s(?:x|and|feat\.?|ft\.?|with)\s""", RegexOption.IGNORE_CASE)
 
+/** An EP shelf's title, matched as a whole word so "EPs" and "EP" both land. */
+private val ARTIST_EP_TITLE = Regex("""\bEPs?\b""", RegexOption.IGNORE_CASE)
+
 /** Whether this reads as several artists credited together rather than one name. */
 private fun String.looksLikeCredit() = CREDIT_SEPARATOR.containsMatchIn(this)
 
@@ -267,6 +276,12 @@ fun DetailScreen(
      */
     onMore: ((List<Song>) -> Unit)? = null,
     /**
+     * Hides this act everywhere. Null on non-artist pages, where the menu item
+     * has no meaning. The caller owns persistence and popping the page so the
+     * same op works from the player's artist menu later.
+     */
+    onHideArtist: (() -> Unit)? = null,
+    /**
      * Saves this release to the account's library, or takes it out —
      * [DetailPage.library] says which way round. Null hides the control
      * entirely, which is the answer for a guest and for the pages YouTube never
@@ -303,6 +318,14 @@ fun DetailScreen(
         rawSongs.withIndex().associate { (i, s) -> s.videoId to i + 1 }
     }
     val isArtist = page.type == BrowseType.ARTIST
+    // The overflow menu's two shortcuts. Titles are localised, so the match is
+    // on the stable words YouTube uses across locales plus a positional
+    // fallback — an artist page's first shelf is albums and its second singles.
+    val albumsShelf = page.sections.firstOrNull { it.title.contains("album", true) }
+        ?: page.sections.getOrNull(0)
+    val singlesShelf = page.sections.firstOrNull {
+        it.title.contains("single", true) || ARTIST_EP_TITLE.containsMatchIn(it.title)
+    } ?: page.sections.getOrNull(1)?.takeIf { it !== albumsShelf }
     // Whether the top release card's album is already saved isn't on the shelf
     // item; it is read off the album once, as soon as the card is known.
     val topReleaseId = if (isArtist) page.sections.topRelease()?.browseId else null
@@ -319,6 +342,14 @@ fun DetailScreen(
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
     LaunchedEffect(page.browseId, page.title, nameSettled) {
         if (isArtist && nameSettled) appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
+    }
+    // Spotify publishes listeners only on the artist page, not in its API.
+    // Fetched in the background so a miss costs the page nothing.
+    var spotifyStats by remember(page.browseId) { mutableStateOf<SpotifyArtistStats?>(null) }
+    LaunchedEffect(page.browseId, page.title, nameSettled, isArtist) {
+        if (isArtist && nameSettled) {
+            spotifyStats = SpotifyArtistStatsProvider.load(page.title)
+        }
     }
     val palette = rememberArtworkPalette(
         imageUrl = appleArt?.heroUrl ?: page.thumbnailUrl,
@@ -472,6 +503,20 @@ fun DetailScreen(
                 }
             }
 
+            if (isArtist) {
+                item(key = "artist-meta") {
+                    ArtistMetaRow(
+                        page = page,
+                        palette = palette,
+                        albumsShelf = albumsShelf,
+                        singlesShelf = singlesShelf,
+                        spotifyStats = spotifyStats,
+                        onOpenShelf = onActiveShelfChange,
+                        onHideArtist = onHideArtist,
+                    )
+                }
+            }
+
             if (searching) {
                 item(key = "search") {
                     DetailSearchField(
@@ -523,14 +568,11 @@ fun DetailScreen(
             // [DetailPage.description]. A playlist never carries one, and the
             // section is skipped for it even on the rare response that does.
             //
-            // On an artist page it closes the page, after the shelves, rather
-            // than sitting between the action row and the songs.
-            // The artist's counts close it, under the text, so a page whose blurb is
-            // empty still gets the section for them.
-            val hasStats = isArtist &&
-                (page.subscriberCountText != null || page.monthlyListenerCount != null)
-            val showAbout = (!description.isNullOrBlank() &&
-                (page.type == BrowseType.ALBUM || isArtist)) || hasStats
+            // The artist's counts no longer live here: they sit under the
+            // header with the overflow menu, so they are readable without
+            // scrolling to the foot of a long discography.
+            val showAbout = !description.isNullOrBlank() &&
+                (page.type == BrowseType.ALBUM || isArtist)
             fun LazyListScope.aboutItem() {
                 if (!showAbout) return
                 item(key = "about") {
@@ -543,17 +585,7 @@ fun DetailScreen(
                         text = description?.takeIf { it.isNotBlank() },
                         palette = palette,
                         horizontalPadding = if (isArtist) ARTIST_CONTENT_GUTTER else ABOUT_GUTTER,
-                        stats = if (hasStats) {
-                            {
-                                ArtistStatsRow(
-                                    subscriberCountText = page.subscriberCountText,
-                                    monthlyListenerCount = page.monthlyListenerCount,
-                                    palette = palette,
-                                )
-                            }
-                        } else {
-                            null
-                        },
+                        stats = null,
                     )
                     }
                 }
@@ -1458,7 +1490,7 @@ private fun ArtistStatsRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = ARTIST_CONTENT_GUTTER, end = ARTIST_CONTENT_GUTTER, bottom = 12.dp),
+            .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         horizontalAlignment = Alignment.Start,
     ) {
@@ -1483,9 +1515,129 @@ private fun ArtistStatsRow(
     }
 }
 
+/**
+ * The artist header's counts and overflow: YouTube's subscriber and listener
+ * figures on the left, a menu on the right. The menu is the artist page's whole
+ * answer to "what else can I do here" — jump to a discography shelf, or hide
+ * the act from the rest of the app.
+ */
 @Composable
-private fun StatChip(icon: ImageVector, text: String, palette: ArtworkPalette) {
-    Row(
+private fun ArtistMetaRow(
+    page: DetailPage,
+    palette: ArtworkPalette,
+    albumsShelf: HomeShelf?,
+    singlesShelf: HomeShelf?,
+    spotifyStats: SpotifyArtistStats?,
+    onOpenShelf: (HomeShelf) -> Unit,
+    onHideArtist: (() -> Unit)?,
+) {
+    if (page.subscriberCountText == null && page.monthlyListenerCount == null &&
+        albumsShelf == null && singlesShelf == null && onHideArtist == null &&
+        spotifyStats == null
+    ) return
+
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = ARTIST_CONTENT_GUTTER, end = 56.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            spotifyStats?.let { stats ->
+                StatChip(
+                    icon = Icons.Rounded.GraphicEq,
+                    text = stringResource(
+                        R.string.spotify_monthly_listeners,
+                        compactCount(stats.monthlyListeners),
+                    ),
+                    palette = palette,
+                )
+                stats.followers?.let { followers ->
+                    StatChip(
+                        icon = Icons.Rounded.Person,
+                        text = stringResource(
+                            R.string.spotify_followers,
+                            compactCount(followers),
+                        ),
+                        palette = palette,
+                    )
+                }
+            }
+            ArtistStatsRow(
+                subscriberCountText = page.subscriberCountText,
+                monthlyListenerCount = page.monthlyListenerCount,
+                palette = palette,
+            )
+        }
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = ARTIST_CONTENT_GUTTER),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.MoreVert,
+                contentDescription = stringResource(R.string.more),
+                tint = palette.onBackgroundVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            albumsShelf?.let { shelf ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.albums)) },
+                    onClick = {
+                        expanded = false
+                        onOpenShelf(shelf)
+                    },
+                )
+            }
+            singlesShelf?.let { shelf ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.singles_eps)) },
+                    onClick = {
+                        expanded = false
+                        onOpenShelf(shelf)
+                    },
+                )
+            }
+            if (onHideArtist != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.hide_artist)) },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.VisibilityOff, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onHideArtist()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** "1.2M" / "850K" — the same shape Spotify itself uses. */
+private fun compactCount(value: Long): String {
+    fun scaled(divisor: Long, suffix: String): String {
+        val unit = value.toDouble() / divisor
+        val text = if (unit >= 10) {
+            unit.roundToLong().toString()
+        } else {
+            String.format(Locale.US, "%.1f", unit).removeSuffix(".0")
+        }
+        return text + suffix
+    }
+    return when {
+        value >= 1_000_000_000 -> scaled(1_000_000_000, "B")
+        value >= 1_000_000 -> scaled(1_000_000, "M")
+        value >= 1_000 -> scaled(1_000, "K")
+        else -> value.toString()
+    }
+}
+
+@Composable
+private fun StatChip(icon: ImageVector, text: String, palette: ArtworkPalette) {    Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .lightweightLiquidGlass(

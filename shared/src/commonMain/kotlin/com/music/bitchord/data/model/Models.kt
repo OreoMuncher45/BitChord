@@ -22,8 +22,17 @@ data class ArtistRef(
 )
 
 /** A playable YouTube Music track. */
-data class Song(
-    val videoId: String,
+/**
+ * How much of a track YouTube says was generated with AI.
+ *
+ * The disclosure is not a normal catalogue field; it arrives as a player
+ * overlay action or a row badge. [UNKNOWN] is kept separate from [NONE] so
+ * callers can tell "said nothing" from "said nothing in particular" without
+ * guessing — strict filtering treats both as not labelled.
+ */
+enum class GenAiDisclosure { NONE, PARTLY, FULLY, UNKNOWN }
+
+data class Song(    val videoId: String,
     val title: String,
     val artist: String,
     val thumbnailUrl: String?,
@@ -119,6 +128,12 @@ data class Song(
     val playbackSourceType: PlaybackSourceType? = null,
     /** Browse id for an album, playlist, or other source page. */
     val playbackSourceId: String? = null,
+    /**
+     * YouTube's own Gen AI disclosure for this track, where the response said
+     * one. NONE is also the answer for "not stated"; the app never infers it
+     * from an artist name, title or genre.
+     */
+    val genAi: GenAiDisclosure = GenAiDisclosure.NONE,
 ) {
     /** Legacy derived property: true if and only if [queueTier] is [QueueTier.AUTOPLAY]. */
     val fromAutoplay: Boolean get() = queueTier == QueueTier.AUTOPLAY

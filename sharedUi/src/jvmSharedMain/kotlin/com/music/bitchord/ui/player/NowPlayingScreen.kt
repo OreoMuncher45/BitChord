@@ -29,6 +29,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -717,6 +718,8 @@ fun NowPlayingScreen(
     song: Song,
     /** Who selected this track in the active Listen Together session. */
     playedBy: String? = null,
+    /** Listener-pinned colours; null roles keep following the artwork. */
+    colors: PlayerColorOverrides = PlayerColorOverrides(),
     isPlaying: Boolean,
     isLoading: Boolean,
     /**
@@ -2152,6 +2155,9 @@ fun NowPlayingScreen(
         CompositionLocalProvider(
             LocalPlayerInk provides playerInk,
             LocalPlayerInkGlow provides playerInkGlow,
+            LocalPlayerAccent provides colors.accent,
+            LocalPlayerSeekbar provides colors.seekbar,
+            LocalPlayerText provides colors.text,
         ) {
         // Anchored to the sleeve's bottom edge, so the screen carries on in the
         // colours the artwork ended in rather than in a quantiser's idea of what
@@ -3408,7 +3414,7 @@ fun NowPlayingScreen(
                             label = "playerCredits",
                         ) {
                             val scrolling = scrolls()
-                            val ink = LocalPlayerInk.current
+                            val ink = LocalPlayerText.current ?: LocalPlayerInk.current
                             Column {
                                 MarqueeText(
                                     text = song.title,
@@ -3446,6 +3452,32 @@ fun NowPlayingScreen(
                                     startDelayMillis = if (titleOverflowing) MARQUEE_ARTIST_STAGGER_MS else 0L,
                                     onOpenArtist = onOpenArtist,
                                 )
+                                if (song.genAi != com.music.bitchord.data.model.GenAiDisclosure.NONE) {
+                                    // Deliberately a small outline chip rather than a
+                                    // button: the listener asked for transparency, not
+                                    // another control competing with the transport.
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .padding(top = 6.dp)
+                                            .border(
+                                                width = 1.dp,
+                                                color = ink.copy(alpha = 0.45f),
+                                                shape = RoundedCornerShape(6.dp),
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                                    ) {
+                                        Text(
+                                            text = if (song.genAi == com.music.bitchord.data.model.GenAiDisclosure.PARTLY) {
+                                                "AI · partly"
+                                            } else {
+                                                "AI"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = ink.copy(alpha = 0.75f),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

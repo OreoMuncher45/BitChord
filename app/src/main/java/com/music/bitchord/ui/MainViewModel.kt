@@ -25,6 +25,8 @@ import com.music.bitchord.data.lyrics.LyricLine
 import com.music.bitchord.data.lyrics.LyricsRepository
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.withoutBlockedArtists
+import com.music.bitchord.data.settings.withoutBlockedRecommendations
 import com.music.bitchord.data.innertube.Innertube
 import com.music.bitchord.data.innertube.PlaybackTracker
 import com.music.bitchord.data.innertube.StreamResolver
@@ -1700,18 +1702,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         identity == listenerKey() && generation == homeLoadGeneration.get()
 
     private fun publishHomeShelves(shelves: List<HomeShelf>, prepend: Boolean = false) {
+        val visible = shelves.withoutBlockedArtists()
         val existing = (_home.value as? UiState.Success)?.data.orEmpty()
         if (prepend) {
             // YouTube's core home can also contain a stale "Recently played"
             // shelf. The dedicated history endpoint wins and replaces it.
-            val replacing = shelves.map { it.title.lowercase(Locale.ROOT) }.toSet()
+            val replacing = visible.map { it.title.lowercase(Locale.ROOT) }.toSet()
             homeSeenTitles.addAll(replacing)
-            _home.value = UiState.Success(shelves + existing.filterNot {
+            _home.value = UiState.Success(visible + existing.filterNot {
                 it.title.lowercase(Locale.ROOT) in replacing
             })
             return
         }
-        val added = shelves.withoutRepeatsOf(existing)
+        val added = visible.withoutRepeatsOf(existing)
             .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
         if (added.isNotEmpty()) _home.value = UiState.Success(existing + added)
     }
@@ -1723,7 +1726,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (identity != listenerKey()) return@onSuccess
             homeContinuation = feed.continuation
             homeSeenTitles.clear()
-            val shelves = feed.shelves.withoutRepeatsOf(emptyList())
+            val shelves = feed.shelves.withoutBlockedArtists().withoutRepeatsOf(emptyList())
                 .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
             if (shelves.isNotEmpty()) _home.value = UiState.Success(shelves)
         }
@@ -1746,7 +1749,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             YtMusicRepository.moreHome(token).onSuccess { feed ->
                 if (identity == listenerKey()) {
                     val existing = (_home.value as? UiState.Success)?.data ?: emptyList()
-                    val added = feed.shelves.withoutRepeatsOf(existing)
+                    val added = feed.shelves.withoutBlockedArtists().withoutRepeatsOf(existing)
                         .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
                     // A page with nothing new signals the feed has looped back on
                     // itself rather than run dry with a token still attached —
@@ -2105,7 +2108,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // one. Only fall back to a spinner with neither.
                 val exact = searchCache.get(key)
                 val cached = exact?.rows ?: prefixMatch(request.query, request.filter)
-                _results.value = cached?.let { UiState.Success(it) } ?: UiState.Loading
+                _results.value = cached?.let { UiState.Success(it.withoutBlockedArtists()) }
+                    ?: UiState.Loading
                 if (exact != null) {
                     searchSession = SearchSession(key, request.requestId, request.filter, exact.continuation)
                     return@collectLatest
@@ -2148,6 +2152,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 next.onSuccess { page ->
                     val current = (_results.value as? UiState.Success)?.data.orEmpty()
                     val merged = (current + page.rows).distinctBy(::searchResultKey)
+                        .withoutBlockedArtists()
                     searchCache.put(session.key, SearchCacheEntry(merged, page.continuation))
                     searchSession = session.copy(continuation = page.continuation)
                     _results.value = UiState.Success(merged)
@@ -2226,7 +2231,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return@collectLatest
                 }
                 // Cap results so the dropdown doesn't grow unbounded.
-                _typeaheadResults.value = result?.rows.orEmpty().take(TYPEAHEAD_MAX_RESULTS)
+                _typeaheadResults.value = result?.rows.orEmpty()
+                    .withoutBlockedArtists()
+                    .take(TYPEAHEAD_MAX_RESULTS)
             }
     }
 
@@ -2236,7 +2243,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         key: String,
         requestId: Long,
     ): UiState<List<SearchResult>> {
-        val rows = page.rows
+        val rows = page.rows.withoutBlockedArtists()
         if (rows.isEmpty()) return UiState.Error(text(R.string.no_results))
         searchCache.put(key, SearchCacheEntry(rows, page.continuation))
         searchSession = SearchSession(key, requestId, _filter.value, page.continuation)
@@ -2667,12 +2674,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         state !is UiState.Error)
                 ) {
                     it.copy(
-                        songs = state,
-                        sections = sections,
+                        songs = state.withoutBlockedArtists(),
+                        sections = sections.withoutBlockedArtists(),
                         thumbnailUrl = artwork ?: it.thumbnailUrl,
                         title = name ?: it.title,
                         subtitle = credit ?: it.subtitle,
-                        suggestedSongs = suggested,
+                        suggestedSongs = suggested.withoutBlockedArtists(),
                         library = library,
                         description = description,
                         subscriberCountText = subscriberCountText,
@@ -2926,9 +2933,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val current = stack[index]
                 val existing = (current.songs as? UiState.Success)?.data ?: return@launch
                 val known = existing.mapTo(HashSet()) { it.videoId }
-                val added = fetched.songs
-                    .filter { known.add(it.videoId) }
-                    .withArtwork(artworkFallback)
+                val rawAdded = fetched.songs.filter { known.add(it.videoId) }
+                val added = rawAdded.withoutBlockedArtists().withArtwork(artworkFallback)
                 if (browseId == YtMusicRepository.LIKED_MUSIC && added.isNotEmpty()) {
                     LikedCache.mergeBottom(listenerKey(), added)
                 }
@@ -2937,12 +2943,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // see parsePlaylistShelf — so they're tracked separately
                 // rather than folded into [known].
                 val knownSuggested = current.suggestedSongs.mapTo(HashSet()) { it.videoId }
-                val addedSuggested = fetched.suggested
+                val rawSuggested = fetched.suggested
                     .filter { it.videoId !in known && knownSuggested.add(it.videoId) }
-                    .withArtwork(artworkFallback)
+                val addedSuggested = rawSuggested.withoutBlockedArtists().withArtwork(artworkFallback)
                 // A page with nothing new on it means the feed has looped back
                 // rather than run dry with a token still attached.
-                if (added.isEmpty() && addedSuggested.isEmpty()) return@launch
+                if (rawAdded.isEmpty() && rawSuggested.isEmpty()) return@launch
                 _detailStack.value = stack.toMutableList().also {
                     it[index] = current.copy(
                         songs = UiState.Success(existing + added),
@@ -3449,20 +3455,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     suspend fun buildFlowQueue(limit: Int = FlowEngine.INITIAL_TRACKS): List<Song> {
         val lib = (_library.value as? UiState.Success)?.data
-        val favorites = lib?.likedSongs.orEmpty() + lib?.librarySongs.orEmpty()
-        val history = (_history.value as? UiState.Success)?.data
-            ?: YtMusicRepository.history().getOrNull().orEmpty()
+        val favorites = (lib?.likedSongs.orEmpty() + lib?.librarySongs.orEmpty())
+            .withoutBlockedArtists()
+        val history = ((_history.value as? UiState.Success)?.data
+            ?: YtMusicRepository.history().getOrNull().orEmpty())
+            .withoutBlockedArtists()
         val exclude = (favorites.map { it.videoId } + history.map { it.videoId }).toSet()
         val quickPicks = YtMusicRepository.quickPicks(exclude).getOrNull().orEmpty()
+            .withoutBlockedArtists()
+        // Hidden acts can also arrive inside the engine's own radio lookups, so
+        // the finished queue is filtered as well. Ask for a little extra so a
+        // mix does not come back short after that pass.
+        val buffer = if (AppSettings.blockedArtists.value.isEmpty()) 0 else 12
         return FlowEngine.buildInitialQueue(
             seeds = FlowEngine.SeedPool(favorites, history, quickPicks),
             likeStatuses = likeStatuses.value,
             bannedIds = FlowStore.bannedIds.value,
             skipCounts = FlowStore.skipCounts.value,
             config = FlowStore.config,
-            limit = limit,
+            limit = limit + buffer,
             genreOf = ::flowGenreOf,
-        )
+        ).withoutBlockedArtists().distinctBy { it.videoId }.take(limit)
     }
 
     fun refreshFlow(limit: Int = FlowEngine.INITIAL_TRACKS) {
@@ -3503,7 +3516,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     init {
         FlowStore.readSnapshot()?.let { (songs, builtAt) ->
             if (System.currentTimeMillis() - builtAt < FlowStore.FLOW_TTL_MS) {
-                _flowQueue.value = UiState.Success(songs)
+                val visible = songs.withoutBlockedArtists()
+                if (visible.isNotEmpty()) _flowQueue.value = UiState.Success(visible)
             }
         }
         maybeAutoRefreshFlow()
@@ -3568,6 +3582,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 for (seed in tail) {
                     if (out.size >= current.size + limit) break
                     val related = YtMusicRepository.radio(seed.videoId).getOrNull().orEmpty()
+                        .withoutBlockedArtists()
                         .filterNot { c ->
                             FlowEngine.isExcluded(
                                 c, FlowStore.bannedIds.value, likeStatuses.value,

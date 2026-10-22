@@ -338,6 +338,8 @@
     <string name="liquid_glass_intensity_subtitle">Scales the blur and refraction; lower is cheaper to render, which fixes glass stutter on low-end devices</string>
     <string name="folding_nav_bar">Folding nav bar</string>
     <string name="folding_nav_bar_subtitle">Convx-style bar that folds into a single row and searches inline. Off restores the previous glass bar.</string>
+    <string name="show_flow_on_home">Show Flow on Home</string>
+    <string name="show_flow_on_home_subtitle">Adds the Flow card to the top of Home. Quick Picks and the rest of the feed stay put.</string>
     <string name="full_screen_cover_art">Full-screen cover art</string>
     <string name="legacy_mesh_gradient">Legacy mesh gradient</string>
     <string name="legacy_mesh_gradient_subtitle">Brings back the drifting colour blobs behind the player from v1.5</string>
@@ -1222,4 +1224,43 @@
     <string name="diagnostics_empty">No errors recorded yet. Play something first — failures land here.</string>
     <string name="diagnostics_refresh">Refresh</string>
     <string name="on">On</string>
+
+    <!-- Blocked artists -->
+    <string name="blocked_artists">Blocked artists</string>
+    <string name="blocked_artists_subtitle">Hidden from search, Flow, Home and recommendations</string>
+    <string name="blocked_artists_count">%1$d hidden</string>
+    <string name="blocked_artists_search">Search blocked artists</string>
+    <string name="blocked_artists_empty">No blocked artists yet. Hide an artist from the menu on its page.</string>
+    <string name="unblock">Unblock</string>
+    <string name="unblocked_artist">Unblocked %1$s</string>
+    <string name="hide_artist">Hide artist</string>
+    <string name="singles_eps">Singles &amp; EPs</string>
+
+    <!-- Customisation -->
+    <string name="customization">Customization</string>
+    <string name="customization_subtitle">Colours, Home order and the interface shell</string>
+    <string name="custom_now_playing">Now Playing</string>
+    <string name="custom_home">Home</string>
+    <string name="custom_library">Library</string>
+    <string name="custom_theme">Theme</string>
+    <string name="custom_now_playing_help">Leave a role on Automatic to follow the artwork. Colours picked here apply only to the player.</string>
+    <string name="custom_buttons">Buttons, icons and controls</string>
+    <string name="custom_seekbar">Seek bar and volume bar</string>
+    <string name="custom_text">Song title and artist</string>
+    <string name="custom_recent">Recent colours</string>
+    <string name="custom_reset_colors">Reset all player colours</string>
+    <string name="custom_use_artwork">Use artwork</string>
+    <string name="custom_home_help">Move the categories that appear on Home. Flow can also be hidden without affecting Quick Picks.</string>
+    <string name="custom_home_empty">Home categories appear here once the feed has loaded.</string>
+    <string name="custom_reset_order">Reset to YouTube\'s order</string>
+    <string name="custom_library_help">How the Library presents its shelves.</string>
+    <string name="custom_library_sort">Show-all order</string>
+    <string name="custom_theme_help">Switch between the BitChord and Classipod shells, and pick a light or dark theme.</string>
+    <string name="change">Change</string>
+    <string name="sort_title_asc">Title A–Z</string>
+    <string name="sort_title_desc">Title Z–A</string>
+    <string name="block_ai_music">Never play AI music</string>
+    <string name="block_ai_music_subtitle">Skips and hides tracks YouTube labels as generated with AI</string>
+    <string name="spotify_monthly_listeners">Spotify · %1$s monthly listeners</string>
+    <string name="spotify_followers">Spotify · %1$s followers</string>
 </resources>

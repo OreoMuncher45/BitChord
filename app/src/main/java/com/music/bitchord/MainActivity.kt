@@ -723,6 +723,11 @@ private fun BitChordApp(
     // Flow: unlock gate + temp playlist + tuner.
     var showFlow by remember { mutableStateOf(false) }
     val flowStatus by viewModel.flowStatus.collectAsStateWithLifecycle()
+    val homeFlowVisible by AppSettings.homeFlowVisible.collectAsStateWithLifecycle()
+    val homeShelfOrder by AppSettings.homeShelfOrder.collectAsStateWithLifecycle()
+    val playerAccentColor by AppSettings.playerAccentColor.collectAsStateWithLifecycle()
+    val playerSeekbarColor by AppSettings.playerSeekbarColor.collectAsStateWithLifecycle()
+    val playerTextColor by AppSettings.playerTextColor.collectAsStateWithLifecycle()
     val flowQueueState by viewModel.flowQueue.collectAsStateWithLifecycle()
     val flowLoading by viewModel.flowLoading.collectAsStateWithLifecycle()
     val flowSaved by viewModel.flowSaved.collectAsStateWithLifecycle()
@@ -853,24 +858,37 @@ private fun BitChordApp(
     // is playing, not a borrowed album, and a blank captioned tile is what
     // reads as broken. Empty queue, empty art, same tile as before.
     val flowArt = (flowQueueState as? UiState.Success)?.data?.firstOrNull()?.thumbnailUrl
-    val homeWithFlow by remember(homeState, flowStatus, flowArt) {
+    val homeWithFlow by remember(homeState, flowStatus, flowArt, homeFlowVisible, homeShelfOrder) {
         derivedStateOf {
             val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
-            if (!flowStatus.unlocked) return@derivedStateOf homeState
-            val flowShelf = HomeShelf(
-                title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
-                items = listOf(
-                    ShelfItem(
-                        title = "Flow",
-                        subtitle = "Your personal soundtrack · endless",
-                        thumbnailUrl = flowArt,
-                        videoId = null,
-                        browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+            val withFlow = if (flowStatus.unlocked && homeFlowVisible &&
+                base.none { it.title == com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE }
+            ) {
+                listOf(
+                    HomeShelf(
+                        title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
+                        items = listOf(
+                            ShelfItem(
+                                title = "Flow",
+                                subtitle = "Your personal soundtrack · endless",
+                                thumbnailUrl = flowArt,
+                                videoId = null,
+                                browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+                            ),
+                        ),
                     ),
-                ),
-            )
-            if (base.any { it.title == flowShelf.title }) homeState
-            else UiState.Success(listOf(flowShelf) + base)
+                ) + base
+            } else {
+                base
+            }
+            if (homeShelfOrder.isEmpty()) {
+                UiState.Success(withFlow)
+            } else {
+                // Stable sort: listed titles take their chosen rank, anything
+                // YouTube added later keeps its feed position after them.
+                val rank = homeShelfOrder.withIndex().associate { (i, title) -> title to i }
+                UiState.Success(withFlow.sortedBy { rank[it.title] ?: Int.MAX_VALUE })
+            }
         }
     }
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
@@ -2420,6 +2438,11 @@ private fun BitChordApp(
         NowPlayingScreen(
             song = displayedSong,
             playedBy = playedBy,
+            colors = com.music.bitchord.ui.player.PlayerColorOverrides(
+                accent = playerAccentColor?.let { Color(it) },
+                seekbar = playerSeekbarColor?.let { Color(it) },
+                text = playerTextColor?.let { Color(it) },
+            ),
             accountName = account?.name,
             windowWidth = windowWidth,
             windowHeight = windowHeight,
@@ -3123,6 +3146,8 @@ private fun BitChordApp(
                             },
                             onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
+                            homeShelfTitles = (homeState as? UiState.Success)?.data
+                                ?.map { it.title }.orEmpty(),
                             contentPadding = listPadding,
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
@@ -3286,6 +3311,14 @@ private fun BitChordApp(
                             },
                             onArtistClick = { id, name ->
                                 viewModel.openDetail(id, name, "Artist", null, BrowseType.ARTIST)
+                            },
+                            // Hiding is a local preference, not an account
+                            // action: the page is popped so the act stops
+                            // being in front of the listener immediately,
+                            // and every filtered surface picks it up at once.
+                            onHideArtist = {
+                                AppSettings.blockArtist(page.browseId, page.title)
+                                viewModel.closeDetail()
                             },
                             onAddSuggested = { song -> viewModel.addSuggestedSong(page.browseId, song) },
                             // Saving is an account action, so it isn't offered to a

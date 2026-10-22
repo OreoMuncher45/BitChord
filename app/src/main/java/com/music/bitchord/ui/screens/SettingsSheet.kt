@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.Gradient
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewWeek
 import androidx.compose.material.icons.rounded.VolumeOff
@@ -185,6 +187,7 @@ fun SettingsScreen(
     onListenTogether: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
+    homeShelfTitles: List<String> = emptyList(),
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -210,6 +213,8 @@ fun SettingsScreen(
     val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
     val liquidGlassIntensity by AppSettings.liquidGlassIntensity.collectAsStateWithLifecycle()
     val foldingNavBar by AppSettings.foldingNavBar.collectAsStateWithLifecycle()
+    val homeFlowVisible by AppSettings.homeFlowVisible.collectAsStateWithLifecycle()
+    val blockedArtists by AppSettings.blockedArtists.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -291,6 +296,8 @@ fun SettingsScreen(
     var importStatus by remember { mutableStateOf<String?>(null) }
     var confirmImport by remember { mutableStateOf(false) }
     var confirmClearSongCache by remember { mutableStateOf(false) }
+    var showBlockedArtists by remember { mutableStateOf(false) }
+    var showCustomization by remember { mutableStateOf(false) }
     var showPerformanceWarning by remember { mutableStateOf(false) }
     var showPerformanceConfirmation by remember { mutableStateOf(false) }
     val backupScope = rememberCoroutineScope()
@@ -807,6 +814,15 @@ fun SettingsScreen(
         }
 
         SearchableSettingsGroup(search, header = stringResource(R.string.appearance)) {
+            val customizationTitle = stringResource(R.string.customization)
+            row(customizationTitle, "custom", "style", "color", "colour", "home", "theme") {
+                SettingsRow(
+                    icon = Icons.Rounded.Palette,
+                    title = customizationTitle,
+                    subtitle = stringResource(R.string.customization_subtitle),
+                    onClick = { showCustomization = true },
+                )
+            }
             val themeTitle = stringResource(R.string.theme)
             row(themeTitle, "dark mode", "light mode") {
                 SettingsRow(icon = Icons.Rounded.Brightness4, title = themeTitle)
@@ -848,6 +864,38 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setReduceAnimation(!reduceAnimation) },
+                )
+            }
+            val homeFlowVisibleTitle = stringResource(R.string.show_flow_on_home)
+            row(homeFlowVisibleTitle, "flow", "home", "hide") {
+                SettingsRow(
+                    icon = Icons.Rounded.Home,
+                    title = homeFlowVisibleTitle,
+                    subtitle = stringResource(R.string.show_flow_on_home_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = homeFlowVisible,
+                            onCheckedChange = AppSettings::setHomeFlowVisible,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setHomeFlowVisible(!homeFlowVisible) },
+                )
+            }
+            val blockedArtistsTitle = stringResource(R.string.blocked_artists)
+            row(blockedArtistsTitle, "block", "hide", "artist") {
+                SettingsRow(
+                    icon = Icons.Rounded.VisibilityOff,
+                    title = blockedArtistsTitle,
+                    subtitle = if (blockedArtists.isEmpty()) {
+                        stringResource(R.string.blocked_artists_subtitle)
+                    } else {
+                        stringResource(R.string.blocked_artists_count, blockedArtists.size)
+                    },
+                    onClick = { showBlockedArtists = true },
                 )
             }
             val reduceDynamicBlurTitle = stringResource(R.string.reduce_dynamic_blur)
@@ -1567,6 +1615,17 @@ fun SettingsScreen(
                 .padding(top = 24.dp, bottom = 8.dp),
         )
         }
+    }
+
+    if (showBlockedArtists) {
+        BlockedArtistsSheet(onDismiss = { showBlockedArtists = false })
+    }
+
+    if (showCustomization) {
+        CustomizationSheet(
+            homeShelfTitles = homeShelfTitles,
+            onDismiss = { showCustomization = false },
+        )
     }
 
     picking?.let { target ->

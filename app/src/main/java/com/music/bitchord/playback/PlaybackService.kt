@@ -7765,7 +7765,8 @@ class PlaybackService : MediaLibraryService() {
                                 emptyList()
                             }
                             songs.forEach { songCache[it.videoId] = it }
-                            songs.map { it.toMediaItem() }
+                            songs.filterNot(AppSettings::isSongBlocked)
+                                .map { it.toMediaItem(parentBrowseId = parentId) }
                         }
                         parentId.startsWith("browse:") -> {
                             val browseId = parentId.removePrefix("browse:")
@@ -7777,7 +7778,8 @@ class PlaybackService : MediaLibraryService() {
                                 emptyList()
                             }
                             songs.forEach { songCache[it.videoId] = it }
-                            songs.map { it.toMediaItem() }
+                            songs.filterNot(AppSettings::isSongBlocked)
+                                .map { it.toMediaItem(parentBrowseId = parentId) }
                         }
                         else -> {
                             val cachedSong = songCache[parentId]
@@ -7959,6 +7961,10 @@ class PlaybackService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future(Dispatchers.IO) {
+            // Android Auto hands over the tapped song, not the playlist around
+            // it. Rebuild the folder so the queue follows the playlist's own
+            // order and AutoPlay only starts after its last track.
+            expandPlaylistContext(mediaItems, startIndex)?.let { return@future it }
             val resolved = resolveMediaItems(mediaItems)
             val validIndex = startIndex.coerceIn(0, (resolved.size - 1).coerceAtLeast(0))
             MediaSession.MediaItemsWithStartPosition(
@@ -7974,6 +7980,37 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: List<MediaItem>,
         ): ListenableFuture<List<MediaItem>> = scope.future(Dispatchers.IO) {
             resolveMediaItems(mediaItems)
+        }
+
+        /**
+         * Rebuilds the browsable folder a handed-over Auto item came from.
+         *
+         * Auto's usual shape is a single playable child, which is a queue of
+         * one and therefore indistinguishable from a station: AutoPlay would
+         * append suggestions and the second tap played one of those instead of
+         * the playlist's own next track. Every child listed from a playlist or
+         * browse folder carries [EXTRA_AUTO_PARENT], so the folder can be read
+         * back and the tapped song found in it.
+         *
+         * Returns null when there is no single parent, or when the incoming
+         * list is already the full folder — the caller then resolves it as-is.
+         */
+        private suspend fun expandPlaylistContext(
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+        ): MediaSession.MediaItemsWithStartPosition? {
+            val parents = mediaItems
+                .mapNotNull { it.mediaMetadata.extras?.getString(EXTRA_AUTO_PARENT) }
+                .distinct()
+            if (parents.size != 1) return null
+            val parent = parents.first()
+            val tapped = mediaItems
+                .getOrNull(startIndex.coerceIn(0, (mediaItems.size - 1).coerceAtLeast(0)))
+                ?.mediaId
+            val full = resolveMediaItems(listOf(MediaItem.Builder().setMediaId(parent).build()))
+            if (full.size <= 1 || full.size < mediaItems.size) return null
+            val index = full.indexOfFirst { it.mediaId == tapped }.takeIf { it >= 0 } ?: 0
+            return MediaSession.MediaItemsWithStartPosition(ImmutableList.copyOf(full), index, 0L)
         }
 
         private suspend fun resolveMediaItems(mediaItems: List<MediaItem>): List<MediaItem> {
@@ -8175,7 +8212,7 @@ class PlaybackService : MediaLibraryService() {
                 is SearchResult.TopTrack -> it.song
                 else -> null
             }
-        }.distinctBy { it.videoId }
+        }.filterNot(AppSettings::isSongBlocked).distinctBy { it.videoId }
         val browses = results.mapNotNull { (it as? SearchResult.Browse)?.item }
             .distinctBy { it.browseId }
         return songs to browses
