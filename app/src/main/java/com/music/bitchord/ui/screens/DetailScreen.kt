@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -399,6 +400,12 @@ fun DetailScreen(
     // photograph, and neither is something a label publishes a canvas for.
     val canvasEnabled by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
     val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsStateWithLifecycle()
+    // Which acts the listener has marked as AI. Collected here so toggling the
+    // menu item updates the chip on the same screen without a reload.
+    val aiArtists by AppSettings.aiArtists.collectAsStateWithLifecycle()
+    val artistIsAi = remember(page.browseId, page.title, aiArtists) {
+        AppSettings.isArtistAi(page.browseId, page.title)
+    }
     // The credit line the header shows is the artist as far as the catalogue
     // services are concerned. A browse card's subtitle sometimes omits it, in
     // which case the tracks themselves know who it is.
@@ -511,8 +518,12 @@ fun DetailScreen(
                         albumsShelf = albumsShelf,
                         singlesShelf = singlesShelf,
                         spotifyStats = spotifyStats,
+                        isAiArtist = artistIsAi,
                         onOpenShelf = onActiveShelfChange,
                         onHideArtist = onHideArtist,
+                        onToggleAiArtist = {
+                            AppSettings.toggleArtistAi(page.browseId, page.title)
+                        },
                     )
                 }
             }
@@ -1528,12 +1539,14 @@ private fun ArtistMetaRow(
     albumsShelf: HomeShelf?,
     singlesShelf: HomeShelf?,
     spotifyStats: SpotifyArtistStats?,
+    isAiArtist: Boolean,
     onOpenShelf: (HomeShelf) -> Unit,
     onHideArtist: (() -> Unit)?,
+    onToggleAiArtist: (() -> Unit)?,
 ) {
     if (page.subscriberCountText == null && page.monthlyListenerCount == null &&
         albumsShelf == null && singlesShelf == null && onHideArtist == null &&
-        spotifyStats == null
+        spotifyStats == null && !isAiArtist && onToggleAiArtist == null
     ) return
 
     var expanded by remember { mutableStateOf(false) }
@@ -1544,6 +1557,13 @@ private fun ArtistMetaRow(
                 .padding(start = ARTIST_CONTENT_GUTTER, end = 56.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (isAiArtist) {
+                StatChip(
+                    icon = Icons.Rounded.AutoAwesome,
+                    text = stringResource(R.string.ai_generated),
+                    palette = palette,
+                )
+            }
             spotifyStats?.let { stats ->
                 StatChip(
                     icon = Icons.Rounded.GraphicEq,
@@ -1598,6 +1618,24 @@ private fun ArtistMetaRow(
                     onClick = {
                         expanded = false
                         onOpenShelf(shelf)
+                    },
+                )
+            }
+            if (onToggleAiArtist != null) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (isAiArtist) R.string.remove_ai_mark else R.string.mark_as_ai,
+                            ),
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onToggleAiArtist()
                     },
                 )
             }

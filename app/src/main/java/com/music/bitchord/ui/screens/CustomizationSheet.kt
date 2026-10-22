@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +50,7 @@ import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.AppUi
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
+import kotlin.math.roundToInt
 
 /**
  * The Customisation hub: one sheet with the four surfaces that have colour or
@@ -104,6 +107,7 @@ private fun NowPlayingCustomization() {
     val text by AppSettings.playerTextColor.collectAsStateWithLifecycle()
     val recents by AppSettings.recentPlayerColors.collectAsStateWithLifecycle()
     val blockAi by AppSettings.blockAiMusic.collectAsStateWithLifecycle()
+    val smoothness by AppSettings.transportSmoothness.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<AppSettings.PlayerColorTarget?>(null) }
 
     Column(Modifier.fillMaxWidth()) {
@@ -128,6 +132,9 @@ private fun NowPlayingCustomization() {
             value = text,
             onPick = { picking = AppSettings.PlayerColorTarget.TEXT },
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        TransportSmoothnessSetting(smoothness)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -198,6 +205,59 @@ private fun NowPlayingCustomization() {
             },
             onDismiss = { picking = null },
         )
+    }
+}
+
+@Composable
+private fun TransportSmoothnessSetting(value: Float) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Rounded.Tune,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.custom_transport_smoothness),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(R.string.custom_transport_smoothness_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "${(value * 100).roundToInt()}%",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = AppSettings::setTransportSmoothness,
+            valueRange = 0f..1f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 38.dp, top = 2.dp),
+        )
+        TextButton(
+            onClick = {
+                AppSettings.setTransportSmoothness(AppSettings.DEFAULT_TRANSPORT_SMOOTHNESS)
+            },
+            modifier = Modifier.padding(start = 30.dp),
+        ) {
+            Icon(Icons.Rounded.RestartAlt, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.custom_smoothness_reset))
+        }
     }
 }
 

@@ -21,8 +21,9 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
 - Do not touch `bitchord-lossless-shitass`.
 - Do not restore the removed player glyph halo/radio discs. `LocalPlayerInkGlow`
   is for text shadows only.
-- Keep `versionCode 75 / versionName 2.2.13` until the overhaul is ready for a
-  release decision. Do not bump or publish without being asked.
+- Test builds currently carry `versionCode 77 / versionName 2.2.15` so they
+  install over the last delivered build (`76 / 2.2.14`). Do not tag or publish
+  while the release gate is closed. Bump again only for a new test artifact.
 - No emulator/adb on this machine. User verifies APKs on a real device.
 - Build locally with the QEMU workaround described under **Build commands**.
   Restoring qemu 4.2.1 breaks the NDK build.
@@ -31,9 +32,13 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
 
 - v2.2.13 is already released. Do not redo icon, halo, nav, Qobuz, Octave, or
   method-size work as part of the overhaul.
-- `BitChordApp` method-size headroom is only 1,338 bytes after extracting
-  `QobuzUnlockHost`, `WebSessionHost`, and `DiscordLoginHost`. Any sizable new
-  UI must go in its own composable/file, not inline into `BitChordApp`.
+- `BitChordApp` is effectively at the JVM 64 KB method limit. Extracting
+  `QobuzUnlockHost`, `WebSessionHost`, and `DiscordLoginHost` bought 1,338 bytes
+  at the time, but later feature work consumed most of it. The JamesDSP Settings
+  entry fits; adding the player-menu state/host did not and failed compilation
+  with `MethodTooLargeException`. Any new UI must go in its own composable/file,
+  and the player shell needs extracting before another root-level sheet is
+  added.
 - Custom audio is already in-process Float32:
   `PrecisionAudioSink` -> `DspChain` -> built-in processors. This is the correct
   insertion point for JamesDSP; no root and no internal audio capture are needed
@@ -53,8 +58,11 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
    - Process only BitChord's decoded PCM. Do not use root, Magisk, internal
      audio capture, or system-wide `AudioEffect` hooking.
    - Entry points:
-     - Now Playing three-dot/menu.
-     - Settings, separately, under Playback beside Equalizer.
+     - Settings, under Playback beside Equalizer: implemented and shipping in
+       the next test artifact.
+     - Now Playing three-dot/menu: deferred until `BitChordApp` is split. It
+       is at the JVM method-size limit; adding this host and state overflowed
+       it. Do not inline it back.
    - Ship an actual control screen. Do not make this a dead toggle or a link that
      opens another app.
 
@@ -100,133 +108,187 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
 
 ## Workstream A: JamesDSP rootless engine
 
-### A1. Feasibility and license gate
+**Status 2026-10-22:** implemented in source and wired into the debug build.
+The next CI artifact is the first device test. No tag and no public release:
+the licence gate in A1 is still open, so this remains an early-access test
+build only.
 
-- Upstream engine: `james34602/JamesDSPManager`, commit
-  `5aed6a4a9a4cb109e2d8246e103bb1578cb83cfb` (verified at plan creation).
-- Native API already exposes interleaved Float32 processing:
-  `JamesDSPInit`, `JamesDSPGlobalMemoryAllocation`,
-  `JamesDSPGlobalMemoryDeallocation`, `JamesDSPGetMutexStatus`,
-  `JamesDSPSetSampleRate`, and `processFloatMultiplexd`.
-- RootlessJamesDSP proves the API can run on Android without root, but its
-  system-wide internal-capture service is **not** what we need. We only need its
-  native wrapper/API pattern.
-- `Main/LICENSE` in JamesDSPManager is GNU GPL v2. BitChord is GPLv3. Before a
-  public release, resolve compatibility. Practical options:
-  - confirm the relevant source is effectively GPLv2-or-later;
-  - keep the engine in a clearly separable optional component with complete
-    corresponding source and license notices;
-  - or choose a GPLv3-compatible engine implementation.
-  Do not silently vendor it without a license notice. This is a release gate,
-  not a reason to skip local development.
+### A1. Why this architecture
 
-### A2. Vendor native sources
+BitChord already decodes every stream to interleaved Float32 before Media3's
+AudioTrack sink (`PrecisionAudioSink -> DspChain`). JamesDSP therefore runs
+**in-process on BitChord's own playback**, not through AudioRecord, root,
+Magisk, or a system `AudioEffect`. That gives exactly the scope asked for:
+BitChord's music, no other app's audio, no capture permission, no root.
 
-Preferred layout:
+The trade is deliberate: this is not Rootless JamesDSP's system-wide capture
+service. It is the same engine fed by a different source. v1 therefore exposes
+the effects that fit a per-track music chain (bass, width, tube, reverb,
+pre-gain, limiter); the convolver file picker, Viper DDC profiles and live-prog
+editor are not exposed yet.
+
+### A2. License gate (open, blocks public release)
+
+- Vendored engine: `ThePBone/JamesDSPManager`, branch `extensions`, commit
+  `1b9f89dbd4b332a07724beb41d58bc2ffcb05395`, taken via Rootless JamesDSP.
+- The engine's `Main/LICENSE` is **GPLv2** text. BitChord is GPLv3. GPLv2-only
+  and GPLv3 are not compatible for a combined work, so this cannot be treated
+  as cleared for a public release just because Rootless JamesDSP ships it.
+- The engine source carries no per-file "or later" grant. Do not assume one.
+- Options before public release, in order of preference:
+  1. Obtain a written GPLv2-or-later / GPLv3 permission from the engine's
+     copyright holders (ThePBone / james34602 and contributors).
+  2. Replace the engine with a GPLv3-compatible implementation, keeping the
+     same `JamesDspProcessor` interface so the UI and chain do not change.
+  3. Keep JamesDSP as a separately distributed optional component/process with
+     arm's-length communication and its own complete source offer. This is
+     much more work and worse latency; do not pretend it is a one-line fix.
+- Until one of those is done: artifact-only builds for the paying early-access
+  group, no GitHub Release, no version tag. `NOTICE` and
+  `app/src/main/cpp/jamesdsp/NOTICE.md` record the origin and the unresolved
+  version question rather than hiding it.
+
+### A3. Vendored layout
 
 ```text
 app/src/main/cpp/jamesdsp/
-  libjamesdsp/                 # pinned upstream engine sources
-  jamesdsp_jni.cpp             # our JNI bridge
-  CMakeLists.txt               # or add sources to app/src/main/cpp/CMakeLists.txt
-  LICENSE.libjamesdsp          # GPLv2 text
-  NOTICE.md                    # origin, commit, modifications
+  libjamesdsp/          # pinned engine sources (84 .c files, ~5.3 MB)
+  cpthread.c/.h         # engine's adjacent platform shim
+  jni/JamesDspJni.cpp   # BitChord JNI shim, public jdsp_header API only
+  CMakeLists.txt        # static engine + one shared JNI library
+  LICENSE               # upstream GPLv2 text
+  NOTICE.md             # origin, commit, scope, update instructions
 ```
 
-- Keep the engine source in-tree/subtree so CI does not depend on recursive
-  submodules. Source size is about 5.4 MB.
-- Do not overwrite existing `bitchord_analysis`, `bitchord_dsd`, or
-  `bitchord_dst` targets. Add a separate `bitchord_jamesdsp` target and link it.
-- Compile as C with `-O2`/`-std=gnu11`; preserve 16 KB page alignment with
-  `-Wl,-z,max-page-size=16384`.
-- Include `armeabi-v7a`, `arm64-v8a`, and `x86_64` (project split set).
-- Add license/notice to the app's open-source notices if present.
+- `jamesdsp` is a static library; `bitchord_jamesdsp` is the only shared
+  library and contains the JNI shim. The APK does not need a second .so lookup.
+- CMake adds it with `add_subdirectory(jamesdsp)`; existing
+  `bitchord_analysis`, `bitchord_dsd`, and `bitchord_dst` targets are untouched.
+- Compile flags: `-O3 -ffast-math -std=gnu11`, 16 KB max page size.
+- Clang 18 rejects the engine's pre-standard function-pointer declarations.
+  The build pins `-Wno-incompatible-function-pointer-types` and the related
+  old-C warnings. These are source compatibility flags, not DSP changes.
+- ABI set follows the app: `armeabi-v7a`, `arm64-v8a`, `x86_64`.
 
-### A3. JNI and Kotlin bridge
+### A4. JNI and Kotlin bridge
 
-Create a narrow bridge, not a copy of RootlessJamesDSP:
+Native entry points in `JamesDspJni.cpp`:
 
-- `app/src/main/cpp/jamesdsp/jamesdsp_jni.cpp`
-  - `nativeCreate(maxFrames, sampleRate) -> Long`
-  - `nativeDestroy(handle)`
-  - `nativeConfigure(handle, sampleRate, channels, maxFrames)`
-  - `nativeProcess(handle, FloatArray, frameCount, channels)` in place, or a
-    direct-buffer variant to avoid array copies.
-  - configuration setters for the controls we expose.
-- `app/src/main/java/com/music/bitchord/playback/jamesdsp/JamesDspEngine.kt`
-  - owns the native handle.
-  - serializes configuration plus `process` calls.
-  - bypasses cleanly when disabled or handle is invalid.
-- Prefer `GetPrimitiveArrayCritical`/direct `ByteBuffer` over copying a
-  `FloatArray` every audio block. `AudioBlock.samples` is interleaved Float32.
-- One engine instance per player (A/B), because crossfade keeps two players
-  alive. Both must be configured and freed with the service.
-- Do not call JNI config setters from the audio thread while processing. Post
-  changes to the audio thread or guard with the engine mutex.
+- `nativeCreate(sampleRate, maxBlockFrames) -> Long`
+- `nativeDestroy(handle)`
+- `nativeApply(handle, bassEnabled, bassDb, stereoEnabled, stereoLevel,
+  tubeEnabled, tubeLevel, reverbPreset, preGainDb, limiterEnabled)`
+- `nativeProcess(handle, inputFloatArray, outputFloatArray, frames)`
 
-### A4. Playback integration
+Implementation notes:
 
-- Add `JamesDspProcessor : FloatAudioProcessor` in
-  `app/src/main/java/com/music/bitchord/playback/`.
-- Add it to
-  `app/src/main/java/com/music/bitchord/playback/audio/DspChain.kt` as the last
-  effect before loudness:
-  `sing -> spatial -> equalizer -> transition -> jamesDsp -> loudness`.
-  This keeps BitChord's loudness limiter final and avoids bypassing the existing
-  precision path.
-- Create `jamesDspA` and `jamesDspB` in `PlaybackService`, pass them through
-  `silenceSkippingRenderers(...)` and `DspChain(...)`, exactly like the
-  equalizer pair.
-- On `configure(sampleRate, channelCount)`, reconfigure the native engine.
-- On `flush()`/`reset()`, flush/reset native state so seeks and track changes do
-  not carry reverb/convolver tails.
-- Bypass for compressed/passthrough formats, matching the existing processors.
-- Observe `AppSettings` in `PlaybackService` and push config changes to both
-  engines.
-- Measure CPU and underruns on device; convolver/reverb are the expensive paths.
+- `JamesDSPGlobalMemoryAllocation()` is called once via `std::call_once`
+  (EEL's global tables), not once per engine. It is never torn down while the
+  process lives; that is safer than starting/stopping EEL during a crossfade.
+- The engine is stereo-interleaved. Two channels copy straight in/out. Mono is
+  duplicated to L/R and averaged back. More than two channels bypasses
+  JamesDSP rather than silently downmixing; the output stage still owns that.
+- One engine per player (A/B) because crossfade keeps two renders alive. They
+  are independent; sharing one would corrupt filter/reverb state.
+- `nativeApply` only touches effects whose settings changed. Reverb preset
+  changes rebuild its network, so they must not happen per block.
+- `JamesDspProcessor` publishes an immutable `JamesDspConfig` through `@Volatile`;
+  only the audio thread touches the handle. Configuration is applied at a block
+  boundary and throttled to 20 Hz while a slider is moving, so a drag cannot
+  rebuild reverb on every 5 ms buffer.
+- `flush()` / `reset()` destroy and recreate the handle. libjamesdsp has no
+  reset entry point, and recreating is the only reliable way to drop a reverb
+  tail on a seek. The next `process()` recreates it.
+- `JamesDspNative.available` lazily loads `libbitchord_jamesdsp`; the service
+  warms it on the settings thread when the switch is turned on, not on the
+  audio thread. A failed load logs once and bypasses.
+- Native function names match the Kotlin object
+  `com.music.bitchord.playback.audio.JamesDspNative`.
 
-### A5. Settings and control UI
+### A5. Playback integration
 
-Create a dedicated screen, not inline code in `BitChordApp`:
+`DspChain` order is now:
 
-- `app/src/main/java/com/music/bitchord/ui/screens/JamesDspScreen.kt`
-- Add `showJamesDsp`/route handling in `MainActivity` near the Equalizer route.
-- Add `onOpenJamesDsp` to `SettingsScreen` (Playback group, beside Equalizer).
-- Add an optional row to `SongActionsSheet`:
-  `onOpenJamesDsp: (() -> Unit)? = null`, shown when the menu is from Now
-  Playing. Wire it in `MainActivity`'s player call site, close the sheet, open
-  the screen.
-- Do not put this only behind Equalizer; the user asked for two separate entry
-  points.
+```text
+AudioBlock -> Sing -> Spatial -> Equalizer -> JamesDSP
+           -> TransitionFilter -> Loudness -> AudioBlock
+```
 
-MVP controls, in this order:
+- JamesDSP sits after the listener's equalizer and before the per-handoff
+  transition filter. The transition filter must have the last word on a
+  crossfade; loudness stays last so it levels the whole shaped signal.
+- `PlaybackService` owns `jamesDspProcessorA` / `jamesDspProcessorB` and passes
+  them through `buildPlayer` -> `silenceSkippingRenderers` -> `DspChain`, exactly
+  like the equalizer pair. All four player-construction sites
+  (initial A/B and float-output rebuild A/B) are wired.
+- The settings collector combines the seven flows into one `JamesDspConfig`
+  and updates both processors. Both sides of a crossfade therefore hear the
+  same settings.
+- With JamesDSP off, `process()` returns before touching a sample, preserving
+  the existing exactness contract.
 
-1. Master enable/disable and a clear bypass state.
-2. Output limiter threshold/release and post gain.
-3. Graphic/parametric EQ with reset and a small preset list.
-4. Bass boost and stereo enhancement.
-5. Crossfeed and reverb.
-6. Convolver impulse-response import, with file picker and progress/error state.
-7. Advanced compander/VDC/liveprog only after the basics are stable.
+### A6. Settings and UI
 
-Persistence:
+- Persisted in `AppSettings`: `jamesDspEnabled`, `jamesDspBassGainDb`,
+  `jamesDspStereoLevel`, `jamesDspTubeLevel`, `jamesDspReverbPreset`,
+  `jamesDspPreGainDb`, `jamesDspLimiter`. Defaults: off, all effects neutral,
+  limiter on.
+- `JamesDspSheet` (modal bottom sheet, separate file) has the master switch,
+  Bass boost 0-15 dB, Stereo width 0-100, Tube warmth 0-100, Pre-level trim
+  -15..+15 dB, Reverb choices (Off / Room / Hall / Large hall / Plate / Long),
+  limiter switch and Reset. The UI is disabled with an explanatory line when
+  the native library is unavailable.
+- Entry point for this test build: Settings -> Playback -> JamesDSP (beside
+  Equalizer).
+- The player ⋯ menu entry is **deferred**, not forgotten. `BitChordApp` is at
+  the JVM 64 KB method limit: adding a visibility state, a host call and a
+  `SongActionsSheet` callback pushed it over and failed compilation. Adding it
+  back requires extracting the player shell / song-actions host first; do not
+  inline it into `BitChordApp`. The `JamesDspSheet` itself is self-contained and
+  can be hosted from a smaller composable later.
+- New strings are present in all 15 locale files so `LocaleStringsTest` passes.
+  They are English fallbacks in the non-English files for this test build;
+  translating them is a follow-up, not a reason to break the locale test.
 
-- Add app-only settings in `app/src/main/java/com/music/bitchord/data/settings/AppSettings.kt`:
-  `jamesDspEnabled`, `jamesDspConfig` (JSON or typed keys), and preset name.
-- Include them in backup/restore and settings search.
-- Default off. Never process audio just because the screen was opened.
+### A7. Acceptance criteria and test steps
 
-### A6. JamesDSP acceptance criteria
+- [ ] All three ABIs configure, compile and package `libbitchord_jamesdsp.so`.
+- [ ] With JamesDSP off, precision passthrough/exactness tests still pass and
+      no native library is loaded by the audio thread.
+- [ ] With it on, every control is audible and survives track change, seek,
+      crossfade, app background/restart.
+- [ ] Both crossfade sides process independently: no doubled audio, no one-sided
+      effect, no dropout at handoff.
+- [ ] Mono file plays without channel duplication artefacts; >2 channels
+      bypass cleanly.
+- [ ] CPU/underruns measured on device; reverb and bass boost are the likely
+      hot paths.
+- [ ] No root, capture or new permission in the manifest.
+- [ ] Toggle off returns to the unprocessed path without leaving a tail.
 
-- Native libraries build for all three ABIs and load on device.
-- With JamesDSP off, output is bit-identical to the pre-change precision path
-  (same Unity passthrough contract as the other processors).
-- With JamesDSP on, EQ/gain changes are audible and survive track changes,
-  seeks, crossfades, and app restart.
-- Both crossfade players process independently; no doubled audio, dropouts, or
-  one-sided effects during a handoff.
-- Now Playing menu and Settings both open the same screen.
-- No root/Magisk/internal-capture permission is requested.
+Build:
+
+```bash
+./gradlew :app:assembleDevDebug   # local native + Kotlin check
+./gradlew :app:testDevDebugUnitTest
+gh workflow run flow-debug-apk.yml --ref convx-fresh   # installable artifact
+```
+
+The artifact is the CI build signed with `CN=BitChord Next Fork`; a local debug
+APK cannot update an installed CI build because the signing keys differ.
+
+### A8. Known risks
+
+- GPLv2/GPLv3 compatibility remains the release blocker; see A1.
+- Two engine instances plus their reverb state cost memory; measure on low-RAM
+  devices.
+- Reverb preset changes allocate/reconfigure inside the engine. They are rare
+  and applied at a block boundary, but a very slow device may hear a click.
+- Clang 18 compatibility flags suppress real old-C warning classes. Keep them
+  scoped to this target, not the whole CMake project.
+- The engine's `-ffast-math` is intentional for FFT/convolution speed, but it
+  means no bit-exact expectation applies while JamesDSP is enabled.
+
 
 ## Workstream B: Hide Flow on Home
 
@@ -494,6 +556,25 @@ What YouTube exposes:
 - If YouTube sends nothing, treat the track as unknown — never guess from the
   artist name, title, or genre.
 
+Live-API finding (2026-10-22):
+
+- Probed `WEB_REMIX` search, `next`, and the song menu for known AI acts
+  (Xania Monet, Blue Monroe). **No AI marker was present anywhere.** The only
+  watch-page hits were feature flags (`enable_ai_disclosure_for_*`), not a
+  per-video label. Strict mode therefore had nothing to match, which is why it
+  appeared broken.
+- Decision: the reliable mechanism is a listener-maintained AI-act list, using
+  the same identity format as `blockedArtists` (`id:` then normalised `name:`).
+  `AppSettings.aiArtists` persists it; the artist page's overflow menu toggles
+  it ("Mark artist as AI-generated" / "Remove AI mark"); an artist carrying the
+  mark shows a small `AI-generated` chip on their page and the Now Playing chip.
+  YouTube's own disclosure remains parsed as a bonus for the day it appears.
+- Strict mode (`blockAiMusic`) now means: filter rows and queue items where
+  `isSongAi(song)` is true, which covers both YouTube's label and the list.
+  `PlaybackService` also enforces it on `onMediaItemTransition`, so a queue
+  built before an artist was marked cannot slip through on next/radio playback.
+
+
 Model:
 
 - `enum class GenAiDisclosure { NONE, PARTLY, FULLY, UNKNOWN }`
@@ -689,6 +770,28 @@ CI artifacts:
 
 ## Progress log
 
+- 2026-10-22 (JamesDSP): vendored libjamesdsp (`extensions`
+  `1b9f89dbd4b332a07724beb41d58bc2ffcb05395`) under
+  `app/src/main/cpp/jamesdsp`, added a minimal JNI shim (`JamesDspJni.cpp`) and
+  a static-engine/one-shared-library CMake target. `add_subdirectory` keeps the
+  existing native targets untouched. The first build failed on a missing
+  `../cpthread.h` and then on Clang 18's function-pointer diagnostics; both are
+  fixed by copying the adjacent cpthread files and scoping compatibility flags
+  to the engine target.
+- 2026-10-22 (JamesDSP): added `JamesDspProcessor` / `JamesDspNative`, one
+  engine per crossfade player, immutable `JamesDspConfig` publishing, 20 Hz
+  parameter throttle, mono duplicate/average, >2-channel bypass, and
+  destroy/recreate on flush. Wired through `DspChain` after the equalizer and
+  before transition/loudness, and through all four `buildPlayer` sites.
+- 2026-10-22 (JamesDSP): added persisted settings (master, bass, stereo, tube,
+  reverb preset, pre-gain, limiter), `JamesDspSheet`, and a Settings -> Playback
+  row beside Equalizer. Strings added to the base and all 15 locale files.
+  `NOTICE` and the vendored `NOTICE.md` record the GPLv2 origin and the
+  unresolved GPLv3 compatibility question.
+- 2026-10-22 (JamesDSP): a player ⋯ menu entry was attempted and removed. It
+  pushed `BitChordApp` over the JVM 64 KB method limit (the compile failed with
+  `MethodTooLargeException`). Settings remains the entry point for this build;
+  the player entry needs the shell refactor described in A6.
 - 2026-10-22: Plan created from the current fork state. v2.2.13 remains the
   released baseline. No overhaul code changes yet.
 - 2026-10-22: Added Workstreams E-J for blocked artists, artist stats/menu,
@@ -701,6 +804,21 @@ CI artifacts:
 - 2026-10-22: Version bumped 75/2.2.13 -> 76/2.2.14 at the user's request so the
   test APK is a distinct build. Built and delivered as
   `BitChord-v2.2.14-code76-arm64.apk`.
+- 2026-10-22: Version bumped 76/2.2.14 -> **77/2.2.15** for the AI-mark and
+  transport-smoothness test build. Still artifact-only; release gate closed.
+- 2026-10-22: AI strict mode was found to be a no-op against live YouTube data:
+  no AI marker exists in search/next/song-menu payloads for known AI acts.
+  Added `AppSettings.aiArtists` + artist-page "Mark as AI-generated" toggle,
+  Now Playing chip from the mark, and transition-time skipping in
+  `PlaybackService` so existing queues/radios cannot bypass strict mode.
+- 2026-10-22: Added `transportSmoothness` (0-1, default 0.55) and a slider under
+  Customization -> Now Playing. Play/pause/skip are now filled rounded polygons
+  drawn by `TransportGlyphs.kt` instead of the sharp skip drawables. Matched the
+  old drawable footprint so the transport does not shrink.
+- 2026-10-22: Home top row now pins Quick Picks first, with the Flow tile as its
+  leading card; the reorder list no longer offers Quick Picks. Fixed the
+  `isQuickPicksShelf` visibility and `aiArtists` restore errors.
+
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
   with the *building machine's* `~/.android/debug.keystore`, so a build from a
@@ -719,8 +837,9 @@ CI artifacts:
   `:app:assembleDevRelease` and signs with the fork's stable key from the
   `ANDROID_KEYSTORE_B64` secret — certificate `CN=BitChord Next Fork`.
   2026-10-22 verification: `apksigner verify --print-certs` on the CI artifact
-  reports that DN; `aapt2 dump badging` reports `com.dev.bitchord`,
-  `versionCode 76`, `versionName 2.2.14`.
+  reports that DN; `aapt2 dump badging` on the previous build reports
+  `com.dev.bitchord`, `versionCode 76`, `versionName 2.2.14`. The next artifact
+  must report `versionCode 77`, `versionName 2.2.15`.
 - Local `:app:assembleDevDebug` builds on the server are signed with the
   *server's auto-generated* `~/.android/debug.keystore`. That is a different key,
   so a debug APK **cannot** be installed over a CI-built app: Android reports
@@ -734,8 +853,11 @@ CI artifacts:
 
 1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the user
    asked for the plan file to be the refresher every compaction.
-2. JamesDSP is unstarted. It is the biggest and riskiest item (native engine,
-   licensing, integration with both players). Do not claim it is done.
+2. JamesDSP is now implemented in the chain and has a real control sheet, but
+   its **GPLv2/GPLv3 compatibility is unresolved**. It is in the next
+   early-access artifact only. Do not public-release or tag it until the
+   licence path in Workstream A is closed; do not call the integration finished
+   and do not remove the notice.
 3. Gemini "play X" is already implemented (`MEDIA_PLAY_FROM_SEARCH` manifest
    filter + `MusicLink.consume` -> `LinkRequest.Search(play = true)`); empty
    query resumes. Verify on device before writing anything new.

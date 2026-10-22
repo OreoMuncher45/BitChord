@@ -423,6 +423,8 @@ internal fun TransportRow(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     compact: Boolean = false,
+    /** Rounds the transport polygons; see [DEFAULT_TRANSPORT_SMOOTHNESS]. */
+    smoothness: Float = DEFAULT_TRANSPORT_SMOOTHNESS,
 ) {
     // The pause glyph, measured against Apple's player: 0.60x the height it
     // had when the measurements were taken — 38.3pt tall on Apple's own
@@ -443,11 +445,12 @@ internal fun TransportRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TransportGlyph(
-            icon = PlayerIcons.SkipPrevious,
+            shape = TransportShape.PREVIOUS,
             contentDescription = stringResource(Res.string.widget_previous),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
             heightScale = PLAYER_SKIP_HEIGHT_SCALE,
+            smoothness = smoothness,
             onClick = onPrevious,
             enabled = previousEnabled,
             haptic = Haptic.SkipPrevious,
@@ -464,20 +467,22 @@ internal fun TransportRow(
             }
         } else {
             TransportGlyph(
-                icon = if (isPlaying) PlayerIcons.Pause else PlayerIcons.Play,
+                shape = if (isPlaying) TransportShape.PAUSE else TransportShape.PLAY,
                 contentDescription = stringResource(if (isPlaying) Res.string.pause else Res.string.play),
                 size = playSize,
                 touchSize = playTouch,
+                smoothness = smoothness,
                 onClick = onPlayPause,
                 haptic = if (isPlaying) Haptic.Pause else Haptic.Resume,
             )
         }
         TransportGlyph(
-            icon = PlayerIcons.SkipNext,
+            shape = TransportShape.NEXT,
             contentDescription = stringResource(Res.string.widget_next),
             size = skipSize,
             touchSize = PLAYER_SKIP_TOUCH_SIZE,
             heightScale = PLAYER_SKIP_HEIGHT_SCALE,
+            smoothness = smoothness,
             onClick = onNext,
             enabled = nextEnabled,
             haptic = Haptic.SkipNext,
@@ -714,7 +719,8 @@ internal fun CircleGlyph(
  */
 @Composable
 private fun TransportGlyph(
-    icon: PlayerIcon,
+    icon: PlayerIcon? = null,
+    shape: TransportShape? = null,
     contentDescription: String,
     size: androidx.compose.ui.unit.Dp,
     touchSize: androidx.compose.ui.unit.Dp = size,
@@ -723,6 +729,8 @@ private fun TransportGlyph(
     haptic: Haptic = Haptic.Tap,
     /** Vertical squash of the glyph alone; its width and touch box are untouched. */
     heightScale: Float = 1f,
+    /** Corner softness for [shape]; ignored by icon glyphs. */
+    smoothness: Float = DEFAULT_TRANSPORT_SMOOTHNESS,
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerAccent.current ?: LocalPlayerInk.current
@@ -744,14 +752,24 @@ private fun TransportGlyph(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            painter = icon.painter(),
-            contentDescription = contentDescription,
-            tint = ink.copy(alpha = alpha),
-            modifier = Modifier
-                .size(size)
-                .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
-        )
+        val glyphModifier = Modifier
+            .size(size)
+            .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier)
+        when {
+            shape != null -> TransportShapeGlyph(
+                shape = shape,
+                tint = ink.copy(alpha = alpha),
+                contentDescription = contentDescription,
+                smoothness = smoothness,
+                modifier = glyphModifier,
+            )
+            icon != null -> Icon(
+                painter = icon.painter(),
+                contentDescription = contentDescription,
+                tint = ink.copy(alpha = alpha),
+                modifier = glyphModifier,
+            )
+        }
     }
 }
 

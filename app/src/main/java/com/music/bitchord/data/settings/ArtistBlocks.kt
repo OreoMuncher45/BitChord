@@ -50,12 +50,17 @@ fun List<HomeShelf>.withoutBlockedArtists(): List<HomeShelf> =
  * matched by the credit YouTube prints on the card.
  */
 fun ShelfItem.isBlockedArtistItem(): Boolean {
-    if (AppSettings.blockedArtists.value.isEmpty() && !AppSettings.blockAiMusic.value) return false
+    val strictAi = AppSettings.blockAiMusic.value
+    if (AppSettings.blockedArtists.value.isEmpty() && !strictAi) return false
     val channelId = browseId?.takeIf { it.startsWith("UC") }
-    if (AppSettings.isArtistBlocked(channelId, subtitle.artistFromSubtitle())) return true
+    val artist = subtitle.artistFromSubtitle()
+    if (AppSettings.isArtistBlocked(channelId, artist)) return true
+    if (strictAi && AppSettings.isArtistAi(channelId, artist)) return true
     // A song card whose linked track is by a hidden act, when the card carries
     // the channel id rather than a name.
-    return videoId == null && AppSettings.isArtistBlocked(channelId, title)
+    if (videoId != null) return false
+    if (AppSettings.isArtistBlocked(channelId, title)) return true
+    return strictAi && AppSettings.isArtistAi(channelId, title)
 }
 
 fun SearchResult.isBlockedArtistResult(): Boolean = when (this) {
@@ -64,8 +69,11 @@ fun SearchResult.isBlockedArtistResult(): Boolean = when (this) {
     is SearchResult.Browse -> item.isBlockedArtist()
 }
 
-fun BrowseItem.isBlockedArtist(): Boolean =
-    type == BrowseType.ARTIST && AppSettings.isArtistBlocked(browseId, title)
+fun BrowseItem.isBlockedArtist(): Boolean {
+    if (type != BrowseType.ARTIST) return false
+    if (AppSettings.isArtistBlocked(browseId, title)) return true
+    return AppSettings.blockAiMusic.value && AppSettings.isArtistAi(browseId, title)
+}
 
 @JvmName("searchResultsWithoutBlockedArtists")
 fun List<SearchResult>.withoutBlockedArtists(): List<SearchResult> =
@@ -79,7 +87,10 @@ fun List<SearchResult>.withoutBlockedArtists(): List<SearchResult> =
  */
 fun DetailPage.withoutBlockedRecommendations(): DetailPage {
     if (AppSettings.blockedArtists.value.isEmpty() && !AppSettings.blockAiMusic.value) return this
-    if (type == BrowseType.ARTIST && AppSettings.isArtistBlocked(browseId, title)) return this
+    if (type == BrowseType.ARTIST &&
+        (AppSettings.isArtistBlocked(browseId, title) ||
+            (AppSettings.blockAiMusic.value && AppSettings.isArtistAi(browseId, title)))
+    ) return this
     return copy(
         songs = songs.withoutBlockedArtists(),
         sections = sections.withoutBlockedArtists(),

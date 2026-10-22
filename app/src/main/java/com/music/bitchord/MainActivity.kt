@@ -726,6 +726,8 @@ private fun BitChordApp(
     val homeFlowVisible by AppSettings.homeFlowVisible.collectAsStateWithLifecycle()
     val homeShelfOrder by AppSettings.homeShelfOrder.collectAsStateWithLifecycle()
     val playerAccentColor by AppSettings.playerAccentColor.collectAsStateWithLifecycle()
+    val transportSmoothness by AppSettings.transportSmoothness.collectAsStateWithLifecycle()
+    val aiArtists by AppSettings.aiArtists.collectAsStateWithLifecycle()
     val playerSeekbarColor by AppSettings.playerSeekbarColor.collectAsStateWithLifecycle()
     val playerTextColor by AppSettings.playerTextColor.collectAsStateWithLifecycle()
     val flowQueueState by viewModel.flowQueue.collectAsStateWithLifecycle()
@@ -858,38 +860,63 @@ private fun BitChordApp(
     // is playing, not a borrowed album, and a blank captioned tile is what
     // reads as broken. Empty queue, empty art, same tile as before.
     val flowArt = (flowQueueState as? UiState.Success)?.data?.firstOrNull()?.thumbnailUrl
-    val homeWithFlow by remember(homeState, flowStatus, flowArt, homeFlowVisible, homeShelfOrder) {
+    val flowTile: ShelfItem? = if (flowStatus.unlocked && homeFlowVisible) {
+        ShelfItem(
+            title = "Flow",
+            subtitle = "Your personal soundtrack · endless",
+            thumbnailUrl = flowArt,
+            videoId = null,
+            browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
+        )
+    } else {
+        null
+    }
+    val homeWithFlow by remember(homeState, flowTile, homeShelfOrder) {
         derivedStateOf {
             val base = (homeState as? UiState.Success)?.data ?: return@derivedStateOf homeState
-            val withFlow = if (flowStatus.unlocked && homeFlowVisible &&
-                base.none { it.title == com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE }
-            ) {
-                listOf(
-                    HomeShelf(
-                        title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
-                        items = listOf(
-                            ShelfItem(
-                                title = "Flow",
-                                subtitle = "Your personal soundtrack · endless",
-                                thumbnailUrl = flowArt,
-                                videoId = null,
-                                browseId = com.music.bitchord.data.flow.FlowRules.FLOW_BROWSE_ID,
-                            ),
-                        ),
-                    ),
-                ) + base
-            } else {
-                base
+            // Quick Picks is the top row, always. Flow is not a shelf at all
+            // any more — it rides at the head of that row — so reordering the
+            // other topics can never bury either of them. This is what used to
+            // happen: the synthetic Flow shelf was not in the saved order, so
+            // it sorted to Int.MAX_VALUE and vanished off the bottom.
+            val quickPicks = base.firstOrNull {
+                com.music.bitchord.ui.screens.isQuickPicksShelf(it.title)
             }
-            if (homeShelfOrder.isEmpty()) {
-                UiState.Success(withFlow)
+            val rest = base.filterNot {
+                com.music.bitchord.ui.screens.isQuickPicksShelf(it.title)
+            }
+            val orderedRest = if (homeShelfOrder.isEmpty()) {
+                rest
             } else {
                 // Stable sort: listed titles take their chosen rank, anything
                 // YouTube added later keeps its feed position after them.
                 val rank = homeShelfOrder.withIndex().associate { (i, title) -> title to i }
-                UiState.Success(withFlow.sortedBy { rank[it.title] ?: Int.MAX_VALUE })
+                rest.sortedBy { rank[it.title] ?: Int.MAX_VALUE }
             }
+            val shelves = buildList {
+                if (quickPicks != null) {
+                    add(quickPicks)
+                } else if (flowTile != null) {
+                    // No Quick Picks in this feed (some accounts get a home
+                    // without one), so Flow still needs somewhere to live.
+                    add(
+                        HomeShelf(
+                            title = com.music.bitchord.data.flow.FlowRules.FLOW_SHELF_TITLE,
+                            items = listOf(flowTile),
+                        ),
+                    )
+                }
+                addAll(orderedRest)
+            }
+            UiState.Success(shelves)
         }
+    }
+    // Only handed to Home when Quick Picks is the row it rides in. When the
+    // feed has no Quick Picks, MainActivity has already put Flow in a shelf of
+    // its own above, and passing it again would draw two Flow tiles.
+    val homeFlowLeading: ShelfItem? = flowTile.takeIf {
+        (homeWithFlow as? UiState.Success)?.data?.firstOrNull()
+            ?.let { shelf -> com.music.bitchord.ui.screens.isQuickPicksShelf(shelf.title) } == true
     }
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
@@ -2443,6 +2470,10 @@ private fun BitChordApp(
                 seekbar = playerSeekbarColor?.let { Color(it) },
                 text = playerTextColor?.let { Color(it) },
             ),
+            isAiTrack = remember(displayedSong, aiArtists) {
+                AppSettings.isSongAi(displayedSong)
+            },
+            transportSmoothness = transportSmoothness,
             accountName = account?.name,
             windowWidth = windowWidth,
             windowHeight = windowHeight,
@@ -3147,7 +3178,9 @@ private fun BitChordApp(
                             onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
                             homeShelfTitles = (homeState as? UiState.Success)?.data
-                                ?.map { it.title }.orEmpty(),
+                                ?.map { it.title }
+                                ?.filterNot { com.music.bitchord.ui.screens.isQuickPicksShelf(it) }
+                                .orEmpty(),
                             contentPadding = listPadding,
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
@@ -3383,6 +3416,8 @@ private fun BitChordApp(
                                     )
                                 }
                             },
+                            flowItem = homeFlowLeading,
+                            onFlowClick = { showFlow = true },
                             onItemLongPress = onShelfLongPress,
                             onRetry = viewModel::loadHome,
                             refreshing = MainViewModel.Feed.HOME in refreshing,

@@ -59,3 +59,7 @@ target_link_options(bitchord_dsd PRIVATE "-Wl,-z,max-page-size=16384")
 add_library(bitchord_dst SHARED dsd/dst/decoder.c dsd/dst/jni.cpp)
 target_compile_options(bitchord_dst PRIVATE -O3 -fno-strict-aliasing -fvisibility=hidden)
 target_link_options(bitchord_dst PRIVATE "-Wl,-z,max-page-size=16384")
+
+# JamesDSP's native engine, running in-process on BitChord's own Float32
+# playback stream. See jamesdsp/CMakeLists.txt and JamesDspProcessor.kt.
+add_subdirectory(jamesdsp)

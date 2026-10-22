@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Storage
 import com.music.bitchord.ui.icons.BitChordIcons
 import coil3.compose.AsyncImage
+import com.music.bitchord.data.flow.FlowRules
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.HEADER_ART_PX
 import com.music.bitchord.data.model.HomeShelf
@@ -138,6 +139,14 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    /**
+     * The Flow tile, when the listener has Flow enabled. It rides at the head
+     * of the Quick Picks row rather than as a shelf of its own: Flow and Quick
+     * Picks are the same question — "what next" — and two separate rows made
+     * Flow look like another category that reordering could bury.
+     */
+    flowItem: ShelfItem? = null,
+    onFlowClick: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -197,6 +206,8 @@ fun HomeScreen(
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
+                        flowItem = flowItem,
+                        onFlowClick = onFlowClick,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
@@ -245,14 +256,43 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     onItemLongPress: ((ShelfItem) -> Unit)?,
     currentSong: Song?,
     isPlaying: Boolean,
+    flowItem: ShelfItem? = null,
+    onFlowClick: (() -> Unit)? = null,
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
+    // Built once rather than per row: Quick Picks is pinned to the top, so at
+    // most one shelf ever asks for it.
+    val flowCard: (@Composable () -> Unit)? = if (flowItem != null) {
+        {
+            ShelfCard(
+                item = flowItem,
+                onClick = { onFlowClick?.invoke() ?: onItemClick(flowItem, FlowRules.FLOW_SHELF_TITLE) },
+                isCurrent = false,
+                isPlaying = false,
+            )
+        }
+    } else {
+        null
+    }
+
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+            val quickPicks = isQuickPicksShelf(shelf.title)
+            if (quickPicks) {
+                // The Flow tile leads this row, so the two share one horizontal
+                // scroll instead of fighting for the top of the page.
+                Shelf(
+                    shelf = shelf,
+                    onItemClick = openItem,
+                    onItemLongPress = onItemLongPress,
+                    leadingCard = flowCard,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                )
+            } else if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,
@@ -567,6 +607,23 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
         }
     }
 }
+/**
+ * Whether a feed shelf is Quick Picks.
+ *
+ * Matched on the raw titles YouTube sends in the app's three languages rather
+ * than on the localised label, because the label is computed for display and
+ * the raw title is what this module sees. Getting this wrong is not cosmetic:
+ * Quick Picks is pinned to the top of Home and hosts the Flow tile, so a miss
+ * would put Flow back in an ordinary shelf where reordering can bury it.
+ */
+fun isQuickPicksShelf(title: String): Boolean {
+    val trimmed = title.trim()
+    return trimmed.equals("Quick picks", ignoreCase = true) ||
+        trimmed.equals("Lựa chọn nhanh", ignoreCase = true) ||
+        trimmed.equals("Chọn nhanh đài phát", ignoreCase = true) ||
+        trimmed.equals("クイック ミックス", ignoreCase = true)
+}
+
 @Composable
 internal fun localizeShelfTitle(title: String): String {
     val trimmed = title.trim()

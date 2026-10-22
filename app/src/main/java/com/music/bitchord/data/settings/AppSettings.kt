@@ -391,6 +391,34 @@ object AppSettings {
      */
     val equalizerPreset = MutableStateFlow(EqualizerPreset.FLAT)
 
+    // ---- JamesDSP ---------------------------------------------------------
+    //
+    // A second, native tone/space stage after BitChord's own equaliser. It is
+    // deliberately opt-in and neutral by default: bass, widening, tube drive
+    // and reverb all start at zero, so turning the engine on alone does not
+    // change the sound beyond its final safety limiter. See
+    // `JamesDspProcessor` for why this runs in-process rather than capturing
+    // the audio session.
+    val jamesDspEnabled = MutableStateFlow(false)
+
+    /** Auto bass boost, 0..15 dB. Zero means the effect is bypassed. */
+    val jamesDspBassGainDb = MutableStateFlow(0f)
+
+    /** Stereo widening, 0..100. Zero means bypassed. */
+    val jamesDspStereoLevel = MutableStateFlow(0f)
+
+    /** Vacuum-tube harmonic drive, 0..100. Zero means bypassed. */
+    val jamesDspTubeLevel = MutableStateFlow(0f)
+
+    /** -1 is off; otherwise an SF2 reverb preset index (0..18). */
+    val jamesDspReverbPreset = MutableStateFlow(-1)
+
+    /** Pre-level trim, -15..+15 dB. */
+    val jamesDspPreGainDb = MutableStateFlow(0f)
+
+    /** Final limiter, at -1 dBFS. Off leaves only the engine's 0 dB clamp. */
+    val jamesDspLimiter = MutableStateFlow(true)
+
     val playbackSpeed = MutableStateFlow(1.0f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
 
@@ -409,6 +437,15 @@ object AppSettings {
     val playerAccentColor = MutableStateFlow<Int?>(null)
     val playerSeekbarColor = MutableStateFlow<Int?>(null)
     val playerTextColor = MutableStateFlow<Int?>(null)
+
+    /**
+     * How round the transport glyphs' corners are, 0 (sharp) to 1 (soft).
+     *
+     * The play triangle and both skip arrows are drawn from polygons, so the
+     * corner radius can follow this value instead of being baked into a vector.
+     * Kept below 1 by default: the reference shape is a fill, not a lozenge.
+     */
+    val transportSmoothness = MutableStateFlow(DEFAULT_TRANSPORT_SMOOTHNESS)
 
     /** Most recently picked colours, newest first, shared by all three roles. */
     val recentPlayerColors = MutableStateFlow<List<Int>>(emptyList())
@@ -709,10 +746,10 @@ object AppSettings {
 
     /** True when any credit on [song] is hidden, including a collaboration. */
     fun isSongBlocked(song: Song): Boolean {
-        if (blockAiMusic.value &&
-            (song.genAi == com.music.bitchord.data.model.GenAiDisclosure.FULLY ||
-                song.genAi == com.music.bitchord.data.model.GenAiDisclosure.PARTLY)
-        ) return true
+        // isSongAi covers both YouTube's own disclosure and the listener's
+        // marks, so a strict build has one definition of "AI track" rather
+        // than two that can disagree.
+        if (blockAiMusic.value && isSongAi(song)) return true
         if (blockedArtists.value.isEmpty()) return false
         if (isArtistBlocked(song.artistId, song.artist)) return true
         if (song.artists.any { isArtistBlocked(it.browseId, it.name) }) return true
@@ -720,6 +757,61 @@ object AppSettings {
         return song.artist.split(CREDIT_ARTIST_SEPARATOR).any {
             isArtistBlocked(null, it)
         }
+    }
+
+    /**
+     * Acts the listener has marked as AI-generated.
+     *
+     * YouTube's disclosure never reaches the clients BitChord reads: the live
+     * WEB_REMIX search rows and player-overlay payloads for known AI acts
+     * (Xania Monet, Blue Monroe) contain no marker at all, so
+     * [GenAiDisclosure] can only ever be a bonus for the day YouTube starts
+     * sending one. This list is what makes the strict switch mean something —
+     * marking an act once flags every track it is credited on, and strict mode
+     * refuses to queue them. Same entry format as [blockedArtists], so identity
+     * matching stays in one place.
+     */
+    val aiArtists = MutableStateFlow<Set<String>>(emptySet())
+
+    private val aiArtistKeys: Set<String>
+        get() = aiArtists.value.mapTo(HashSet()) { it.substringBefore('\t') }
+
+    /** Marks the act as AI, or clears the mark. One call, so the menu can't drift. */
+    fun toggleArtistAi(artistId: String?, name: String?) {
+        val entry = artistEntry(artistId, name) ?: return
+        aiArtists.value = if (entry in aiArtists.value) {
+            aiArtists.value - entry
+        } else {
+            aiArtists.value + entry
+        }
+        prefs.edit().putStringSet(KEY_AI_ARTISTS, aiArtists.value).apply()
+    }
+
+    fun isArtistAi(artistId: String?, name: String?): Boolean {
+        val keys = aiArtistKeys
+        if (keys.isEmpty()) return false
+        if (!artistId.isNullOrBlank() && "id:$artistId" in keys) return true
+        val normalized = normalizeArtistName(name) ?: return false
+        if ("name:$normalized" in keys) return true
+        // The artist page is the natural place to mark an act, and it always
+        // supplies a channel id, so the stored key is usually `id:`. Songs from
+        // a radio or `next` do not always carry that id. Fall back to the
+        // display name kept beside every key, or a marked act would only be
+        // filtered on the surfaces that happened to include the channel.
+        return aiArtists.value.any { entry ->
+            normalizeArtistName(entry.substringAfter('\t', "")) == normalized
+        }
+    }
+
+    /** True when the track, or any act credited on it, is known to be AI. */
+    fun isSongAi(song: Song): Boolean {
+        if (song.genAi == com.music.bitchord.data.model.GenAiDisclosure.FULLY ||
+            song.genAi == com.music.bitchord.data.model.GenAiDisclosure.PARTLY
+        ) return true
+        if (aiArtists.value.isEmpty()) return false
+        if (isArtistAi(song.artistId, song.artist)) return true
+        if (song.artists.any { isArtistAi(it.browseId, it.name) }) return true
+        return song.artist.split(CREDIT_ARTIST_SEPARATOR).any { isArtistAi(null, it) }
     }
 
     /** What the settings list shows for one stored entry. */
@@ -1065,6 +1157,13 @@ object AppSettings {
         equalizerBalance.value = prefs.getFloat(KEY_EQ_BALANCE, 0f).coerceIn(-1f, 1f)
         equalizerBands.value = readEqualizerBands()
         equalizerPreset.value = EqualizerPreset.matching(equalizerBands.value)
+        jamesDspEnabled.value = prefs.getBoolean(KEY_JAMESDSP_ENABLED, false)
+        jamesDspBassGainDb.value = prefs.getFloat(KEY_JAMESDSP_BASS_DB, 0f).coerceIn(0f, 15f)
+        jamesDspStereoLevel.value = prefs.getFloat(KEY_JAMESDSP_STEREO, 0f).coerceIn(0f, 100f)
+        jamesDspTubeLevel.value = prefs.getFloat(KEY_JAMESDSP_TUBE, 0f).coerceIn(0f, 100f)
+        jamesDspReverbPreset.value = prefs.getInt(KEY_JAMESDSP_REVERB, -1).coerceIn(-1, 18)
+        jamesDspPreGainDb.value = prefs.getFloat(KEY_JAMESDSP_PREGAIN_DB, 0f).coerceIn(-15f, 15f)
+        jamesDspLimiter.value = prefs.getBoolean(KEY_JAMESDSP_LIMITER, true)
         playbackSpeed.value = prefs.getFloat(KEY_SPEED, 1.0f)
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
@@ -1093,6 +1192,9 @@ object AppSettings {
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             .orEmpty()
+        transportSmoothness.value = prefs
+            .getFloat(KEY_TRANSPORT_SMOOTHNESS, DEFAULT_TRANSPORT_SMOOTHNESS)
+            .coerceIn(0f, 1f)
         blockAiMusic.value = prefs.getBoolean(KEY_BLOCK_AI_MUSIC, false)
         shuffleEnabled.value = prefs.getBoolean(KEY_SHUFFLE_ENABLED, false)
         repeatMode.value = prefs.getInt(KEY_REPEAT_MODE, Player.REPEAT_MODE_OFF)
@@ -1167,7 +1269,9 @@ object AppSettings {
         homeRecentsViewType.value = readLibraryViewType(KEY_HOME_RECENTS_VIEW_TYPE)
         homeFlowVisible.value = prefs.getBoolean(KEY_HOME_FLOW_VISIBLE, true)
         blockedArtists.value = prefs.getStringSet(KEY_BLOCKED_ARTISTS, emptySet())
-            ?.filter { it.isNotBlank() }?.toSet().orEmpty()
+            .orEmpty().filter { it.isNotBlank() }.toSet()
+        aiArtists.value = prefs.getStringSet(KEY_AI_ARTISTS, emptySet())
+            .orEmpty().filter { it.isNotBlank() }.toSet()
         librarySort.value = prefs.getString(KEY_LIBRARY_SORT, null)
             ?.let { saved -> LibrarySort.entries.firstOrNull { it.name == saved } }
             ?: LibrarySort.DEFAULT
@@ -1369,6 +1473,12 @@ object AppSettings {
         if (argb != null) rememberPlayerColor(argb)
     }
 
+    fun setTransportSmoothness(value: Float) {
+        val clean = value.coerceIn(0f, 1f)
+        transportSmoothness.value = clean
+        prefs.edit().putFloat(KEY_TRANSPORT_SMOOTHNESS, clean).apply()
+    }
+
     fun resetPlayerColors() {
         playerAccentColor.value = null
         playerSeekbarColor.value = null
@@ -1482,6 +1592,46 @@ object AppSettings {
     fun setEqualizerEnabled(value: Boolean) {
         equalizerEnabled.value = value
         prefs.edit().putBoolean(KEY_EQ_ENABLED, value).apply()
+    }
+
+    fun setJamesDspEnabled(value: Boolean) {
+        jamesDspEnabled.value = value
+        prefs.edit().putBoolean(KEY_JAMESDSP_ENABLED, value).apply()
+    }
+
+    fun setJamesDspBassGain(value: Float) {
+        val clamped = value.coerceIn(0f, 15f)
+        jamesDspBassGainDb.value = clamped
+        prefs.edit().putFloat(KEY_JAMESDSP_BASS_DB, clamped).apply()
+    }
+
+    fun setJamesDspStereoLevel(value: Float) {
+        val clamped = value.coerceIn(0f, 100f)
+        jamesDspStereoLevel.value = clamped
+        prefs.edit().putFloat(KEY_JAMESDSP_STEREO, clamped).apply()
+    }
+
+    fun setJamesDspTubeLevel(value: Float) {
+        val clamped = value.coerceIn(0f, 100f)
+        jamesDspTubeLevel.value = clamped
+        prefs.edit().putFloat(KEY_JAMESDSP_TUBE, clamped).apply()
+    }
+
+    fun setJamesDspReverbPreset(value: Int) {
+        val clamped = value.coerceIn(-1, 18)
+        jamesDspReverbPreset.value = clamped
+        prefs.edit().putInt(KEY_JAMESDSP_REVERB, clamped).apply()
+    }
+
+    fun setJamesDspPreGain(value: Float) {
+        val clamped = value.coerceIn(-15f, 15f)
+        jamesDspPreGainDb.value = clamped
+        prefs.edit().putFloat(KEY_JAMESDSP_PREGAIN_DB, clamped).apply()
+    }
+
+    fun setJamesDspLimiter(value: Boolean) {
+        jamesDspLimiter.value = value
+        prefs.edit().putBoolean(KEY_JAMESDSP_LIMITER, value).apply()
     }
 
     fun setEqualizerMode(value: EqualizerMode) {
@@ -2357,6 +2507,9 @@ object AppSettings {
     const val MIN_LIQUID_GLASS_INTENSITY = 0.1f
     const val MAX_LIQUID_GLASS_INTENSITY = 1f
 
+    /** Mid-soft transport corners: visibly rounder than the old glyphs, not pills. */
+    const val DEFAULT_TRANSPORT_SMOOTHNESS = 0.55f
+
     fun normalizeLiquidGlassIntensity(value: Float): Float =
         value.coerceIn(MIN_LIQUID_GLASS_INTENSITY, MAX_LIQUID_GLASS_INTENSITY)
 
@@ -2396,6 +2549,13 @@ object AppSettings {
     private const val KEY_EQ_FOCUSED = "equalizer_focused"
     private const val KEY_EQ_BALANCE = "equalizer_balance"
     private const val KEY_EQ_BANDS = "equalizer_bands"
+    private const val KEY_JAMESDSP_ENABLED = "jamesdsp_enabled"
+    private const val KEY_JAMESDSP_BASS_DB = "jamesdsp_bass_db"
+    private const val KEY_JAMESDSP_STEREO = "jamesdsp_stereo_level"
+    private const val KEY_JAMESDSP_TUBE = "jamesdsp_tube_level"
+    private const val KEY_JAMESDSP_REVERB = "jamesdsp_reverb_preset"
+    private const val KEY_JAMESDSP_PREGAIN_DB = "jamesdsp_pregain_db"
+    private const val KEY_JAMESDSP_LIMITER = "jamesdsp_limiter"
     private const val KEY_SPEED = "playback_speed"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_APP_UI = "app_ui"
@@ -2403,6 +2563,7 @@ object AppSettings {
     private const val KEY_CLASSIPOD_CLICKS = "classipod_clicks"
     private const val KEY_CLASSIPOD_WHEEL_STEPS = "classipod_wheel_steps"
     private const val KEY_AUTOPLAY = "autoplay"
+    private const val KEY_TRANSPORT_SMOOTHNESS = "transport_smoothness"
     private const val KEY_PLAYER_ACCENT = "player_accent_color"
     private const val KEY_PLAYER_SEEKBAR = "player_seekbar_color"
     private const val KEY_PLAYER_TEXT = "player_text_color"
@@ -2460,6 +2621,7 @@ object AppSettings {
     private const val KEY_HOME_RECENTS_VIEW_TYPE = "home_recents_view_type"
     private const val KEY_HOME_FLOW_VISIBLE = "home_flow_visible"
     private const val KEY_BLOCKED_ARTISTS = "blocked_artists"
+    private const val KEY_AI_ARTISTS = "ai_artists"
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"

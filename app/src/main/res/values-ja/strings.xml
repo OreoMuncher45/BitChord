@@ -1277,4 +1277,30 @@
     <string name="sing_duet_note">Halfway down keeps the backing vocals while the lead steps back — that middle is the duet mix.</string>
     <string name="sing_turn_off">Turn off</string>
     <string name="on">On</string>
+
+    <string name="ai_generated">AI 生成</string>
+    <string name="mark_as_ai">アーティストを AI 生成としてマーク</string>
+    <string name="remove_ai_mark">AI マークを解除</string>
+    <string name="custom_transport_smoothness">再生ボタンの角の丸み</string>
+    <string name="custom_transport_smoothness_help">再生・一時停止・スキップボタンの角を丸くします。0 では従来の鋭い角、100 では柔らかい形になりますが三角形のままです。</string>
+    <string name="custom_smoothness_reset">丸みをリセット</string>
+    <string name="jamesdsp">JamesDSP</string>
+    <string name="jamesdsp_subtitle">Native DSP engine, running inside BitChord</string>
+    <string name="jamesdsp_description">Runs on BitChord\'s own playback stream. No root, no session capture, and no effect on other apps.</string>
+    <string name="jamesdsp_unavailable">JamesDSP is not available in this build.</string>
+    <string name="jamesdsp_bass">Bass boost</string>
+    <string name="jamesdsp_stereo">Stereo width</string>
+    <string name="jamesdsp_tube">Tube warmth</string>
+    <string name="jamesdsp_reverb">Reverb</string>
+    <string name="jamesdsp_pregain">Pre-level trim</string>
+    <string name="jamesdsp_limiter">Safety limiter</string>
+    <string name="jamesdsp_limiter_subtitle">Catches peaks at -1 dBFS after boosts</string>
+    <string name="jamesdsp_reset">Reset</string>
+    <string name="jamesdsp_off">Off</string>
+    <string name="jamesdsp_room">Room</string>
+    <string name="jamesdsp_hall">Hall</string>
+    <string name="jamesdsp_large_hall">Large hall</string>
+    <string name="jamesdsp_plate">Plate</string>
+    <string name="jamesdsp_long">Long</string>
+    <string name="jamesdsp_license">JamesDSP is GPL-licensed. Source and notices ship with BitChord.</string>
 </resources>

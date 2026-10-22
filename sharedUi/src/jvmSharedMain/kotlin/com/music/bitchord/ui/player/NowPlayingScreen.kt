@@ -720,6 +720,14 @@ fun NowPlayingScreen(
     playedBy: String? = null,
     /** Listener-pinned colours; null roles keep following the artwork. */
     colors: PlayerColorOverrides = PlayerColorOverrides(),
+    /**
+     * This track is known to be AI-generated — either YouTube said so or the
+     * listener marked the act. Passed in because the app-layer settings that
+     * hold the mark are not visible from this module.
+     */
+    isAiTrack: Boolean = false,
+    /** How round the transport glyphs' corners are, 0f to 1f. */
+    transportSmoothness: Float = DEFAULT_TRANSPORT_SMOOTHNESS,
     isPlaying: Boolean,
     isLoading: Boolean,
     /**
@@ -2040,6 +2048,7 @@ fun NowPlayingScreen(
                                 onPlayPause = onPlayPause,
                                 onNext = onNext,
                                 compact = compact,
+                                smoothness = transportSmoothness,
                             )
                         },
                         volume = if (hideVolumeBar) {
@@ -3452,7 +3461,9 @@ fun NowPlayingScreen(
                                     startDelayMillis = if (titleOverflowing) MARQUEE_ARTIST_STAGGER_MS else 0L,
                                     onOpenArtist = onOpenArtist,
                                 )
-                                if (song.genAi != com.music.bitchord.data.model.GenAiDisclosure.NONE) {
+                                if (isAiTrack ||
+                                    song.genAi != com.music.bitchord.data.model.GenAiDisclosure.NONE
+                                ) {
                                     // Deliberately a small outline chip rather than a
                                     // button: the listener asked for transparency, not
                                     // another control competing with the transport.
@@ -3819,6 +3830,7 @@ fun NowPlayingScreen(
                 onPrevious = onPrevious,
                 onPlayPause = onPlayPause,
                 onNext = onNext,
+                smoothness = transportSmoothness,
             )
 
             // Keep the volume slot's full footprint when its contents are

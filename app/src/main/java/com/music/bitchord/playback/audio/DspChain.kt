@@ -12,10 +12,15 @@ import com.music.bitchord.playback.VocalCutProcessor
  * Composite DSP chain executing BitChord's custom audio processors in their canonical sequence:
  *
  * AudioBlock(Float32) -> VocalCutProcessor -> SpatialAudioProcessor -> EqualizerProcessor
- *   -> TransitionFilterProcessor -> LoudnessProcessor -> AudioBlock(Float32)
+ *   -> JamesDspProcessor -> TransitionFilterProcessor -> LoudnessProcessor -> AudioBlock(Float32)
  *
  * Sing's vocal cut runs first: it removes the center the other stages would
  * otherwise widen, equalise and level along with everything else.
+ *
+ * JamesDSP runs after the equaliser and before the per-track transition and
+ * loudness stages. It is a tone/space stage here, not a second output chain:
+ * its own limiter protects the boosts it applies, then LoudnessProcessor has
+ * the last word on level. It is bypassed entirely when switched off.
  *
  * Operates purely on in-place Float32 audio blocks without intermediate fixed-point quantization,
  * preserving full dynamic range and headroom.
@@ -37,6 +42,7 @@ class DspChain(
     val sing: VocalCutProcessor = VocalCutProcessor(),
     val spatial: SpatialAudioProcessor = SpatialAudioProcessor(),
     val equalizer: EqualizerProcessor = EqualizerProcessor(),
+    val jamesDsp: JamesDspProcessor = JamesDspProcessor(),
     val transition: TransitionFilterProcessor = TransitionFilterProcessor(),
     val loudness: LoudnessProcessor = LoudnessProcessor(),
 ) : FloatAudioProcessor {
@@ -49,6 +55,7 @@ class DspChain(
         sing.configure(sampleRate, channelCount)
         spatial.configure(sampleRate, channelCount)
         equalizer.configure(sampleRate, channelCount)
+        jamesDsp.configure(sampleRate, channelCount)
         transition.configure(sampleRate, channelCount)
         loudness.configure(sampleRate, channelCount)
     }
@@ -84,6 +91,7 @@ class DspChain(
         sing.process(block)
         spatial.process(block)
         equalizer.process(block)
+        jamesDsp.process(block)
         transition.process(block)
         loudness.process(block)
     }
@@ -93,6 +101,7 @@ class DspChain(
         sing.flush()
         spatial.flush()
         equalizer.flush()
+        jamesDsp.flush()
         transition.flush()
         loudness.flush()
     }
@@ -102,6 +111,7 @@ class DspChain(
         sing.reset()
         spatial.reset()
         equalizer.reset()
+        jamesDsp.reset()
         transition.reset()
         loudness.reset()
     }

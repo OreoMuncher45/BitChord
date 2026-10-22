@@ -97,3 +97,27 @@ liquid_glass_easy parameter mapping (clarity -> vibrancy, blurSigma ->
 blurRadius, refraction -> lens, dispersion -> chromaticAberration,
 highlightIntensity -> highlightOpacity) informed the Liquid Glass intensity
 setting's scaling.
+
+================================================================================
+JamesDSP (libjamesdsp) — GPL-2.0
+================================================================================
+Source:  https://github.com/ThePBone/RootlessJamesDSP (wrapper app GPL-3.0)
+Engine:  https://github.com/ThePBone/JamesDSPManager, branch extensions,
+         commit 1b9f89dbd4b332a07724beb41d58bc2ffcb05395
+License: GPL-2.0 (full text at app/src/main/cpp/jamesdsp/LICENSE)
+
+BitChord vendors libjamesdsp's DSP engine under
+app/src/main/cpp/jamesdsp/libjamesdsp, plus the adjacent cpthread.c/.h.
+BitChord does not vendor Rootless JamesDSP's AudioRecord capture service,
+AudioEffect session wrapper, UI, or live-programming front end.
+
+The JNI shim app/src/main/cpp/jamesdsp/jni/JamesDspJni.cpp and the Kotlin
+integration (JamesDspProcessor, JamesDspNative, JamesDspSheet) are original
+BitChord code. The engine runs in-process on BitChord's already-decoded
+Float32 playback stream, so no root and no other apps' audio are involved.
+
+Compatibility note: BitChord is GPLv3, and GPLv2-only code cannot simply be
+combined into a GPLv3 work. This engine is included in early-access test
+artifacts while that gate is resolved; see OVERHAUL_PLAN.md Workstream A1.
+Do not treat the integration as cleared for a public release.
+See app/src/main/cpp/jamesdsp/NOTICE.md for scope and update notes.

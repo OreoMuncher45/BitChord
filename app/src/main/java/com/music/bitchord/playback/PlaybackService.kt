@@ -15,6 +15,7 @@ import android.net.Uri
 import android.widget.Toast
 import android.os.Bundle
 import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.music.bitchord.data.TelemetryProvenance
 import kotlinx.coroutines.sync.Mutex
@@ -81,6 +82,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.guava.future
 import com.music.bitchord.playback.audio.ContainerBitrate
 import com.music.bitchord.playback.audio.DspChain
+import com.music.bitchord.playback.audio.JamesDspConfig
+import com.music.bitchord.playback.audio.JamesDspNative
+import com.music.bitchord.playback.audio.JamesDspProcessor
 import com.music.bitchord.playback.audio.LocalBitrateReading
 import com.music.bitchord.playback.audio.MeasuredBitrateMeter
 import com.music.bitchord.playback.cast.CastController
@@ -586,6 +590,8 @@ class PlaybackService : MediaLibraryService() {
     private val spatialAudioProcessorB = SpatialAudioProcessor()
     private val equalizerProcessorA = EqualizerProcessor()
     private val equalizerProcessorB = EqualizerProcessor()
+    private val jamesDspProcessorA = JamesDspProcessor()
+    private val jamesDspProcessorB = JamesDspProcessor()
     private val transitionFilterA = TransitionFilterProcessor()
     private val transitionFilterB = TransitionFilterProcessor()
 
@@ -963,6 +969,20 @@ class PlaybackService : MediaLibraryService() {
                 mediaItem.mediaId == swappingMediaId
             ) {
                 swappingMediaId = null
+                return
+            }
+
+            // A queue built before the listener marked an act as AI (or hid it)
+            // would otherwise still walk straight into that track on the next
+            // automatic advance. Filtering at build time cannot cover a queue
+            // that is already in the player, so enforce the same rule here,
+            // before anything books the track as played. The seek is posted:
+            // moving the player from inside its own transition callback is
+            // re-entrant, and one skip would arrive as two.
+            if (!castPlayback.active && mediaItem != null &&
+                AppSettings.isSongBlocked(mediaItem.toSong())
+            ) {
+                skipBlockedMediaItem(exoPlayer)
                 return
             }
 
@@ -1649,6 +1669,7 @@ class PlaybackService : MediaLibraryService() {
             singProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
+            jamesDspProcessorA,
             transitionFilterA,
             loudnessA,
             ownsSession = true,
@@ -1657,6 +1678,7 @@ class PlaybackService : MediaLibraryService() {
             singProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
+            jamesDspProcessorB,
             transitionFilterB,
             loudnessB,
             ownsSession = false,
@@ -2741,11 +2763,12 @@ class PlaybackService : MediaLibraryService() {
         sing: VocalCutProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
+        jamesDsp: JamesDspProcessor,
         filter: TransitionFilterProcessor,
         loudness: LoudnessProcessor,
         ownsSession: Boolean,
     ): ExoPlayer = ExoPlayer.Builder(this)
-        .setRenderersFactory(silenceSkippingRenderers(sing, spatial, equalizer, filter, loudness))
+        .setRenderersFactory(silenceSkippingRenderers(sing, spatial, equalizer, jamesDsp, filter, loudness))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setLoadControl(farBufferingLoadControl())
         .setAudioAttributes(AUDIO_ATTRIBUTES, /* handleAudioFocus = */ ownsSession)
@@ -5731,6 +5754,7 @@ class PlaybackService : MediaLibraryService() {
         sing: VocalCutProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
+        jamesDsp: JamesDspProcessor,
         transition: TransitionFilterProcessor,
         loudness: LoudnessProcessor,
     ) = object : DefaultRenderersFactory(this) {
@@ -5843,7 +5867,7 @@ class PlaybackService : MediaLibraryService() {
             // them for the same reason: it belongs to the listener and
             // the whole session, while the transition filter belongs to
             // one handoff and has to have the last word on it.
-            val dspChain = DspChain(sing, spatial, equalizer, transition, loudness)
+            val dspChain = DspChain(sing, spatial, equalizer, jamesDsp, transition, loudness)
             return PrecisionAudioSink(
                 delegate = defaultSink,
                 dspChain = dspChain,
@@ -6092,6 +6116,7 @@ class PlaybackService : MediaLibraryService() {
             singProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
+            jamesDspProcessorA,
             transitionFilterA,
             loudnessA,
             ownsSession = true,
@@ -6100,6 +6125,7 @@ class PlaybackService : MediaLibraryService() {
             singProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
+            jamesDspProcessorB,
             transitionFilterB,
             loudnessB,
             ownsSession = false,
@@ -6287,6 +6313,49 @@ class PlaybackService : MediaLibraryService() {
                 AppSettings.equalizerBands,
             ) { }.collect { applyEqualizer() }
         }
+        scope.launch {
+            // One snapshot per change, then both players get the same one.
+            // JamesDspProcessor publishes it to the audio thread as an
+            // immutable value; no lock is taken in the process path.
+            combine(
+                AppSettings.jamesDspEnabled,
+                AppSettings.jamesDspBassGainDb,
+                AppSettings.jamesDspStereoLevel,
+                AppSettings.jamesDspTubeLevel,
+                AppSettings.jamesDspReverbPreset,
+            ) { enabled, bass, stereo, tube, reverb ->
+                JamesDspConfig(
+                    enabled = enabled,
+                    bassGainDb = bass,
+                    stereoLevel = stereo,
+                    tubeLevel = tube,
+                    reverbPreset = reverb,
+                )
+            }
+                .combine(AppSettings.jamesDspPreGainDb) { config, gain ->
+                    config.copy(preGainDb = gain)
+                }
+                .combine(AppSettings.jamesDspLimiter) { config, limiter ->
+                    config.copy(limiterEnabled = limiter)
+                }
+                .distinctUntilChanged()
+                .collect { config -> applyJamesDsp(config) }
+        }
+    }
+
+    /**
+     * Hands the same JamesDSP snapshot to both players.
+     *
+     * Both, because the idle player is the one the next transition starts on;
+     * a crossfade whose halves had different tone controls would sweep the
+     * settings in over the blend. The native library is loaded here (on the
+     * service thread) rather than on the audio thread, where dlopen could
+     * underrun the first block.
+     */
+    private fun applyJamesDsp(config: JamesDspConfig) {
+        if (config.enabled) JamesDspNative.warmUp()
+        jamesDspProcessorA.update(config)
+        jamesDspProcessorB.update(config)
     }
 
     /**
@@ -7485,6 +7554,32 @@ class PlaybackService : MediaLibraryService() {
             onUserIntent()
             crossfade.onSkipRequested()
             wrappedPlayer.seekToNext()
+        }
+    }
+
+    /**
+     * Moves off a track that strict mode refuses to play.
+     *
+     * Scans forward for the first item that [AppSettings.isSongBlocked] does
+     * not reject rather than stepping one item at a time: a radio can contain
+     * a run of marked tracks, and one posted seek per track would flash each of
+     * them through the notification. When nothing ahead is allowed the player
+     * pauses instead of wrapping into the same blocked run.
+     */
+    private fun skipBlockedMediaItem(exoPlayer: ExoPlayer) {
+        Handler(Looper.getMainLooper()).post {
+            val current = exoPlayer.currentMediaItem ?: return@post
+            if (!AppSettings.isSongBlocked(current.toSong())) return@post
+            val nextIndex = (exoPlayer.currentMediaItemIndex + 1 until exoPlayer.mediaItemCount)
+                .firstOrNull { index ->
+                    !AppSettings.isSongBlocked(exoPlayer.getMediaItemAt(index).toSong())
+                }
+            if (nextIndex != null) {
+                exoPlayer.seekTo(nextIndex, 0L)
+                exoPlayer.play()
+            } else {
+                exoPlayer.pause()
+            }
         }
     }
 

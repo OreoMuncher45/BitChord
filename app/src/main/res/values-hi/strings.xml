@@ -1299,4 +1299,30 @@
     <string name="sing_duet_note">Halfway down keeps the backing vocals while the lead steps back — that middle is the duet mix.</string>
     <string name="sing_turn_off">Turn off</string>
     <string name="on">On</string>
+
+    <string name="ai_generated">AI-निर्मित</string>
+    <string name="mark_as_ai">कलाकार को AI-निर्मित के रूप में चिह्नित करें</string>
+    <string name="remove_ai_mark">AI चिह्न हटाएँ</string>
+    <string name="custom_transport_smoothness">ट्रांसपोर्ट कोनों की चिकनाई</string>
+    <string name="custom_transport_smoothness_help">प्ले, पॉज़ और स्किप बटन के कोनों को गोल करता है। 0 पर पुराना तेज़ किनारा रहता है; 100 पर आकार मुलायम है लेकिन फिर भी त्रिकोण है।</string>
+    <string name="custom_smoothness_reset">चिकनाई रीसेट करें</string>
+    <string name="jamesdsp">JamesDSP</string>
+    <string name="jamesdsp_subtitle">Native DSP engine, running inside BitChord</string>
+    <string name="jamesdsp_description">Runs on BitChord\'s own playback stream. No root, no session capture, and no effect on other apps.</string>
+    <string name="jamesdsp_unavailable">JamesDSP is not available in this build.</string>
+    <string name="jamesdsp_bass">Bass boost</string>
+    <string name="jamesdsp_stereo">Stereo width</string>
+    <string name="jamesdsp_tube">Tube warmth</string>
+    <string name="jamesdsp_reverb">Reverb</string>
+    <string name="jamesdsp_pregain">Pre-level trim</string>
+    <string name="jamesdsp_limiter">Safety limiter</string>
+    <string name="jamesdsp_limiter_subtitle">Catches peaks at -1 dBFS after boosts</string>
+    <string name="jamesdsp_reset">Reset</string>
+    <string name="jamesdsp_off">Off</string>
+    <string name="jamesdsp_room">Room</string>
+    <string name="jamesdsp_hall">Hall</string>
+    <string name="jamesdsp_large_hall">Large hall</string>
+    <string name="jamesdsp_plate">Plate</string>
+    <string name="jamesdsp_long">Long</string>
+    <string name="jamesdsp_license">JamesDSP is GPL-licensed. Source and notices ship with BitChord.</string>
 </resources>

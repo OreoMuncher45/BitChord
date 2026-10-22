@@ -298,6 +298,7 @@ fun SettingsScreen(
     var confirmClearSongCache by remember { mutableStateOf(false) }
     var showBlockedArtists by remember { mutableStateOf(false) }
     var showCustomization by remember { mutableStateOf(false) }
+    var showJamesDsp by remember { mutableStateOf(false) }
     var showPerformanceWarning by remember { mutableStateOf(false) }
     var showPerformanceConfirmation by remember { mutableStateOf(false) }
     val backupScope = rememberCoroutineScope()
@@ -809,6 +810,15 @@ fun SettingsScreen(
                     title = equalizerTitle,
                     subtitle = stringResource(R.string.equalizer_subtitle),
                     onClick = onEqualizer,
+                )
+            }
+            val jamesDspTitle = stringResource(R.string.jamesdsp)
+            row(jamesDspTitle, "jamesdsp", "dsp", "reverb", "bass", "tube") {
+                SettingsRow(
+                    icon = Icons.Rounded.GraphicEq,
+                    title = jamesDspTitle,
+                    subtitle = stringResource(R.string.jamesdsp_subtitle),
+                    onClick = { showJamesDsp = true },
                 )
             }
         }
@@ -1626,6 +1636,10 @@ fun SettingsScreen(
             homeShelfTitles = homeShelfTitles,
             onDismiss = { showCustomization = false },
         )
+    }
+
+    if (showJamesDsp) {
+        JamesDspSheet(onDismiss = { showJamesDsp = false })
     }
 
     picking?.let { target ->
@@ -2785,7 +2799,13 @@ internal fun SegmentedControl(
                     text = label,
                     style = MaterialTheme.typography.labelMedium,
                     color = labelColor,
-                    maxLines = 1,
+                    // Four segments on a phone leave ~85dp each. "Now Playing"
+                    // on one line was clipped to "Now" and the rest of the word
+                    // simply vanished — the label has to be allowed to wrap.
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 2.dp),
                 )
             }
         }
