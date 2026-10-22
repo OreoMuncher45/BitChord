@@ -108,10 +108,10 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
 
 ## Workstream A: JamesDSP rootless engine
 
-**Status 2026-10-22:** implemented in source and wired into the debug build.
-The next CI artifact is the first device test. No tag and no public release:
-the licence gate in A1 is still open, so this remains an early-access test
-build only.
+**Status 2026-10-22:** implemented, wired into the DSP chain, and shipped in
+the fork-signed CI artifact for build 77 / 2.2.15 (run `39864080918`). Device
+audio verification is still pending. No tag and no public release: the licence
+gate in A1 is still open, so this remains an early-access test build only.
 
 ### A1. Why this architecture
 
@@ -246,13 +246,14 @@ AudioBlock -> Sing -> Spatial -> Equalizer -> JamesDSP
   back requires extracting the player shell / song-actions host first; do not
   inline it into `BitChordApp`. The `JamesDspSheet` itself is self-contained and
   can be hosted from a smaller composable later.
-- New strings are present in all 15 locale files so `LocaleStringsTest` passes.
-  They are English fallbacks in the non-English files for this test build;
-  translating them is a follow-up, not a reason to break the locale test.
+- JamesDSP strings are present as English fallbacks in the base strings and all
+  15 locale files. They are not translated yet. `LocaleStringsTest` still fails
+  on the pre-existing 113 missing keys from earlier features (16-failure unit
+  baseline: 15 locale tests + `GeniusTest`), not on the JamesDSP keys.
 
 ### A7. Acceptance criteria and test steps
 
-- [ ] All three ABIs configure, compile and package `libbitchord_jamesdsp.so`.
+- [x] All three ABIs configure, compile and package `libbitchord_jamesdsp.so`.
 - [ ] With JamesDSP off, precision passthrough/exactness tests still pass and
       no native library is loaded by the audio thread.
 - [ ] With it on, every control is audible and survives track change, seek,
@@ -263,7 +264,7 @@ AudioBlock -> Sing -> Spatial -> Equalizer -> JamesDSP
       bypass cleanly.
 - [ ] CPU/underruns measured on device; reverb and bass boost are the likely
       hot paths.
-- [ ] No root, capture or new permission in the manifest.
+- [x] No root, capture or new permission in the manifest.
 - [ ] Toggle off returns to the unprocessed path without leaving a tail.
 
 Build:
@@ -761,8 +762,9 @@ CI artifacts:
 - Whether built-in BitChord EQ/spatial should be mutually exclusive with JamesDSP
   to avoid double processing. Default plan: leave both available, document the
   order, and let the user disable one.
-- Next version number/name after the overhaul. Decided for test builds:
-  76 / 2.2.14. Revisit only if the user wants a different public release number.
+- Next version number/name after the overhaul. Current test build:
+  **77 / 2.2.15**. The public release number is still undecided; revisit only
+  when the release gate opens.
 - AI label field shape is undocumented. Detection is best-effort against the
   player overlay; it must fail open and be re-checked when YouTube changes it.
 - Spotify monthly listeners require parsing the public artist page; no official
@@ -818,6 +820,16 @@ CI artifacts:
 - 2026-10-22: Home top row now pins Quick Picks first, with the Flow tile as its
   leading card; the reorder list no longer offers Quick Picks. Fixed the
   `isQuickPicksShelf` visibility and `aiArtists` restore errors.
+- 2026-10-22: Full unit suite after JamesDSP: 1123 tests, 16 failed, exactly the
+  pre-existing baseline (15 locale-key tests + `GeniusTest`); no new failures.
+  `:app:assembleDevDebug` passed after the notice/locale sync.
+- 2026-10-22: JamesDSP CI artifact verified. Pushed `18ebe18f`; `Flow Debug APK`
+  run `39864080918` succeeded in 12m21s and produced four ABI-split release
+  APKs. `aapt2` reports `com.dev.bitchord`, `77 / 2.2.15`; `apksigner` reports
+  `CN=BitChord Next Fork`; `libbitchord_jamesdsp.so` is present for arm64,
+  armeabi-v7a and x86_64; the arm64 APK passes 16 KB `zipalign`. No tag or
+  GitHub Release was created. Draft releases were removed; published releases
+  and their APK assets were left intact.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -836,10 +848,14 @@ CI artifacts:
   `Flow Debug APK` workflow (`workflow_dispatch`, artifact only). It builds
   `:app:assembleDevRelease` and signs with the fork's stable key from the
   `ANDROID_KEYSTORE_B64` secret — certificate `CN=BitChord Next Fork`.
-  2026-10-22 verification: `apksigner verify --print-certs` on the CI artifact
-  reports that DN; `aapt2 dump badging` on the previous build reports
-  `com.dev.bitchord`, `versionCode 76`, `versionName 2.2.14`. The next artifact
-  must report `versionCode 77`, `versionName 2.2.15`.
+  2026-10-22 verification: run `39864080918` (commit `18ebe18f`) built
+  `com.dev.bitchord`, `versionCode 77`, `versionName 2.2.15`, signed by
+  `CN=BitChord Next Fork` (SHA-256
+  `385af3b4b3f5b4357b7bb271fd71b267fad4d536be87e44f2057b0c2de8971ce`).
+  The arm64 APK contains `lib/arm64-v8a/libbitchord_jamesdsp.so`; the universal
+  APK contains all three ABI libraries; 16 KB `zipalign` verification passed.
+  Local arm64 copy: `BitChordNext-2.2.15-code77-forkkey-arm64.apk`, SHA-256
+  `3099c8726724d9c1e4b10bff0560d2528f0686e9b86a211ff35500c417ff4b10`.
 - Local `:app:assembleDevDebug` builds on the server are signed with the
   *server's auto-generated* `~/.android/debug.keystore`. That is a different key,
   so a debug APK **cannot** be installed over a CI-built app: Android reports
