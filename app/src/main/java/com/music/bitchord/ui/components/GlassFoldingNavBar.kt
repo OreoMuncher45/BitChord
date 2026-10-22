@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -54,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +66,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
@@ -264,7 +267,12 @@ private fun GlassFoldingNavBarChrome(
             )
         },
         expandedTabs = { foldingTabs, surfaceBackdrop ->
-            val selected = foldingTabs.indexOfFirst { it.key == selectedIndex }.coerceAtLeast(0)
+            // FoldingTabGroup samples this lambda from a LaunchedEffect started
+            // once, so a plain closure would keep the first composition's tab
+            // forever — the crystal stayed put while navigation changed.
+            val selected by rememberUpdatedState(
+                foldingTabs.indexOfFirst { it.key == selectedIndex }.coerceAtLeast(0),
+            )
             FoldingTabGroup(
                 selectedTabIndex = { selected },
                 onTabSelected = { index ->
@@ -415,6 +423,11 @@ private fun NavBarSearchInputBar(
     val contentColor = glassContentColor()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    // imePadding already lifts the bar clear of the keyboard. The navigation
+    // bar inset is still reported while the IME is up, and adding it on top
+    // floated the field a gesture-bar's height above the keyboard instead of
+    // docking it. Keep the gesture inset only when no keyboard is showing.
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     BackHandler {
         focusManager.clearFocus()
@@ -431,9 +444,9 @@ private fun NavBarSearchInputBar(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .imePadding()
-            .navigationBarsPadding()
+            .then(if (imeVisible) Modifier else Modifier.navigationBarsPadding())
             .padding(horizontal = 16.dp)
-            .padding(top = 6.dp, bottom = 2.dp)
+            .padding(top = 6.dp, bottom = if (imeVisible) 0.dp else 2.dp)
             .height(NavBarSearchBarHeight)
             .clip(NavBarShape)
             .liquidGlass(shape = NavBarShape)

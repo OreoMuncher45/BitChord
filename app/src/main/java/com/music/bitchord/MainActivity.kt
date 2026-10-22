@@ -120,6 +120,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.music.bitchord.auth.DiscordLoginScreen
+import com.music.bitchord.auth.GoogleAccountSession
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.auth.YtMusicLoginScreen
 import com.music.bitchord.data.AppUpdateChecker
@@ -4789,22 +4790,10 @@ private fun BitChordApp(
         // Qobuz unlock: the browser check that mints the conversion
         // session. The sp/token land in the config's settings, which
         // re-probes the row above on the way past.
-        unlockQobuz?.let { unlockConfig ->
-            BackHandler { unlockQobuz = null }
-            com.music.bitchord.ui.components.QobuzUnlockSheet(
-                config = unlockConfig,
-                onUnlocked = { sp, token ->
-                    val next = unlockConfig.settings.toMutableMap()
-                    next[com.music.bitchord.data.sources.QobuzQueueSource.SP_KEY] = sp
-                    next[com.music.bitchord.data.sources.QobuzQueueSource.TOKEN_KEY] = token
-                    com.music.bitchord.data.sources.SourceRegistry.update(
-                        unlockConfig.copy(settings = next),
-                    )
-                    unlockQobuz = null
-                },
-                onDismiss = { unlockQobuz = null },
-            )
-        }
+        QobuzUnlockHost(
+            config = unlockQobuz,
+            onDismiss = { unlockQobuz = null },
+        )
         // Flow save asks for a name instead of stamping "Flow — Flow".
         if (showFlowSave) {
             com.music.bitchord.ui.screens.FlowSaveDialog(
@@ -5162,93 +5151,14 @@ private fun BitChordApp(
         }
 
         // ---- Google sign-in (full screen WebView) ----
-        webSession?.let { mode ->
-            BackHandler { webSession = null }
-            // Raised by "Use this channel", read by the browser as "take the
-            // session from the page as it now stands". A counter rather than a
-            // flag so a second tap, after a failed first one, is still a new
-            // request rather than a value that was already true.
-            var captureRequest by remember(mode) { mutableIntStateOf(0) }
-            var captureFailed by remember(mode) { mutableStateOf(false) }
-            var pageReady by remember(mode) { mutableStateOf(false) }
-            var confirmingProfile by remember(mode) { mutableStateOf(false) }
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = { webSession = null }) {
-                            Icon(
-                                Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.close),
-                                tint = MaterialTheme.colorScheme.onBackground,
-                            )
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = when (mode) {
-                                    WebSessionMode.SIGN_IN -> stringResource(R.string.sign_in_youtube_music)
-                                    WebSessionMode.SWITCH_CHANNEL -> stringResource(R.string.choose_profile)
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onBackground,
-                            )
-                            if (pageReady) {
-                                Text(
-                                    text = if (captureFailed) {
-                                         stringResource(R.string.profile_unavailable)
-                                     } else {
-                                         stringResource(R.string.switch_profile_hint)
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                )
-                            }
-                        }
-                        if (pageReady) {
-                            TextButton(onClick = {
-                                captureFailed = false
-                                confirmingProfile = true
-                                captureRequest++
-                            }, enabled = !confirmingProfile) {
-                                Text(
-                                    if (confirmingProfile) stringResource(R.string.checking)
-                                    else stringResource(R.string.use_this_profile),
-                                )
-                            }
-                        }
-                    }
-                    YtMusicLoginScreen(
-                        mode = mode,
-                        initialCookie = if (mode == WebSessionMode.SWITCH_CHANNEL) {
-                            googleAccounts.firstOrNull { it.accountId == activeAccountId }?.cookie
-                        } else null,
-                        captureRequest = captureRequest,
-                        onPageReady = { pageReady = it },
-                        onCaptureUnavailable = {
-                            confirmingProfile = false
-                            captureFailed = true
-                        },
-                        onCaptured = { session ->
-                            viewModel.onWebSession(session, mode) { accepted ->
-                                confirmingProfile = false
-                                if (accepted) {
-                                    webSession = null
-                                    if (mode == WebSessionMode.SIGN_IN) selectedTab = 2
-                                } else {
-                                    captureFailed = true
-                                }
-                            }
-                        },
-                    )
-                }
-            }
-        }
+        WebSessionHost(
+            mode = webSession,
+            accounts = googleAccounts,
+            activeAccountId = activeAccountId,
+            viewModel = viewModel,
+            onDismiss = { webSession = null },
+            onSignedIn = { selectedTab = 2 },
+        )
 
         // ---- Support popup (once ever) ----
         if (showSupportPopup) {
@@ -5564,39 +5474,10 @@ private fun BitChordApp(
         }
 
         // ---- Discord sign-in (full screen WebView) ----
-        if (showDiscordLogin) {
-            BackHandler { showDiscordLogin = false }
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = { showDiscordLogin = false }) {
-                            Icon(
-                                Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.close),
-                                tint = MaterialTheme.colorScheme.onBackground,
-                            )
-                        }
-                        Text(
-                            "Sign in to Discord",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-                    DiscordLoginScreen(
-                        onTokenCaptured = { token ->
-                            AppSettings.setDiscordToken(token)
-                            showDiscordLogin = false
-                        },
-                    )
-                }
-            }
-        }
+        DiscordLoginHost(
+            visible = showDiscordLogin,
+            onDismiss = { showDiscordLogin = false },
+        )
 
         if (showSpotifyCanvasAuth) {
             BackHandler { showSpotifyCanvasAuth = false }
@@ -5654,6 +5535,162 @@ private fun BitChordApp(
         }
 
     }
+}
+
+@Composable
+private fun WebSessionHost(
+    mode: WebSessionMode?,
+    accounts: List<GoogleAccountSession>,
+    activeAccountId: String?,
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit,
+    onSignedIn: () -> Unit,
+) {
+    if (mode == null) return
+    BackHandler(onBack = onDismiss)
+    // Raised by "Use this channel", read by the browser as "take the
+    // session from the page as it now stands". A counter rather than a
+    // flag so a second tap, after a failed first one, is still a new
+    // request rather than a value that was already true.
+    var captureRequest by remember(mode) { mutableIntStateOf(0) }
+    var captureFailed by remember(mode) { mutableStateOf(false) }
+    var pageReady by remember(mode) { mutableStateOf(false) }
+    var confirmingProfile by remember(mode) { mutableStateOf(false) }
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = when (mode) {
+                            WebSessionMode.SIGN_IN -> stringResource(R.string.sign_in_youtube_music)
+                            WebSessionMode.SWITCH_CHANNEL -> stringResource(R.string.choose_profile)
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    if (pageReady) {
+                        Text(
+                            text = if (captureFailed) {
+                                 stringResource(R.string.profile_unavailable)
+                             } else {
+                                 stringResource(R.string.switch_profile_hint)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    }
+                }
+                if (pageReady) {
+                    TextButton(onClick = {
+                        captureFailed = false
+                        confirmingProfile = true
+                        captureRequest++
+                    }, enabled = !confirmingProfile) {
+                        Text(
+                            if (confirmingProfile) stringResource(R.string.checking)
+                            else stringResource(R.string.use_this_profile),
+                        )
+                    }
+                }
+            }
+            YtMusicLoginScreen(
+                mode = mode,
+                initialCookie = if (mode == WebSessionMode.SWITCH_CHANNEL) {
+                    accounts.firstOrNull { it.accountId == activeAccountId }?.cookie
+                } else null,
+                captureRequest = captureRequest,
+                onPageReady = { pageReady = it },
+                onCaptureUnavailable = {
+                    confirmingProfile = false
+                    captureFailed = true
+                },
+                onCaptured = { session ->
+                    viewModel.onWebSession(session, mode) { accepted ->
+                        confirmingProfile = false
+                        if (accepted) {
+                            onDismiss()
+                            if (mode == WebSessionMode.SIGN_IN) onSignedIn()
+                        } else {
+                            captureFailed = true
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiscordLoginHost(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+) {
+    if (!visible) return
+    BackHandler(onBack = onDismiss)
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+                Text(
+                    "Sign in to Discord",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            DiscordLoginScreen(
+                onTokenCaptured = { token ->
+                    AppSettings.setDiscordToken(token)
+                    onDismiss()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun QobuzUnlockHost(
+    config: SourceConfig?,
+    onDismiss: () -> Unit,
+) {
+    if (config == null) return
+    BackHandler(onBack = onDismiss)
+    com.music.bitchord.ui.components.QobuzUnlockSheet(
+        config = config,
+        onUnlocked = { sp, token ->
+            val next = config.settings.toMutableMap()
+            next[com.music.bitchord.data.sources.QobuzQueueSource.SP_KEY] = sp
+            next[com.music.bitchord.data.sources.QobuzQueueSource.TOKEN_KEY] = token
+            SourceRegistry.update(config.copy(settings = next))
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
 }
 
 private fun tween(durationMillis: Int) =

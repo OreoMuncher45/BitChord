@@ -154,7 +154,7 @@ internal fun PlaybackOriginCaption(
         text = text,
         style = MaterialTheme.typography.labelSmall.copy(
             shadow = Shadow(
-                color = Color.Black.copy(alpha = 0.55f),
+                color = LocalPlayerInkGlow.current,
                 offset = Offset(0f, 1f),
                 blurRadius = 4f,
             ),
@@ -209,6 +209,9 @@ internal fun PlayerScrubber(
             mixing = mixing,
             mixPulse = mixPulse,
             transitionWindow = transitionWindow,
+            activeColor = ink.copy(alpha = 0.92f),
+            inactiveColor = ink.copy(alpha = 0.26f),
+            markerColor = ink.copy(alpha = 0.5f),
         )
         Box(
             modifier = Modifier
@@ -221,14 +224,17 @@ internal fun PlayerScrubber(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                val timeStyle = MaterialTheme.typography.labelMedium.copy(
+                    shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
+                )
                 Text(
                     text = formatTime((shown * durationMs).toLong()),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = timeStyle,
                     color = ink.copy(alpha = 0.55f),
                 )
                 Text(
                     text = "-" + formatTime(durationMs - (shown * durationMs).toLong()),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = timeStyle,
                     color = ink.copy(alpha = 0.55f),
                 )
             }
@@ -254,8 +260,9 @@ internal fun PlayerScrubber(
 /**
  * "Mixing", in the quality badge's place while an Automix blend runs, breathing on the same
  * beat as the bar above it. Its opacity is read in a graphics layer, so the pulse redraws the
- * label every frame without recomposing it. Plain text in the badge's own type, no icon and
- * no glow: over artwork, a white haze reads as grey fog rather than light.
+ * label every frame without recomposing it. Plain text in the badge's own type, no icon.
+ * The shadow is the theme's halo, not a fixed white haze: over bright artwork the ink is
+ * dark and needs lifting, and a white glow around white ink would read as grey fog.
  */
 @Composable
 private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
@@ -266,6 +273,7 @@ private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelMedium.copy(
             fontWeight = FontWeight.SemiBold,
             fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
+            shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
         ),
         color = ink.copy(alpha = 0.85f),
         maxLines = 1,
@@ -492,6 +500,7 @@ internal fun VolumeRow(
     onValueChangeFinished: () -> Unit,
 ) {
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -500,7 +509,9 @@ internal fun VolumeRow(
             painter = PlayerIcons.VolumeLow.painter(),
             contentDescription = null,
             tint = ink.copy(alpha = 0.5f),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                .playerGlow(glow),
         )
         Spacer(Modifier.width(10.dp))
         ThinSlider(
@@ -509,6 +520,9 @@ internal fun VolumeRow(
             onValueChangeFinished = onValueChangeFinished,
             idleHeight = 6.dp,
             activeHeight = 10.dp,
+            activeColor = ink.copy(alpha = 0.92f),
+            inactiveColor = ink.copy(alpha = 0.26f),
+            markerColor = ink.copy(alpha = 0.5f),
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(10.dp))
@@ -516,7 +530,9 @@ internal fun VolumeRow(
             painter = PlayerIcons.VolumeHigh.painter(),
             contentDescription = null,
             tint = ink.copy(alpha = 0.5f),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                .playerGlow(glow),
         )
     }
 }
@@ -660,6 +676,7 @@ internal fun CircleGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     val discAlpha by animateFloatAsState(
         targetValue = if (active) 0.34f else 0.18f,
         label = "glyphDisc",
@@ -687,7 +704,9 @@ internal fun CircleGlyph(
                 painter = glyph.painter(),
                 contentDescription = contentDescription,
                 tint = ink,
-                modifier = Modifier.size(glyphSize),
+                modifier = Modifier
+                    .size(glyphSize)
+                    .playerGlow(glow),
             )
         }
     }
@@ -712,6 +731,7 @@ private fun TransportGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     // Faded rather than hidden: the row keeps its shape at the ends of a queue.
     val alpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.3f,
@@ -736,6 +756,7 @@ private fun TransportGlyph(
             tint = ink.copy(alpha = alpha),
             modifier = Modifier
                 .size(size)
+                .playerGlow(glow)
                 .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
         )
     }
@@ -841,6 +862,7 @@ private fun PillSegment(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
     Box(
         modifier = Modifier
@@ -885,7 +907,9 @@ private fun PillSegment(
                             painter = currentIcon.painter(),
                             contentDescription = null,
                             tint = tint,
-                            modifier = Modifier.size(iconSize),
+                            modifier = Modifier
+                                .size(iconSize)
+                                .playerGlow(glow),
                         )
                     }
                 }
@@ -1048,6 +1072,7 @@ private fun BottomGlyph(
 ) {
     val haptics = rememberHaptics()
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     // Read only from the click handler, never during composition, so writing it
     // costs no recomposition. Starts a full window in the past so the first tap
     // is never the one that gets swallowed.
@@ -1079,7 +1104,9 @@ private fun BottomGlyph(
                 painter = icon.painter(),
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(26.dp),
+                modifier = Modifier
+                    .size(26.dp)
+                    .playerGlow(glow),
             )
         } else if (label != null) {
             Text(
@@ -1540,6 +1567,7 @@ private fun LosslessLabel(
     iconPainter: Painter? = null,
 ) {
     val ink = LocalPlayerInk.current
+    val glow = LocalPlayerInkGlow.current
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Center,
@@ -1551,14 +1579,18 @@ private fun LosslessLabel(
                 painter = iconPainter,
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(width = 13.dp, height = 10.dp),
+                modifier = Modifier
+                    .size(width = 13.dp, height = 10.dp)
+                    .playerGlow(glow),
             )
         } else if (icon != null) {
             Icon(
                 painter = icon.painter(),
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier
+                    .size(13.dp)
+                    .playerGlow(glow),
             )
         }
         Spacer(Modifier.width(4.dp))

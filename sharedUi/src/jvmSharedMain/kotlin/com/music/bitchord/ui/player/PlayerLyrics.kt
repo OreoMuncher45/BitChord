@@ -89,6 +89,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -687,6 +688,12 @@ private fun SweptLyricLine(
     clock: MutableLongState,
     style: TextStyle,
     dimAlpha: Float,
+    /**
+     * The line's colour. White for the full panel, which carries its own halo
+     * treatment; the player's ink for the one-line strip, so the strip flips
+     * with the rest of the over-artwork chrome.
+     */
+    ink: Color = Color.White,
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
@@ -810,7 +817,7 @@ private fun SweptLyricLine(
         Text(
             text = line.text,
             style = style,
-            color = Color.White.copy(alpha = dimAlpha),
+            color = ink.copy(alpha = dimAlpha),
             maxLines = maxLines,
             overflow = overflow,
             onTextLayout = { layout = it },
@@ -820,7 +827,7 @@ private fun SweptLyricLine(
             Text(
                 text = line.text,
                 style = style,
-                color = Color.White,
+                color = ink,
                 maxLines = maxLines,
                 overflow = overflow,
                 modifier = Modifier
@@ -852,7 +859,7 @@ private fun SweptLyricLine(
         Text(
             text = line.text,
             style = style,
-            color = Color.White,
+            color = ink,
             maxLines = maxLines,
             overflow = overflow,
             // The feather erases into this layer, so the layer has to exist —
@@ -2542,6 +2549,10 @@ private fun CurrentLyricLine(
     modifier: Modifier = Modifier,
 ) {
     val isSynced = remember(lines) { lines.any { it.timeMs > 0L } }
+    val ink = LocalPlayerInk.current
+    val lineStyle = MaterialTheme.typography.titleMedium.copy(
+        shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
+    )
     if (!isSynced) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -2553,14 +2564,14 @@ private fun CurrentLyricLine(
             Icon(
                 imageVector = BitChordIcons.MusicNote,
                 contentDescription = null,
-                tint = Color.White,
+                tint = ink,
                 modifier = Modifier.size(16.dp),
             )
             Spacer(Modifier.width(6.dp))
             Text(
                 text = stringResource(Res.string.open_lyrics),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                style = lineStyle,
+                color = ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -2569,7 +2580,7 @@ private fun CurrentLyricLine(
             Icon(
                 imageVector = BitChordIcons.ChevronRight,
                 contentDescription = null,
-                tint = Color.White.copy(alpha = 0.5f),
+                tint = ink.copy(alpha = 0.5f),
                 modifier = Modifier.size(14.dp),
             )
         }
@@ -2619,7 +2630,7 @@ private fun CurrentLyricLine(
             Icon(
                 imageVector = BitChordIcons.MusicNote,
                 contentDescription = null,
-                tint = Color.White,
+                tint = ink,
                 modifier = Modifier.size(16.dp),
             )
             Spacer(Modifier.width(6.dp))
@@ -2652,8 +2663,9 @@ private fun CurrentLyricLine(
                 SweptLyricLine(
                     line = swept,
                     clock = clock,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = lineStyle,
                     dimAlpha = UNSUNG_ALPHA_STRIP,
+                    ink = ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     rise = false,
@@ -2661,8 +2673,8 @@ private fun CurrentLyricLine(
             } else {
                 Text(
                     text = lineText,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (itemInstrumental) Color.White.copy(alpha = 0.5f) else Color.White,
+                    style = lineStyle,
+                    color = if (itemInstrumental) ink.copy(alpha = 0.5f) else ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2673,7 +2685,7 @@ private fun CurrentLyricLine(
         Icon(
             imageVector = BitChordIcons.ChevronRight,
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.5f),
+            tint = ink.copy(alpha = 0.5f),
             modifier = Modifier.size(14.dp),
         )
     }
@@ -2698,8 +2710,10 @@ private fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier) 
     )
     Text(
         text = stringResource(Res.string.lyrics_not_available),
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White,
+        style = MaterialTheme.typography.titleMedium.copy(
+            shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
+        ),
+        color = LocalPlayerInk.current,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
@@ -2713,8 +2727,10 @@ private fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier) 
 private fun LyricsLoadingLine(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White.copy(alpha = 0.55f),
+        style = MaterialTheme.typography.titleMedium.copy(
+            shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
+        ),
+        color = LocalPlayerInk.current.copy(alpha = 0.55f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(vertical = 4.dp),

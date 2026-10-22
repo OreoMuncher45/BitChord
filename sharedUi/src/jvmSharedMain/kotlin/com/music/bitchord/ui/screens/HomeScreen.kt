@@ -484,12 +484,13 @@ fun CompactTrackRow(
 }
 
 /**
- * Listen now's large heading, with the wordmark stacked above it.
+ * Listen now's large heading, with the app's single-note mark stacked above it.
  *
  * Only the home tab carries it — the top bar no longer shows the logo, so this
  * is where the app's mark lives. Its height is taken from the heading's own
  * font size rather than a fixed dp, so the two keep their proportion under the
- * system font scale.
+ * system font scale. The mark is drawn with the theme's on-background colour,
+ * which is black on light and white on dark.
  */
 @Composable
 private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
@@ -497,7 +498,7 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
     val logoHeight = with(LocalDensity.current) { (style.fontSize * LOGO_TO_FONT).toDp() }
     Column(modifier = modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp)) {
         Icon(
-            painter = painterResource(Res.drawable.ic_logo),
+            painter = painterResource(Res.drawable.ic_note),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier
@@ -513,11 +514,11 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** The wordmark's height against the heading's font size. */
+/** The note mark's height against the heading's font size. */
 private const val LOGO_TO_FONT = 0.9f
 
-/** ic_logo's viewport, 730 x 484. */
-private const val LOGO_ASPECT = 730f / 484f
+/** ic_note's viewport, 374 x 521. */
+private const val LOGO_ASPECT = 374f / 521f
 
 /**
  * Shared by the home feed, Explore and Library so headings line up across tabs.

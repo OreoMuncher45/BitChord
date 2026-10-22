@@ -456,6 +456,15 @@ object AppSettings {
     val foldingNavBar = MutableStateFlow(true)
 
     /**
+     * Whether the Qobuz addon's how-to card has been acknowledged.
+     *
+     * Off until the reader ticks "Don't show this popup again" and presses OK:
+     * dismissing it by accident must not suppress it forever, because the
+     * Download button's token behaviour is the opposite of what it looks like.
+     */
+    val qobuzHelpDismissed = MutableStateFlow(false)
+
+    /**
      * How strong the [liquidGlass] material is,
      * [MIN_LIQUID_GLASS_INTENSITY]..[MAX_LIQUID_GLASS_INTENSITY], multiplied
      * onto the glass engine's blur, refraction and vibrancy where the config
@@ -981,6 +990,7 @@ object AppSettings {
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
         liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
         foldingNavBar.value = prefs.getBoolean(KEY_FOLDING_NAV_BAR, true)
+        qobuzHelpDismissed.value = prefs.getBoolean(KEY_QOBUZ_HELP_DISMISSED, false)
         liquidGlassIntensity.value = prefs.getFloat(KEY_LIQUID_GLASS_INTENSITY, 1f)
             .coerceIn(MIN_LIQUID_GLASS_INTENSITY, MAX_LIQUID_GLASS_INTENSITY)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
@@ -1461,6 +1471,11 @@ object AppSettings {
     fun setFoldingNavBar(value: Boolean) {
         foldingNavBar.value = value
         prefs.edit().putBoolean(KEY_FOLDING_NAV_BAR, value).apply()
+    }
+
+    fun setQobuzHelpDismissed(value: Boolean) {
+        qobuzHelpDismissed.value = value
+        prefs.edit().putBoolean(KEY_QOBUZ_HELP_DISMISSED, value).apply()
     }
 
     fun setLiquidGlassIntensity(value: Float) {
@@ -2223,6 +2238,7 @@ object AppSettings {
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_FOLDING_NAV_BAR = "folding_nav_bar"
+    private const val KEY_QOBUZ_HELP_DISMISSED = "qobuz_help_dismissed"
     private const val KEY_LIQUID_GLASS_INTENSITY = "liquid_glass_intensity"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
     private const val KEY_LYRICS_OFFSET_MS = "lyrics_offset_ms"

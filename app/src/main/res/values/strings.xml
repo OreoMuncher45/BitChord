@@ -1194,6 +1194,9 @@
     <string name="qobuz_unlock_auto_clicks">Starting a download automatically to unlock…</string>
     <string name="qobuz_unlock_checking">Running the browser check…</string>
     <string name="qobuz_unlock_retry">Try again</string>
+    <string name="qobuz_help_title">How to use the Qobuz addon</string>
+    <string name="qobuz_help_body">The Download button in the Qobuz page does not download the song.\n\nTap Download once and wait: it creates a session token that BitChord stores. BitChord then uses that token to stream or download the FLAC itself. The token stays active while you keep listening; after about an hour of inactivity, tap Download again.\n\nIf a file actually starts downloading, go back and tap Download again.</string>
+    <string name="qobuz_help_never">Don\'t show this popup again</string>
     <string name="support">Support</string>
     <string name="support_popup_title">BitChord Next is free</string>
     <string name="support_popup_body">Built on BitChord by kushagra — credit for the app goes to him. This fork adds Flow, Classipod, lossless addons and more, and is maintained by OreoMuncher45. Donations keep the project alive:</string>
@@ -1204,10 +1207,6 @@
     <string name="address_copied">Address copied</string>
     <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 
-    <!-- Octave (account key, free lossless) -->
-    <string name="octave_url_description">Octave streams free lossless FLAC with your account key. Paste the key below, Test, save.</string>
-    <string name="octave_key_label">Account key</string>
-    <string name="octave_key_help">Starts with octv_. The key is stored encrypted on this device and sent only to Octave.</string>
 
     <!-- Interface shell -->
     <string name="app_ui">Interface</string>

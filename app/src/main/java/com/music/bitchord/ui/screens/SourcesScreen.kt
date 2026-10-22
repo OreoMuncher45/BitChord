@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
@@ -44,7 +45,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
-import com.music.bitchord.data.octave.OctaveApi
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.data.sources.addon.AddonSetting
 import com.music.bitchord.ui.components.EditorField
@@ -151,6 +151,10 @@ fun SourcesScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // The how-to card sits in front of the unlock sheet until the reader ticks
+    // the box and accepts. It is hosted here, not at the activity, so the
+    // Qobuz row is the only place that has to know about it.
+    var qobuzHelpFor by remember { mutableStateOf<SourceConfig?>(null) }
     val configs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
@@ -285,7 +289,13 @@ fun SourcesScreen(
                         // The lossless source is sealed: branded row, toggle
                         // only, no editor and no address anywhere.
                         onClick = when {
-                            config.kind == SourceKind.QOBUZ -> ({ onUnlockQobuz(config) })
+                            config.kind == SourceKind.QOBUZ -> ({
+                                if (AppSettings.qobuzHelpDismissed.value) {
+                                    onUnlockQobuz(config)
+                                } else {
+                                    qobuzHelpFor = config
+                                }
+                            })
                             config.kind.needsServer && config.kind != SourceKind.TIDAL ->
                                 ({ onEditSource(config) })
                             else -> null
@@ -423,6 +433,61 @@ fun SourcesScreen(
         Spacer(Modifier.height(32.dp))
     }
 
+    qobuzHelpFor?.let { helpConfig ->
+        QobuzHelpDialog(
+            config = helpConfig,
+            onDismiss = { qobuzHelpFor = null },
+            onAccept = { dontShowAgain ->
+                if (dontShowAgain) AppSettings.setQobuzHelpDismissed(true)
+                qobuzHelpFor = null
+                onUnlockQobuz(helpConfig)
+            },
+        )
+    }
+}
+
+/**
+ * Explains what the Qobuz page's Download button actually does before the
+ * unlock sheet opens.
+ */
+@Composable
+private fun QobuzHelpDialog(
+    config: SourceConfig,
+    onDismiss: () -> Unit,
+    onAccept: (dontShowAgain: Boolean) -> Unit,
+) {
+    var dontShowAgain by remember(config) { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.qobuz_help_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.qobuz_help_body))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .clickable { dontShowAgain = !dontShowAgain },
+                ) {
+                    Checkbox(
+                        checked = dontShowAgain,
+                        onCheckedChange = { dontShowAgain = it },
+                    )
+                    Text(stringResource(R.string.qobuz_help_never))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onAccept(dontShowAgain) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 
@@ -880,7 +945,6 @@ private fun SourceRow(
                 SourceKind.TIDAL -> Icons.Rounded.MusicNote
                 SourceKind.QOBUZ -> Icons.Rounded.Album
                 SourceKind.HIRES -> Icons.Rounded.MusicNote
-                SourceKind.OCTAVE -> Icons.Rounded.Album
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },
             contentDescription = null,
@@ -1025,7 +1089,7 @@ internal fun SourceEditorAlert(
     val alreadyAdded = stringResource(R.string.source_already_added)
 
     /**
-     * Credential settings this addon declares (today: the Octave account key),
+     * Credential settings this addon declares,
      * and the values typed for them.
      *
      * The schema comes from the manifest, so an addon declaring nothing secret
@@ -1153,7 +1217,6 @@ internal fun SourceEditorAlert(
         description = stringResource(
             when (config.kind) {
                 SourceKind.TIDAL -> R.string.tidal_url_description
-                SourceKind.OCTAVE -> R.string.octave_url_description
                 else -> R.string.addon_url_description
             },
         ),
@@ -1164,7 +1227,6 @@ internal fun SourceEditorAlert(
         onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
         urlPlaceholder = when (config.kind) {
             SourceKind.TIDAL -> "https://lossless.example.com"
-            SourceKind.OCTAVE -> "https://api.octavestreaming.com"
             else -> "https://my-addon.example.com"
         },
         status = status,
@@ -1175,34 +1237,15 @@ internal fun SourceEditorAlert(
         onSave = { run(thenSave = true) },
         onRemove = if (isNew) null else onDelete,
         onDismiss = onDismiss,
-        // Octave always offers its account-key field, manifest or not:
-        // without the key there is nothing to stream, and waiting on a
-        // schema to show the field is how keys became un-enterable.
-        extraFields = buildList {
-            if (config.kind == SourceKind.OCTAVE) {
-                add(
-                    EditorField(
-                        value = secretValues[OctaveApi.ACCOUNT_KEY].orEmpty(),
-                        onChange = { secretValues[OctaveApi.ACCOUNT_KEY] = it },
-                        placeholder = stringResource(R.string.octave_key_label),
-                        keyboardType = KeyboardType.Password,
-                        isPassword = true,
-                        help = stringResource(R.string.octave_key_help),
-                    ),
-                )
-            }
-            secretSettings
-                .filter { it.key != OctaveApi.ACCOUNT_KEY }
-                .mapTo(this) { setting ->
-                    EditorField(
-                        value = secretValues[setting.key].orEmpty(),
-                        onChange = { secretValues[setting.key] = it },
-                        placeholder = setting.label.ifBlank { setting.key },
-                        keyboardType = KeyboardType.Password,
-                        isPassword = true,
-                        help = setting.help,
-                    )
-                }
+        extraFields = secretSettings.map { setting ->
+            EditorField(
+                value = secretValues[setting.key].orEmpty(),
+                onChange = { secretValues[setting.key] = it },
+                placeholder = setting.label.ifBlank { setting.key },
+                keyboardType = KeyboardType.Password,
+                isPassword = true,
+                help = setting.help,
+            )
         },
     )
 }

@@ -159,23 +159,6 @@ enum class SourceKind(
     ),
 
     /**
-     * Octave (octavestreaming.com): free lossless streaming with an account
-     * key. No manifest, no self-hosting — the key rides as a Bearer token to
-     * mint short-lived playback tokens, and audio streams straight from
-     * Octave's CDN. Seeded off: without a key it answers nothing, so there
-     * is nothing to default on.
-     */
-    OCTAVE(
-        label = "Octave",
-        detail = "Free lossless FLAC with your Octave account key. Paste the key, Test, save.",
-        labels = listOf("FLAC", "Lossless", "Key"),
-        needsServer = true,
-        canServeLossless = true,
-        worthPrefetching = true,
-        rank = 0,
-    ),
-
-    /**
      * Community Hi-Res FLAC through a downloader backend: Qobuz catalogue
      * search with Deezer ISRC precision matching, conversions up to
      * 24-bit/192kHz. No account, no key, no URL — the backend holds whatever

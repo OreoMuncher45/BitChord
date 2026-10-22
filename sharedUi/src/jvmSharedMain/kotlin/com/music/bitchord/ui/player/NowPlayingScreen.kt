@@ -106,6 +106,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -196,6 +197,22 @@ internal const val ALBUM_SETTLE_MS = 700L
 
 /** Long enough for the post-upgrade rollback cue to be noticed without lingering. */
 private const val REVERT_CUE_MS = 2_600L
+
+/**
+ * How long the player spends fading every over-artwork glyph and line between
+ * white and near-black. Long enough to read as one movement across the whole
+ * player rather than glyphs flicking over one at a time.
+ */
+internal const val PLAYER_INK_FADE_MS = 460
+
+/**
+ * The halo behind player chrome while the ink is dark — white, at a whisper, so
+ * near-black glyphs keep an edge where they cross a shadowed patch of a bright
+ * sleeve. [PLAYER_GLOW_ON_LIGHT] is the same trick in reverse: a soft shadow
+ * under white chrome over a dark sleeve.
+ */
+internal val PLAYER_GLOW_ON_DARK = Color.White.copy(alpha = 0.30f)
+internal val PLAYER_GLOW_ON_LIGHT = Color.Black.copy(alpha = 0.30f)
 
 /**
  * How close the player's reported position has to get to a released scrub
@@ -821,16 +838,34 @@ fun NowPlayingScreen(
     // lies beneath the status bar when the player expands to full bleed.
     val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
     val artControlLuminance = rememberArtworkControlLuminance(remoteArt, ART_PX)
+    // Bright enough that white chrome would wash out, so the player flips to
+    // near-black ink. [playerInkGlow] is the opposite colour, faded in behind
+    // glyphs and text so dark ink still reads where it crosses a dark patch of
+    // the sleeve, and white ink keeps its edge over a bright one.
+    val playerInkTarget = if ((artControlLuminance ?: 0f) >= 0.55f) {
+        Color(0xFF0B0B0C)
+    } else {
+        Color.White
+    }
     val playerInk by animateColorAsState(
-        targetValue = if ((artControlLuminance ?: 0f) >= 0.55f) {
-            Color(0xFF0B0B0C)
-        } else {
-            Color.White
-        },
-        animationSpec = tween(durationMillis = 320),
+        targetValue = playerInkTarget,
+        animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
         label = "playerInk",
     )
+    val playerInkGlowTarget = if (playerInkTarget == Color.White) {
+        PLAYER_GLOW_ON_LIGHT
+    } else {
+        PLAYER_GLOW_ON_DARK
+    }
+    val playerInkGlow by animateColorAsState(
+        targetValue = playerInkGlowTarget,
+        animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
+        label = "playerInkGlow",
+    )
     val artworkStatusScrimAlpha = topBandScrimAlpha(artTopLuminance)
+    val playerShadow = remember(playerInkGlow) {
+        Shadow(color = playerInkGlow, blurRadius = 9f)
+    }
 
     // Media-player convention: the player always owns light status icons. The
     // top treatment below, rather than a window-flag flip per cover, provides
@@ -2114,7 +2149,10 @@ fun NowPlayingScreen(
             .then(dockHost)
             .background(Color.Black),
     ) {
-        CompositionLocalProvider(LocalPlayerInk provides playerInk) {
+        CompositionLocalProvider(
+            LocalPlayerInk provides playerInk,
+            LocalPlayerInkGlow provides playerInkGlow,
+        ) {
         // Anchored to the sleeve's bottom edge, so the screen carries on in the
         // colours the artwork ended in rather than in a quantiser's idea of what
         // the artwork was about. Position ticks recompose this screen twice a
@@ -2469,7 +2507,7 @@ fun NowPlayingScreen(
                         .graphicsLayer { alpha = spotifyChromeAlpha }
                         .shadow(2.dp, RoundedCornerShape(3.dp), clip = false)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(Color.White.copy(alpha = 0.70f)),
+                        .background(LocalPlayerInk.current.copy(alpha = 0.70f)),
                 )
                 // [p] is the shared album-to-panel transition. Keeping this in
                 // composition until its final frame gives the caption a real
@@ -3370,16 +3408,18 @@ fun NowPlayingScreen(
                             label = "playerCredits",
                         ) {
                             val scrolling = scrolls()
+                            val ink = LocalPlayerInk.current
                             Column {
                                 MarqueeText(
                                     text = song.title,
                                     style = MaterialTheme.typography.titleLarge.copy(
                                         fontSize = 20.sp,
+                                        shadow = playerShadow,
                                     ),
-                                    color = Color.White,
+                                    color = ink,
                                     enabled = scrolling,
                                     leading = if (song.isExplicit == true) {
-                                        { ExplicitBadge(color = Color.White) }
+                                        { ExplicitBadge(color = ink) }
                                     } else {
                                         null
                                     },
@@ -3396,8 +3436,9 @@ fun NowPlayingScreen(
                                     style = MaterialTheme.typography.titleLarge.copy(
                                         fontWeight = FontWeight.W500,
                                         fontSize = 20.sp,
+                                        shadow = playerShadow,
                                     ),
-                                    color = Color.White.copy(alpha = 0.55f),
+                                    color = ink.copy(alpha = 0.55f),
                                     enabled = scrolling,
                                     // A title that's also scrolling gets to go first —
                                     // starting together reads as clutter, so the artist
