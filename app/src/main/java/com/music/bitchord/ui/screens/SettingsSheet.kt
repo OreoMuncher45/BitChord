@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Gradient
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -69,6 +70,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Palette
@@ -83,7 +85,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import com.music.bitchord.data.lyrics.translationLanguageName
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +112,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -407,6 +413,11 @@ fun SettingsScreen(
             placeholder = stringResource(R.string.settings_search_hint),
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
         )
+
+        if (search.matches("community", "discord", "reddit", "github", "beta", "bugs", "features", "star")) {
+            Spacer(Modifier.height(14.dp))
+            CommunityCard()
+        }
 
         SearchableSettingsGroup(search) {
             val accountTitle = stringResource(R.string.account_integrations)
@@ -1600,7 +1611,7 @@ fun SettingsScreen(
                         textDecoration = TextDecoration.Underline,
                     ),
                 )
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/BitChord", linkStyles)) {
+                withLink(LinkAnnotation.Url("https://github.com/OreoMuncher45/BitChordNext", linkStyles)) {
                     append("GitHub")
                 }
                 append("  ")
@@ -1608,7 +1619,7 @@ fun SettingsScreen(
                     append("Developer")
                 }
                 append("  ")
-                withLink(LinkAnnotation.Url("https://discord.gg/pDdKfrdHY6", linkStyles)) {
+                withLink(LinkAnnotation.Url("https://discord.gg/8VnWqcuzqg", linkStyles)) {
                     append("Discord")
                 }
                 append("  ")
@@ -2323,6 +2334,141 @@ private fun DownloadQualitySheet(
 }
 
 // ---- Building blocks --------------------------------------------------------
+
+private const val COMMUNITY_DISCORD_URL = "https://discord.gg/8VnWqcuzqg"
+private const val COMMUNITY_REDDIT_URL = "https://reddit.com/r/BitChordNext"
+private const val COMMUNITY_GITHUB_URL = "https://github.com/OreoMuncher45/BitChordNext"
+
+private fun openCommunityLink(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+}
+
+/**
+ * The first thing under the search field: where to report a bug, ask for a
+ * feature, get into the beta, or just talk about the app. Discord is the
+ * primary action because that is where the builds and quick replies live;
+ * Reddit and GitHub stay one tap away without turning the card into a menu.
+ */
+@Composable
+private fun CommunityCard() {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = GROUP_INSET)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ),
+            )
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Groups,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.community_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.community_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Button(
+            onClick = { openCommunityLink(context, COMMUNITY_DISCORD_URL) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF5865F2),
+                contentColor = Color.White,
+            ),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_discord),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = Color.White,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.community_join_discord))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilledTonalButton(
+                onClick = { openCommunityLink(context, COMMUNITY_REDDIT_URL) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Forum,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = Color(0xFFFF4500),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.community_reddit),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            FilledTonalButton(
+                onClick = { openCommunityLink(context, COMMUNITY_GITHUB_URL) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = Color(0xFFFFC107),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.community_star_github),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
 
 internal val GroupShape = RoundedCornerShape(14.dp)
 internal val GROUP_INSET = 16.dp

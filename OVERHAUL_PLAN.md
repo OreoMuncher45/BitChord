@@ -9,12 +9,12 @@ Last updated: 2026-10-22
 Branch: `convx-fresh`
 Latest commit at plan creation: `bd5c83bc fix(icon): use inverted badge`
 Release baseline: `v2.2.13-convx`, versionCode `75`, versionName `2.2.13`
-Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-convx
+Release URL: https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.13-convx
 
 ## Non-negotiables
 
 - Work only in our fork: `/home/ubuntu/BitChordClean`,
-  `https://github.com/OreoMuncher45/BitChord.git`.
+  `https://github.com/OreoMuncher45/BitChordNext.git`.
 - Never modify upstream `kushagrasinghx/BitChord`. The only upstream work is
   PR #1002.
 - Keep the current package/application id. Do not rename it for Gemini.
@@ -30,7 +30,7 @@ Release URL: https://github.com/OreoMuncher45/BitChord/releases/tag/v2.2.13-conv
 
 ## Current baseline
 
-- v2.2.13 is already released. Do not redo icon, halo, nav, Qobuz, Octave, or
+- v2.2.13 is already released. Do not redo icon, halo, nav, Qobuz, Octave, o
   method-size work as part of the overhaul.
 - `BitChordApp` is effectively at the JVM 64 KB method limit. Extracting
   `QobuzUnlockHost`, `WebSessionHost`, and `DiscordLoginHost` bought 1,338 bytes
@@ -610,7 +610,7 @@ Acceptance:
 - No badge is shown for unlabelled tracks.
 - All detection is fail-open: a parser miss degrades to "no badge".
 
-## Workstream I: Android Auto queue order
+## Workstream I: Android Auto queue orde
 
 Files:
 
@@ -677,7 +677,7 @@ Acceptance:
 Files:
 
 - `sharedUi/.../ui/player/NowPlayingScreen.kt`
-- `app/.../ui/player/` transport composables and any mini-player bar
+- `app/.../ui/player/` transport composables and any mini-player ba
 - `app/.../ui/classipod/ClassipodNowPlaying.kt`
 - `sharedUi/.../ui/components/` where shared transport buttons live
 
@@ -702,6 +702,43 @@ Acceptance:
 - AirPlay/cast aligns with the other controls at every window size.
 
 
+
+## Workstream L: Community links
+
+The top of Settings opens with a community card, above Account. It has one
+primary Discord action and two tonal secondary actions, Reddit and GitHub.
+
+Files:
+
+- `app/src/main/java/com/music/bitchord/ui/screens/SettingsSheet.kt`
+- `app/src/main/res/values*/strings.xml` (English fallbacks in all 16 files)
+- `app/src/main/java/com/music/bitchord/data/AppUpdateChecker.kt`
+- `app/src/main/java/com/music/bitchord/data/discord/DiscordRPC.kt`
+- `app/src/main/java/com/music/bitchord/data/tidal/TidalInstances.kt`
+- `README.md`
+
+Links:
+
+- Discord: https://discord.gg/8VnWqcuzqg
+- Subreddit: https://reddit.com/r/BitChordNext
+- GitHub: https://github.com/OreoMuncher45/BitChordNext
+
+Behavior:
+
+- Discord is the filled blurple button, "Join our Discord".
+- Reddit and GitHub are `FilledTonalButton`s side by side.
+- The card is searchable (`community`, `discord`, `reddit`, `github`, `beta`,
+  `bugs`, `features`, `star`) and hides when another query is active.
+- The Settings colophon's GitHub and Discord links point at the fork too.
+- `AppUpdateChecker`, Discord RPC, Tidal instance refresh, README badges and
+  the git remote all use `BitChordNext`, not the old repo name.
+
+Acceptance:
+
+- Discord and Reddit open in the browser/companion app.
+- Star opens the repository; GitHub's own star button is one tap away.
+- The card appears first under search, above Account.
+- No new permissions; URLs are constants, not translated.
 
 ## Build commands
 
@@ -730,7 +767,7 @@ CI artifacts:
 - Main `Android Release APK` is expected to fail on the prod keystore.
 - Current tag workflow succeeds for Flow Debug and desktop Release.
 
-## Execution order
+## Execution orde
 
 1. Create this plan and keep it updated. **Done.**
 2. Flow visibility toggle. Low risk, isolates Home behavior.
@@ -763,7 +800,7 @@ CI artifacts:
   to avoid double processing. Default plan: leave both available, document the
   order, and let the user disable one.
 - Next version number/name after the overhaul. Current test build:
-  **77 / 2.2.15**. The public release number is still undecided; revisit only
+  **78 / 2.2.16**. The public release number is still undecided; revisit only
   when the release gate opens.
 - AI label field shape is undocumented. Detection is best-effort against the
   player overlay; it must fail open and be re-checked when YouTube changes it.
@@ -813,7 +850,7 @@ CI artifacts:
   Added `AppSettings.aiArtists` + artist-page "Mark as AI-generated" toggle,
   Now Playing chip from the mark, and transition-time skipping in
   `PlaybackService` so existing queues/radios cannot bypass strict mode.
-- 2026-10-22: Added `transportSmoothness` (0-1, default 0.55) and a slider under
+- 2026-10-22: Added `transportSmoothness` (0-1, default 0.55) and a slider unde
   Customization -> Now Playing. Play/pause/skip are now filled rounded polygons
   drawn by `TransportGlyphs.kt` instead of the sharp skip drawables. Matched the
   old drawable footprint so the transport does not shrink.
@@ -830,6 +867,15 @@ CI artifacts:
   armeabi-v7a and x86_64; the arm64 APK passes 16 KB `zipalign`. No tag or
   GitHub Release was created. Draft releases were removed; published releases
   and their APK assets were left intact.
+- 2026-10-23: Added the community card at the top of Settings: Discord
+  (`https://discord.gg/8VnWqcuzqg`), subreddit
+  (`https://reddit.com/r/BitChordNext`), and GitHub star
+  (`https://github.com/OreoMuncher45/BitChordNext`). Discord is the primary
+  action; Reddit and GitHub are tonal secondary actions. Strings are English
+  fallbacks in the base and all 15 locale files.
+- 2026-10-23: Repo renamed to `BitChordNext`. Updated the update checker,
+  Discord RPC project/image URLs, Tidal instance source, README badges/links,
+  the Settings colophon, and the git remote. Bumped to **78 / 2.2.16**.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -867,7 +913,7 @@ CI artifacts:
 
 ## What a future session must not forget
 
-1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the user
+1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the use
    asked for the plan file to be the refresher every compaction.
 2. JamesDSP is now implemented in the chain and has a real control sheet, but
    its **GPLv2/GPLv3 compatibility is unresolved**. It is in the next

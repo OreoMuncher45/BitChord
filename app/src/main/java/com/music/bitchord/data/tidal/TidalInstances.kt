@@ -31,7 +31,7 @@ object TidalInstances {
 
     /** Curated list, refreshed without an app release by editing this file on main. */
     const val REMOTE_URL =
-        "https://raw.githubusercontent.com/OreoMuncher45/BitChord/main/tidal-instances.json"
+        "https://raw.githubusercontent.com/OreoMuncher45/BitChordNext/main/tidal-instances.json"
 
     @Serializable
     data class Entry(val url: String, val label: String = "", val verified: Boolean = false)

@@ -1264,4 +1264,10 @@
     <string name="jamesdsp_plate">Plate</string>
     <string name="jamesdsp_long">Long</string>
     <string name="jamesdsp_license">JamesDSP is GPL-licensed. Source and notices ship with BitChord.</string>
+    <!-- Community links -->
+    <string name="community_title">Join the BitChord Next community</string>
+    <string name="community_subtitle">Report bugs, suggest features, get beta access — join our Discord server!</string>
+    <string name="community_join_discord">Join our Discord</string>
+    <string name="community_reddit">r/BitChordNext</string>
+    <string name="community_star_github">Star on GitHub</string>
 </resources>

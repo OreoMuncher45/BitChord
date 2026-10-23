@@ -11,9 +11,9 @@
 
 <br/>
 
-[![Latest release](https://img.shields.io/github/v/release/OreoMuncher45/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChord/releases)
-[![License](https://img.shields.io/github/license/OreoMuncher45/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChord/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/OreoMuncher45/BitChord/total?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChord/releases)
+[![Latest release](https://img.shields.io/github/v/release/OreoMuncher45/BitChordNext?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChordNext/releases)
+[![License](https://img.shields.io/github/license/OreoMuncher45/BitChordNext?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChordNext/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/OreoMuncher45/BitChordNext/total?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChordNext/releases)
 
 <br/>
 
@@ -75,7 +75,7 @@ Extra sources under Sources, each with health checks and honest failure states:
 
 <h1><a id="download"></a>Download</h1>
 
-Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChord/releases) page — `arm64-v8a` fits almost all modern phones (`armeabi-v7a`, `x86_64` and `universal` are there too). Sideloading requires enabling "Install unknown apps" for whichever app you download it with. Updates install over the old build; your library, downloads and settings carry over.
+Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChordNext/releases) page — `arm64-v8a` fits almost all modern phones (`armeabi-v7a`, `x86_64` and `universal` are there too). Sideloading requires enabling "Install unknown apps" for whichever app you download it with. Updates install over the old build; your library, downloads and settings carry over.
 
 </div>
 
