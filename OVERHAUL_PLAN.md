@@ -30,7 +30,7 @@ Release URL: https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.13-
 
 ## Current baseline
 
-- v2.2.13 is already released. Do not redo icon, halo, nav, Qobuz, Octave, o
+- v2.2.13 is already released. Do not redo icon, halo, nav, Qobuz, Octave, or
   method-size work as part of the overhaul.
 - `BitChordApp` is effectively at the JVM 64 KB method limit. Extracting
   `QobuzUnlockHost`, `WebSessionHost`, and `DiscordLoginHost` bought 1,338 bytes
@@ -610,7 +610,7 @@ Acceptance:
 - No badge is shown for unlabelled tracks.
 - All detection is fail-open: a parser miss degrades to "no badge".
 
-## Workstream I: Android Auto queue orde
+## Workstream I: Android Auto queue order
 
 Files:
 
@@ -677,7 +677,7 @@ Acceptance:
 Files:
 
 - `sharedUi/.../ui/player/NowPlayingScreen.kt`
-- `app/.../ui/player/` transport composables and any mini-player ba
+- `app/.../ui/player/` transport composables and any mini-player bar
 - `app/.../ui/classipod/ClassipodNowPlaying.kt`
 - `sharedUi/.../ui/components/` where shared transport buttons live
 
@@ -767,7 +767,7 @@ CI artifacts:
 - Main `Android Release APK` is expected to fail on the prod keystore.
 - Current tag workflow succeeds for Flow Debug and desktop Release.
 
-## Execution orde
+## Execution order
 
 1. Create this plan and keep it updated. **Done.**
 2. Flow visibility toggle. Low risk, isolates Home behavior.
@@ -850,7 +850,7 @@ CI artifacts:
   Added `AppSettings.aiArtists` + artist-page "Mark as AI-generated" toggle,
   Now Playing chip from the mark, and transition-time skipping in
   `PlaybackService` so existing queues/radios cannot bypass strict mode.
-- 2026-10-22: Added `transportSmoothness` (0-1, default 0.55) and a slider unde
+- 2026-10-22: Added `transportSmoothness` (0-1, default 0.55) and a slider under
   Customization -> Now Playing. Play/pause/skip are now filled rounded polygons
   drawn by `TransportGlyphs.kt` instead of the sharp skip drawables. Matched the
   old drawable footprint so the transport does not shrink.
@@ -876,6 +876,14 @@ CI artifacts:
 - 2026-10-23: Repo renamed to `BitChordNext`. Updated the update checker,
   Discord RPC project/image URLs, Tidal instance source, README badges/links,
   the Settings colophon, and the git remote. Bumped to **78 / 2.2.16**.
+- 2026-10-23: Community build verified. Pushed `3aa7ea0b`; `Flow Debug APK`
+  run `39934232710` succeeded in 13m1s and produced `bitchord-next-release`
+  with four ABI APKs. All four report `com.dev.bitchord`, `78 / 2.2.16`, and
+  the fork signer `CN=BitChord Next Fork`. The arm64 APK is 61,820,431 bytes,
+  SHA-256 `0e75624132fb3d48b2037b0bb5114770d95a8d9e2a509bbc355582a9c0d55a27`;
+  `lib/arm64-v8a/libbitchord_jamesdsp.so` is present; 16 KB `zipalign` passed;
+  the community strings and all three `BitChordNext` URLs are present in the
+  dex. No tag or GitHub Release was created.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -902,6 +910,10 @@ CI artifacts:
   APK contains all three ABI libraries; 16 KB `zipalign` verification passed.
   Local arm64 copy: `BitChordNext-2.2.15-code77-forkkey-arm64.apk`, SHA-256
   `3099c8726724d9c1e4b10bff0560d2528f0686e9b86a211ff35500c417ff4b10`.
+  2026-10-23 verification: run `39934232710` (commit `3aa7ea0b`) built
+  `com.dev.bitchord`, `78 / 2.2.16`, with the same signer. Local arm64 copy:
+  `BitChordNext-2.2.16-code78-forkkey-arm64.apk`, SHA-256
+  `0e75624132fb3d48b2037b0bb5114770d95a8d9e2a509bbc355582a9c0d55a27`.
 - Local `:app:assembleDevDebug` builds on the server are signed with the
   *server's auto-generated* `~/.android/debug.keystore`. That is a different key,
   so a debug APK **cannot** be installed over a CI-built app: Android reports
@@ -913,7 +925,7 @@ CI artifacts:
 
 ## What a future session must not forget
 
-1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the use
+1. Read Workstreams A-D before touching JamesDSP, Home, or Gemini; the user
    asked for the plan file to be the refresher every compaction.
 2. JamesDSP is now implemented in the chain and has a real control sheet, but
    its **GPLv2/GPLv3 compatibility is unresolved**. It is in the next
