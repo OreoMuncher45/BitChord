@@ -273,7 +273,7 @@ fun ClassipodHost(
         if (playlists.isEmpty()) {
             return ClassipodPage.Menu(
                 song.title,
-                listOf(MenuItem("No playlists yet", "Create one in BitChord")),
+                listOf(MenuItem("No playlists yet", "Create one in Auris")),
             )
         }
         return ClassipodPage.Menu(
@@ -407,7 +407,7 @@ fun ClassipodHost(
     fun interfacePage(): ClassipodPage.Menu = ClassipodPage.Menu(
         "Interface",
         listOf(
-            MenuItem("Theme: BitChord") { AppSettings.setAppUi(AppUi.BITCHORD) },
+            MenuItem("Theme: Auris") { AppSettings.setAppUi(AppUi.BITCHORD) },
             MenuItem(
                 "Faceplate",
                 AppSettings.classipodColorway.value,
@@ -442,7 +442,7 @@ fun ClassipodHost(
     fun aboutPage(): ClassipodPage.Menu = ClassipodPage.Menu(
         "About",
         listOf(
-            MenuItem("BitChord Next", "v" + BuildConfig.VERSION_NAME),
+            MenuItem("Auris", "v" + BuildConfig.VERSION_NAME),
             MenuItem("Tracks", allKnown.size.toString()),
             MenuItem("Liked", likedAll.size.toString()),
         ),

@@ -159,32 +159,38 @@ private fun MoodGenreCard(
         modifier = modifier
             .aspectRatio(MOOD_CARD_ASPECT)
             .clip(MOOD_CARD_SHAPE)
-            .background(tone.stripe)
+            .background(tone.placeholder)
             .clickable(onClick = onClick),
     ) {
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .fillMaxWidth(1f - MOOD_STRIPE_FRACTION)
-                .background(tone.placeholder),
-        ) {
-            item.thumbnailUrl?.let { artwork ->
-                AsyncImage(
-                    model = artwork,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    colorFilter = tone.duotone,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        item.thumbnailUrl?.let { artwork ->
+            AsyncImage(
+                model = artwork,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                colorFilter = tone.duotone,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
-        // Pale stripes (Energize's cream, Feel good's mint) would swallow
-        // white type; a soft shade under the title keeps it legible.
+        // The category's own colour washes the duotone from the top-left, where
+        // the title sits, so the card reads as one tinted sleeve — the way
+        // Apple's Browse tiles do — instead of a photo beside a swatch.
         Box(
             Modifier
                 .matchParentSize()
-                .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = .24f), .62f to Color.Transparent)),
+                .background(
+                    Brush.linearGradient(
+                        0f to tone.stripe.copy(alpha = .62f),
+                        .55f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = .18f),
+                    ),
+                ),
+        )
+        // Pale tones (Energize's cream, Feel good's mint) would swallow white
+        // type; a soft shade under the title keeps it legible.
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = .26f), .52f to Color.Transparent)),
         )
         Text(
             text = item.title,
@@ -256,9 +262,6 @@ private val MOOD_CARD_SHAPE = RoundedCornerShape(18.dp)
 
 /** Width over height; a two-column phone row lands at about 100dp tall. */
 private const val MOOD_CARD_ASPECT = 1.72f
-
-/** How much of the card the solid stripe covers before the artwork starts. */
-private const val MOOD_STRIPE_FRACTION = .28f
 
 /**
  * The narrowest a mood card is let get before the row drops a column.

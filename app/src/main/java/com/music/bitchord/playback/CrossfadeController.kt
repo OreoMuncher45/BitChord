@@ -624,6 +624,13 @@ class CrossfadeController(
 
         override fun onPlayerError(error: PlaybackException) = bail()
 
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            // A non-idle phase still needs ticks after a pause: the outgoing
+            // and incoming playWhenReady flags are mirrored there, and stopping
+            // the ticker mid-blend would let the other half carry on alone.
+            if (isPlaying || phase != Phase.IDLE) ensureTicker() else stopTicker()
+        }
+
         // The session reached the end of a track [holdAtEnd] is holding, before
         // the handoff took it off that track. Only ever a late handoff or a
         // transition that never started; either way the hold must not leave
@@ -663,10 +670,20 @@ class CrossfadeController(
 
     fun start() {
         listenTo(active())
-        tickerJob?.cancel()
+        if (active().isPlaying || phase != Phase.IDLE) ensureTicker()
+    }
+
+    /**
+     * The ticker is only worth running while one of the players is producing
+     * audio, or a transition is in flight. An idle, paused session was still
+     * waking four times a second to rediscover that there was nothing to do.
+     */
+    private fun ensureTicker() {
+        if (tickerJob?.isActive == true) return
         tickerJob = scope.launch {
             while (isActive) {
                 tick()
+                if (phase == Phase.IDLE && !active().isPlaying) break
                 delay(
                     when (phase) {
                         Phase.IDLE -> IDLE_STEP_MS
@@ -680,13 +697,20 @@ class CrossfadeController(
         }
     }
 
+    private fun stopTicker() {
+        tickerJob?.cancel()
+        tickerJob = null
+    }
+
     fun release() {
+        // First, so the teardown below cannot deliver an isPlaying change that
+        // starts a replacement ticker on a controller that is being discarded.
+        listeningTo?.removeListener(listener)
+        listeningTo = null
         tickerJob?.cancel()
         tickerJob = null
         endEase(clickless = false)
         releaseHold()
-        listeningTo?.removeListener(listener)
-        listeningTo = null
         active().volume = 1f
         AppSettings.smartMixInProgress.value = false
         AppSettings.smartMixBlend.value = null

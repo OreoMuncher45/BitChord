@@ -170,7 +170,7 @@ class DiscordRPC(
         const val PROJECT_URL = "https://github.com/OreoMuncher45/BitChordNext"
 
         const val DEFAULT_BUTTON_1 = "Listen on YouTube Music"
-        const val DEFAULT_BUTTON_2 = "Visit BitChord Next"
+        const val DEFAULT_BUTTON_2 = "Visit Auris"
 
         /** Discord draws the sleeve at roughly 96dp; 480px covers it on any density. */
         private const val ART_PX = 480

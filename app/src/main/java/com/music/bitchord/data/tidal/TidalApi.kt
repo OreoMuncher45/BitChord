@@ -140,7 +140,7 @@ object TidalApi {
         runCatching {
             val request = Request.Builder().url(url)
                 .header("Range", "bytes=0-0")
-                .header("User-Agent", "BitChord/v${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "Auris/v${BuildConfig.VERSION_NAME}")
                 .build()
             probeClient.newCall(request).execute().use { response ->
                 val total = response.header("Content-Range")
@@ -391,7 +391,7 @@ object TidalApi {
     private fun getWithCode(url: String, client: okhttp3.OkHttpClient): Body {
         val request = Request.Builder().url(url)
             .header("Accept", "application/json")
-            .header("User-Agent", "BitChord/v${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "Auris/v${BuildConfig.VERSION_NAME}")
             .build()
         client.newCall(request).execute().use { response ->
             val text = runCatching { response.body?.string().orEmpty() }.getOrDefault("")

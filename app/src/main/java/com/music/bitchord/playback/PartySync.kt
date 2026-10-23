@@ -8,6 +8,7 @@ import com.music.bitchord.data.listentogether.PartyTrack
 import com.music.bitchord.data.listentogether.partyQueueIndexOf
 import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.presence.AndroidPresence
 import com.music.bitchord.data.sources.TrackMatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -93,6 +95,7 @@ class PartySync(
     private val jobs = mutableListOf<Job>()
     private var publishJob: Job? = null
     private var startJob: Job? = null
+    private var tickerJob: Job? = null
 
     /**
      * Until when [reconcile] should keep its hands off.
@@ -205,8 +208,10 @@ class PartySync(
                         lastPartyCode = key.code
                         if (!wasInParty && nowInParty) {
                             onEnteredParty()
+                            startTicker()
                         } else if (wasInParty && !nowInParty) {
                             onLeftParty()
+                            stopTicker()
                         }
                     }
                     // Every control this device sent has come back around, so
@@ -219,19 +224,49 @@ class PartySync(
                     reconcile()
                 }
         }
-        jobs += scope.launch {
-            while (true) {
-                delay(TICK_MS)
-                // The screen is the only thing that opens this socket otherwise,
-                // and a party outlives the screen. A process restarted by the
-                // system into a party it is still a member of has the membership
-                // but no connection, and would sit silently out of step; this is
-                // what puts it back. Idempotent — it returns immediately when a
-                // socket is already up, or when there is no party.
+        if (ListenTogether.state.value.inParty) startTicker()
+    }
+
+    /**
+     * The reconciliation heartbeat. Only a party has anything to reconcile, and
+     * outside one this loop was a 700ms wake-up that compared a player against a
+     * party state that was not there.
+     *
+     * The screen is the only thing that opens this socket otherwise, and a party
+     * outlives the screen. A process restarted by the system into a party it is
+     * still a member of has the membership but no connection, and would sit
+     * silently out of step; this is what puts it back. Idempotent — it returns
+     * immediately when a socket is already up, or when there is no party.
+     */
+    private fun startTicker() {
+        if (tickerJob?.isActive == true) return
+        tickerJob = scope.launch {
+            while (isActive) {
+                delay(tickIntervalMs())
                 if (ListenTogether.state.value.inParty) ListenTogether.ensureConnected()
                 reconcile()
             }
         }
+    }
+
+    /**
+     * The playhead is only worth chasing as hard as somebody can hear it.
+     *
+     * Foreground is where the seek must land within about a tick of the drift
+     * being visible. In the background with audio playing the same correction
+     * matters but can wait another beat; with the party paused there is nothing
+     * to hear at all, so the ticker's only remaining job is noticing a process
+     * that came back without a socket, and that does not need a 700ms wake-up.
+     */
+    private fun tickIntervalMs(): Long = when {
+        AndroidPresence.isForeground -> TICK_MS
+        ListenTogether.state.value.playback.isPlaying -> TICK_BACKGROUND_PLAYING_MS
+        else -> TICK_BACKGROUND_PAUSED_MS
+    }
+
+    private fun stopTicker() {
+        tickerJob?.cancel()
+        tickerJob = null
     }
 
     fun stop() {
@@ -239,6 +274,7 @@ class PartySync(
         jobs.clear()
         publishJob?.cancel()
         startJob?.cancel()
+        stopTicker()
     }
 
     /**
@@ -1013,6 +1049,15 @@ class PartySync(
          * ExoPlayer, no binder call and no allocation on the quiet path.
          */
         const val TICK_MS = 700L
+
+        /** Background, audio playing: still correcting, at half the rate. */
+        const val TICK_BACKGROUND_PLAYING_MS = 1_500L
+
+        /**
+         * Background, party paused: nothing audible to correct. Slow enough to
+         * cost nothing measurable, fast enough to notice a dead socket.
+         */
+        const val TICK_BACKGROUND_PAUSED_MS = 15_000L
 
         /**
          * How far out of step is worth an audible seek.

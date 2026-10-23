@@ -94,8 +94,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -136,6 +134,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
+import com.music.bitchord.ui.components.AurisSlider
 import com.music.bitchord.ui.components.isGlassSupported
 import com.music.bitchord.ui.components.languageDisplayNameRes
 import com.music.bitchord.ui.components.DonationRow
@@ -594,7 +593,7 @@ fun SettingsScreen(
                     title = exportDownloadsTitle,
                     checked = exportDownloads,
                     onCheckedChange = AppSettings::setExportDownloads,
-                    subtitle = "Music/BitChord".takeIf { exportDownloads },
+                    subtitle = "Music/Auris".takeIf { exportDownloads },
                 )
             }
         }
@@ -1589,14 +1588,6 @@ fun SettingsScreen(
                     DonationRow(rail)
                 }
             }
-            row("ko-fi", "kofi", "kushagra", "donate", "upstream", "author") {
-                SettingsRow(
-                    icon = Icons.Rounded.Favorite,
-                    title = stringResource(R.string.support_kushagra_kofi),
-                    subtitle = stringResource(R.string.support_kushagra_subtitle),
-                    onClick = { SupportDonations.openKoFi(context) },
-                )
-            }
         }
 
         // The version line is the page's colophon, not a setting: it belongs to
@@ -1604,7 +1595,7 @@ fun SettingsScreen(
         if (searchQuery.isBlank()) {
         Text(
             text = buildAnnotatedString {
-                append("bitchord $version  ")
+                append("Auris $version  ")
                 val linkStyles = TextLinkStyles(
                     style = SpanStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -2795,7 +2786,6 @@ internal fun Chevron() {
 }
 
 /** A continuous setting: label and current value on one line, track beneath. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SliderRow(
     icon: ImageVector,
@@ -2807,11 +2797,6 @@ internal fun SliderRow(
     steps: Int,
     subtitle: String? = null,
 ) {
-    val colors = SliderDefaults.colors(
-        thumbColor = MaterialTheme.colorScheme.primary,
-        activeTrackColor = MaterialTheme.colorScheme.primary,
-        inactiveTrackColor = MaterialTheme.colorScheme.outline,
-    )
     Column(Modifier.padding(start = ROW_INSET, end = ROW_INSET, top = 12.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -2842,22 +2827,11 @@ internal fun SliderRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Slider(
+        AurisSlider(
             value = sliderValue,
             onValueChange = onSliderValue,
             valueRange = valueRange,
             steps = steps,
-            colors = colors,
-            // Bare track: the step ticks and the end-stop dot are noise when the
-            // value is already spelled out on the line above.
-            track = { state ->
-                SliderDefaults.Track(
-                    sliderState = state,
-                    colors = colors,
-                    drawStopIndicator = null,
-                    drawTick = { _, _ -> },
-                )
-            },
             modifier = Modifier.padding(start = ICON_SIZE + ICON_GAP),
         )
     }

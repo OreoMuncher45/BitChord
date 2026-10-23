@@ -17,12 +17,31 @@ object AndroidPresence {
     private const val PREFS = "presence"
     private const val KEY_INSTALL_ID = "install_id"
 
+    /**
+     * Whether any activity is visible.
+     *
+     * Background loops use this to tell "someone is looking at the app" from
+     * "the playback service is holding the process alive"; polling at screen
+     * rates for a screen that is not there is the difference between a party
+     * that costs a little battery and one that costs a lot of it.
+     */
+    @Volatile
+    var isForeground: Boolean = false
+        private set
+
     /** Call once from [Application.onCreate], on the main thread. */
     fun install(app: Application) {
         val presence = Presence(PresencePlatform.Android, installId(app))
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) = presence.setOpen(true)
-            override fun onStop(owner: LifecycleOwner) = presence.setOpen(false)
+            override fun onStart(owner: LifecycleOwner) {
+                isForeground = true
+                presence.setOpen(true)
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                isForeground = false
+                presence.setOpen(false)
+            }
         })
     }
 

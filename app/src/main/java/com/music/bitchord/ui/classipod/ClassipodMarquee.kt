@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.music.bitchord.ui.rememberIsForeground
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -65,7 +66,12 @@ fun PodMarquee(
             )
         } else {
             val off = remember(text) { Animatable(0f) }
-            LaunchedEffect(text) {
+            val foreground = rememberIsForeground()
+            LaunchedEffect(text, foreground) {
+                if (!foreground) {
+                    off.snapTo(0f)
+                    return@LaunchedEffect
+                }
                 while (true) {
                     delay(900)
                     off.animateTo(

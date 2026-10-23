@@ -46,7 +46,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,6 +76,7 @@ import com.music.bitchord.data.flow.FlowTuner
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.isSameTrackAs
+import com.music.bitchord.ui.components.AurisSlider
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PlayingAccent
@@ -517,7 +517,7 @@ private fun FlowTunerCard(
                     fontWeight = FontWeight.Medium,
                 )
             }
-            Slider(value = tuner.discovery, onValueChange = onDiscovery, modifier = Modifier.fillMaxWidth())
+            AurisSlider(value = tuner.discovery, onValueChange = onDiscovery, modifier = Modifier.fillMaxWidth())
             Text(
                 stringResource(R.string.flow_discovery_subtitle),
                 style = MaterialTheme.typography.bodySmall,
@@ -536,7 +536,7 @@ private fun FlowTunerCard(
                     fontWeight = FontWeight.Medium,
                 )
             }
-            Slider(value = tuner.memory, onValueChange = onMemory, modifier = Modifier.fillMaxWidth())
+            AurisSlider(value = tuner.memory, onValueChange = onMemory, modifier = Modifier.fillMaxWidth())
             Text(
                 stringResource(R.string.flow_memory_subtitle),
                 style = MaterialTheme.typography.bodySmall,

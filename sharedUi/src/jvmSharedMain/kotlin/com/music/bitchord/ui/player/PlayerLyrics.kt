@@ -2549,7 +2549,10 @@ private fun CurrentLyricLine(
     modifier: Modifier = Modifier,
 ) {
     val isSynced = remember(lines) { lines.any { it.timeMs > 0L } }
-    val ink = LocalPlayerInk.current
+    // A pinned lyric colour wins; otherwise the strip follows the artwork ink,
+    // which is tinted from the sleeve rather than flipped between black and
+    // white — see [artworkComplementInk].
+    val ink = LocalPlayerLyrics.current ?: LocalPlayerInk.current
     val lineStyle = MaterialTheme.typography.titleMedium.copy(
         shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
     )
@@ -2713,7 +2716,7 @@ private fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier) 
         style = MaterialTheme.typography.titleMedium.copy(
             shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
         ),
-        color = LocalPlayerInk.current,
+        color = LocalPlayerLyrics.current ?: LocalPlayerInk.current,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
@@ -2730,7 +2733,7 @@ private fun LyricsLoadingLine(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleMedium.copy(
             shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
         ),
-        color = LocalPlayerInk.current.copy(alpha = 0.55f),
+        color = (LocalPlayerLyrics.current ?: LocalPlayerInk.current).copy(alpha = 0.55f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(vertical = 4.dp),

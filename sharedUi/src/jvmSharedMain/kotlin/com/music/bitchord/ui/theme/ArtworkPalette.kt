@@ -142,6 +142,19 @@ fun rememberArtworkPalette(
 }
 
 /**
+ * The artwork's mean colour — what a blur wide enough to lose the picture
+ * leaves behind.
+ *
+ * Used by the expanded player to tint its chrome with the record's own colour
+ * family rather than falling back to plain black or white.
+ */
+@Composable
+fun rememberArtworkAverageColor(
+    imageUrl: String?,
+    artPx: Int = CARD_ART_PX,
+): Color? = rememberArtworkSeed(imageUrl, artPx)?.average
+
+/**
  * Reads top-band relative luminance from the cached palette decode.
  * Returns raw artwork luminance without applying top scrim calculations.
  */
@@ -211,6 +224,8 @@ private data class Seed(
     val dominant: Color,
     val vibrant: Color,
     val edge: Color,
+    /** The whole sleeve averaged — the colour a blur of it would leave. */
+    val average: Color,
     val topBandLuminance: Float,
     val controlBandLuminance: Float,
 )
@@ -242,6 +257,7 @@ private fun seedOf(bitmap: ImageBitmap): Seed? {
         dominant = Color(dominant.rgb),
         vibrant = Color(vibrant.rgb),
         edge = bitmap.bottomEdgeColor(),
+        average = bitmap.averageColor(),
         topBandLuminance = bitmap.topBandRelativeLuminance(),
         controlBandLuminance = bitmap.controlBandRelativeLuminance(),
     )
@@ -255,6 +271,7 @@ private fun ArtworkKeyColors.toSeed() = Seed(
     dominant = background,
     vibrant = accent,
     edge = background,
+    average = background,
     topBandLuminance = relativeLuminance(background.toArgb()),
     controlBandLuminance = relativeLuminance(background.toArgb()),
 )
@@ -292,6 +309,30 @@ private fun ImageBitmap.bottomEdgeColor(): Color {
 
 /** How much of the artwork's height the edge colour is read from. */
 private const val EDGE_BAND = 0.18f
+
+/**
+ * The whole sleeve averaged: exactly the colour a wide blur leaves behind, and
+ * what the player's chrome is tinted from.
+ */
+private fun ImageBitmap.averageColor(): Color {
+    if (width <= 0 || height <= 0) return Color.Transparent
+    val pixels = IntArray(width * height)
+    readPixels(pixels, startX = 0, startY = 0, width = width, height = height)
+    var red = 0L
+    var green = 0L
+    var blue = 0L
+    pixels.forEach { pixel ->
+        red += (pixel shr 16) and 0xFF
+        green += (pixel shr 8) and 0xFF
+        blue += pixel and 0xFF
+    }
+    val count = pixels.size.coerceAtLeast(1)
+    return Color(
+        red = (red / count).toInt(),
+        green = (green / count).toInt(),
+        blue = (blue / count).toInt(),
+    )
+}
 
 /**
  * The status inset occupies only the upper sliver of the full-bleed hero on a

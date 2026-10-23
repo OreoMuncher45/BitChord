@@ -138,6 +138,7 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.music.bitchord.ui.theme.StatusBarIcons
+import com.music.bitchord.ui.theme.rememberArtworkAverageColor
 import com.music.bitchord.ui.theme.rememberArtworkControlLuminance
 import com.music.bitchord.ui.theme.rememberArtworkTopBandLuminance
 import com.music.bitchord.ui.theme.topBandScrimAlpha
@@ -849,21 +850,18 @@ fun NowPlayingScreen(
     // lies beneath the status bar when the player expands to full bleed.
     val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
     val artControlLuminance = rememberArtworkControlLuminance(remoteArt, ART_PX)
-    // Bright enough that white chrome would wash out, so the player flips to
-    // near-black ink. [playerInkGlow] is the opposite colour, faded in behind
-    // glyphs and text so dark ink still reads where it crosses a dark patch of
-    // the sleeve, and white ink keeps its edge over a bright one.
-    val playerInkTarget = if ((artControlLuminance ?: 0f) >= 0.55f) {
-        Color(0xFF0B0B0C)
-    } else {
-        Color.White
-    }
+    val artAverage = rememberArtworkAverageColor(remoteArt, ART_PX)
+    // The backdrop is the sleeve blurred down to its average, so the chrome is
+    // tinted with that average's complement rather than picked from black or
+    // white. [playerInkGlow] is the opposite light, faded in behind glyphs and
+    // text so the tint still reads where it crosses a patch of the sleeve.
+    val playerInkTarget = artworkComplementInk(artAverage, artControlLuminance)
     val playerInk by animateColorAsState(
         targetValue = playerInkTarget,
         animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
         label = "playerInk",
     )
-    val playerInkGlowTarget = if (playerInkTarget == Color.White) {
+    val playerInkGlowTarget = if (playerInkTarget.isLightInk()) {
         PLAYER_GLOW_ON_LIGHT
     } else {
         PLAYER_GLOW_ON_DARK
@@ -2167,6 +2165,7 @@ fun NowPlayingScreen(
             LocalPlayerAccent provides colors.accent,
             LocalPlayerSeekbar provides colors.seekbar,
             LocalPlayerText provides colors.text,
+            LocalPlayerLyrics provides colors.lyrics,
         ) {
         // Anchored to the sleeve's bottom edge, so the screen carries on in the
         // colours the artwork ended in rather than in a quantiser's idea of what

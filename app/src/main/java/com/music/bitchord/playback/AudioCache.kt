@@ -196,12 +196,19 @@ object AudioCache {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
+     * This object has no Context of its own, and the background data policy
+     * needs system services. Set once from [init].
+     */
+    private var appContext: Context? = null
+
+    /**
      * Kept in the app's cache directory: this is disposable by definition, and
      * that is where the system and the "clear cache" button expect to reclaim
      * it from. [SimpleCache] copes with files disappearing underneath it by
      * dropping the spans that named them.
      */
     fun init(context: Context) {
+        appContext = context.applicationContext
         evictor.maxBytes = AppSettings.audioCacheLimitBytes.value
         cache = SimpleCache(
             File(context.cacheDir, "audio"),
@@ -966,7 +973,14 @@ object AudioCache {
                     launch(TrackLog.about(next)) {
                         delay(PREFETCH_DELAY_MS)
                         fetch(next, 0, PRELOAD_BYTES)
-                        fetchWhole(next)
+                        // Enough to start the track is worth having everywhere.
+                        // The rest is a guess about where the listener will
+                        // seek, and a whole-track download of a guess is what
+                        // waits for a screen, a charger or an unmetered link.
+                        val context = appContext
+                        if (context == null || PlaybackNetworkPolicy.allowHeavyBackgroundWork(context)) {
+                            fetchWhole(next)
+                        }
                     }
                 }
                 launch {

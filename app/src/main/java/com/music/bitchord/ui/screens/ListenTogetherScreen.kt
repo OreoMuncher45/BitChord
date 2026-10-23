@@ -95,6 +95,7 @@ import com.music.bitchord.data.listentogether.PartyActivity
 import com.music.bitchord.data.listentogether.PartyMember
 import com.music.bitchord.data.listentogether.ServerConnectionState
 import com.music.bitchord.data.listentogether.ServerUrlError
+import com.music.bitchord.ui.rememberIsForeground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -953,7 +954,11 @@ private fun NowPlayingInTheParty(state: ListenTogether.State) {
     val track = state.playback.track
     var positionMs by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(state.playback.seq, state.playback.isPlaying) {
+    val foreground = rememberIsForeground()
+    LaunchedEffect(state.playback.seq, state.playback.isPlaying, foreground) {
+        // A composition outlives the activity being stopped, so without this
+        // the playhead kept ticking four times a second in a pocket.
+        if (!foreground) return@LaunchedEffect
         while (true) {
             positionMs = ListenTogether.partyPositionMs() ?: 0L
             delay(250)

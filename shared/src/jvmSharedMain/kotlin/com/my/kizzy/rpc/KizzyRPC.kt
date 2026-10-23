@@ -46,6 +46,14 @@ open class KizzyRPC(
         discordApiClient.close()
     }
 
+    /**
+     * Releases the gateway until the next presence push, without tearing this
+     * object down. See [DiscordWebSocket.disconnect].
+     */
+    fun disconnect() {
+        discordWebSocket.disconnect()
+    }
+
     fun isRpcRunning(): Boolean {
         return discordWebSocket.isWebSocketConnected()
     }

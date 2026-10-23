@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">BitChord Next</string>
+    <string name="app_name">Auris</string>
     <string name="playback_channel_name">Now playing</string>
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_description">Songs being saved to your Music folder</string>
@@ -23,6 +23,7 @@
     <string name="clear_search">Clear search</string>
     <string name="library">Library</string>
     <string name="home">Home</string>
+    <string name="radio">Radio</string>
     <string name="play">Play</string>
     <string name="explore">Explore</string>
     <string name="listen_now">Listen Now</string>
@@ -47,7 +48,7 @@
     <string name="auto_recents">Recent</string>
     <string name="auto_liked">Liked songs</string>
     <string name="auto_login_title">Sign in to YouTube on your phone</string>
-    <string name="auto_login_subtitle">Open BitChord on your phone to sign in</string>
+    <string name="auto_login_subtitle">Open Auris on your phone to sign in</string>
     <string name="auto_empty_recents_title">No recent songs</string>
     <string name="auto_empty_recents_subtitle">Songs you play will appear here</string>
     <string name="auto_empty_quick_picks_title">No suggestions</string>
@@ -139,10 +140,10 @@
     <string name="dolby_atmos_open_failed">Couldn’t open Dolby Atmos settings</string>
     <string name="update_available">Update available: v%1$s</string>
     <string name="software_update">Software Update</string>
-    <string name="update_available_body">bitchord %1$s is available to download.</string>
-    <string name="update_downloading_body">Downloading bitchord %1$s…</string>
-    <string name="update_ready_body">bitchord %1$s is ready to install.</string>
-    <string name="update_failed_body">Couldn’t download bitchord %1$s.</string>
+    <string name="update_available_body">Auris %1$s is available to download.</string>
+    <string name="update_downloading_body">Downloading Auris %1$s…</string>
+    <string name="update_ready_body">Auris %1$s is ready to install.</string>
+    <string name="update_failed_body">Couldn’t download Auris %1$s.</string>
     <string name="download_now">Download Now</string>
     <string name="install_now">Install Now</string>
     <string name="later">Later</string>
@@ -160,7 +161,7 @@
     <string name="personalized_recommendations">Get personalized recommendations for you</string>
     <string name="play_next">Play next</string>
     <string name="queue">Queue</string>
-    <string name="source_unrecognised">BitChord could not tell what that link is</string>
+    <string name="source_unrecognised">Auris could not tell what that link is</string>
     <string name="source_already_added">Already added as %1$s</string>
     <string name="source_setup_required">Tap to finish setting up</string>
     <string name="source_skipped_by_quality">Not used on %1$s · quality is set to %2$s</string>
@@ -177,7 +178,7 @@
     <string name="widget_previous">Previous</string>
     <string name="widget_artwork">Album art</string>
     <string name="widget_nothing_played">Nothing played yet</string>
-    <string name="widget_open_bitchord">Open BitChord</string>
+    <string name="widget_open_bitchord">Open Auris</string>
     <string name="widget_preview_title">Song title</string>
     <string name="widget_preview_artist">Artist</string>
     <string name="widget_pill_label">Now playing 4×1</string>
@@ -230,7 +231,7 @@
     <string name="cancel_all">Cancel all</string>
     <string name="language">Language</string>
     <string name="app_language">App language</string>
-    <string name="app_language_description">Choose the language used by BitChord.</string>
+    <string name="app_language_description">Choose the language used by Auris.</string>
     <string name="english">English</string>
     <string name="spanish">Spanish</string>
     <string name="french">French</string>
@@ -284,8 +285,8 @@
     <string name="equalizer">Equalizer</string>
     <string name="equalizer_subtitle">Tone, seven bands and balance</string>
     <string name="jamesdsp">JamesDSP</string>
-    <string name="jamesdsp_subtitle">Native DSP engine, running inside BitChord</string>
-    <string name="jamesdsp_description">Runs on BitChord\'s own playback stream. No root, no session capture, and no effect on other apps.</string>
+    <string name="jamesdsp_subtitle">Native DSP engine, running inside Auris</string>
+    <string name="jamesdsp_description">Runs on Auris\'s own playback stream. No root, no session capture, and no effect on other apps.</string>
     <string name="jamesdsp_unavailable">JamesDSP is not available in this build.</string>
     <string name="jamesdsp_bass">Bass boost</string>
     <string name="jamesdsp_stereo">Stereo width</string>
@@ -301,8 +302,8 @@
     <string name="jamesdsp_large_hall">Large hall</string>
     <string name="jamesdsp_plate">Plate</string>
     <string name="jamesdsp_long">Long</string>
-    <string name="jamesdsp_license">JamesDSP is GPL-licensed. Source and notices ship with BitChord.</string>
-    <string name="equalizer_footer">Shapes the sound inside BitChord, before it reaches the system.</string>
+    <string name="jamesdsp_license">JamesDSP is GPL-licensed. Source and notices ship with Auris.</string>
+    <string name="equalizer_footer">Shapes the sound inside Auris, before it reaches the system.</string>
     <string name="equalizer_dynamic">Dynamic</string>
     <string name="equalizer_manual">Manual</string>
     <string name="equalizer_tone">Tone</string>
@@ -325,7 +326,7 @@
     <string name="equalizer_bitstream_footer">The equaliser works on decoded audio. This track is passed through as a bitstream for your device to decode, so there are no samples here to filter.</string>
     <string name="system_equalizer">System equalizer</string>
     <string name="system_equalizer_subtitle">Your device\'s own panel</string>
-    <string name="system_equalizer_footer">Runs after BitChord\'s, on the whole audio session. Using both applies both.</string>
+    <string name="system_equalizer_footer">Runs after Auris\'s, on the whole audio session. Using both applies both.</string>
     <string name="eq_preset_flat">Flat</string>
     <string name="eq_preset_acoustic">Acoustic</string>
     <string name="eq_preset_bass_boost">Bass boost</string>
@@ -401,10 +402,10 @@
     <string name="beta">Beta</string>
     <string name="refresh_rate">Refresh rate</string>
     <string name="high_performance_before_enabling">Before enabling</string>
-    <string name="high_performance_battery_warning">First set BitChord\'s battery usage to Unrestricted. Higher refresh rates use more battery, CPU and GPU, and may warm your device.</string>
+    <string name="high_performance_battery_warning">First set Auris\'s battery usage to Unrestricted. Higher refresh rates use more battery, CPU and GPU, and may warm your device.</string>
     <string name="open_battery_settings">Open battery settings</string>
     <string name="enable_high_performance_title">Enable high performance mode?</string>
-    <string name="enable_high_performance_confirmation">Enable only if BitChord\'s battery use is set to Unrestricted. Android can still limit the refresh rate when the device is hot or low on power.</string>
+    <string name="enable_high_performance_confirmation">Enable only if Auris\'s battery use is set to Unrestricted. Android can still limit the refresh rate when the device is hot or low on power.</string>
     <string name="enable">Enable</string>
     <string name="not_yet">Not yet</string>
     <string name="activity">Activity</string>
@@ -415,7 +416,7 @@
     <string name="activity_playing">Playing</string>
     <string name="activity_watching">Watching</string>
     <string name="add_addon">Add an addon</string>
-    <string name="add_addon_detail">Point BitChord at an addon server you host or were given a link to</string>
+    <string name="add_addon_detail">Point Auris at an addon server you host or were given a link to</string>
     <string name="add_to_queue">Add to queue</string>
     <string name="after_this_song">After this song</string>
     <string name="always_on">Always on</string>
@@ -449,7 +450,7 @@
     <string name="discord_presence_footer">The card updates when the track, position or playback state changes. It clears when playback stops.</string>
     <string name="discord_show_audio_quality">Show audio quality</string>
     <string name="discord_show_audio_quality_subtitle">Hi-Res, lossless and Dolby specs on the presence card</string>
-    <string name="discord_sign_in_footer">Signing in opens Discord\'s login page. Nothing is typed into BitChord.</string>
+    <string name="discord_sign_in_footer">Signing in opens Discord\'s login page. Nothing is typed into Auris.</string>
     <string name="discord_token">Discord token</string>
     <string name="discord_token_description">Paste your Discord account token. It stays encrypted on this device and is sent only to Discord.</string>
     <string name="discord_token_rejected">Discord rejected that token.</string>
@@ -521,7 +522,7 @@
     <string name="start_radio">Start radio</string>
     <string name="shared_link">Shared link</string>
     <string name="radio_started">%1$s radio started</string>
-    <string name="saved_to_bitchord_folder">Saved to Music/BitChord</string>
+    <string name="saved_to_bitchord_folder">Saved to Music/Auris</string>
     <string name="nothing_downloading">Nothing downloading</string>
     <string name="nothing_to_explore">Nothing to explore right now</string>
     <string name="no_youtube_music_results">No results from YouTube Music</string>
@@ -617,7 +618,7 @@
     <string name="max_delay_subtitle">Maximum scrobble delay in seconds</string>
     <string name="min_song_duration">Minimum song duration</string>
     <string name="min_song_duration_subtitle">Shorter songs will not scrobble</string>
-    <string name="addon_url_description">Paste the addon’s URL — either its root or its manifest.json. BitChord reads what it can search and stream, then asks it for tracks over plain HTTP.</string>
+    <string name="addon_url_description">Paste the addon’s URL — either its root or its manifest.json. Auris reads what it can search and stream, then asks it for tracks over plain HTTP.</string>
     <string name="monthly_listeners">%1$s monthly listeners</string>
     <string name="name">Name</string>
     <string name="no_playlists_yet">No playlists yet. Use the row above to create one.</string>
@@ -669,7 +670,7 @@
     <string name="signing_in">Signing in…</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="sources_no_lossless">No enabled source can provide lossless audio. Add an addon to play lossless files without transcoding.</string>
-    <string name="sources_order_footer">If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
+    <string name="sources_order_footer">If a source does not have a track or cannot be reached, Auris tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
     <string name="sources_order_header">Sources, tried in this order</string>
     <string name="sources_quality_capped">This connection is set below High quality, so streams are transcoded to fit that limit. Downloads are unaffected.</string>
     <string name="jiosaavn_mismatch_warning">May match the wrong version of a song. Enable at your own risk.</string>
@@ -715,7 +716,7 @@
     <string name="biggest_day_note">Your biggest day was %1$s with %2$s of listening.</string>
     <string name="close_replay">Close Replay</string>
     <string name="couldnt_draw_picture">Could not create the picture</string>
-    <string name="default_replay_holder">BitChord listener</string>
+    <string name="default_replay_holder">Auris listener</string>
     <string name="different_albums">Different albums</string>
     <string name="genres_pending">Genres will appear as your listening history grows</string>
     <string name="hour_am">%1$d AM</string>
@@ -745,7 +746,7 @@
     <string name="replay_artist_end"> kept coming back.</string>
     <string name="replay_artist_focus">One artist</string>
     <string name="replay_artist_start">All month, </string>
-    <string name="replay_empty_description">Listen a little more and BitChord will turn your history into a Replay.</string>
+    <string name="replay_empty_description">Listen a little more and Auris will turn your history into a Replay.</string>
     <string name="replay_genre_end"> shaped your sound.</string>
     <string name="replay_genre_focus">Your genres</string>
     <string name="replay_genre_start">Together, </string>
@@ -814,7 +815,7 @@
     <string name="webdav_subtitle">Music on your server</string>
     <string name="webdav_not_configured">Connect a server under Sources</string>
     <string name="webdav_empty">No audio files found on the WebDAV server. Check the URL in Settings.</string>
-    <string name="webdav_description">Point BitChord at a WebDAV music folder — your Nextcloud Music directory or any server speaking WebDAV.</string>
+    <string name="webdav_description">Point Auris at a WebDAV music folder — your Nextcloud Music directory or any server speaking WebDAV.</string>
     <string name="webdav_server_url">Server URL</string>
     <string name="webdav_server_url_hint">https://cloud.example.com/remote.php/dav/files/user/Music</string>
     <string name="webdav_disconnect">Disconnect</string>
@@ -831,7 +832,7 @@
     <string name="smb_subtitle">Music on a file share</string>
     <string name="smb_not_configured">Connect a share under Sources</string>
     <string name="smb_empty">No audio files found on the SMB share. Check the server in Sources.</string>
-    <string name="smb_description">Point BitChord at a shared music folder — a NAS or Windows share speaking SMB.</string>
+    <string name="smb_description">Point Auris at a shared music folder — a NAS or Windows share speaking SMB.</string>
     <string name="smb_server_hint">nas.local or 192.168.1.10:4445</string>
     <string name="smb_share_hint">Share name, e.g. Music</string>
     <string name="smb_folder_hint">Folder inside the share, e.g. media/music (optional)</string>
@@ -881,7 +882,7 @@
     </plurals>
     <string name="no_local_albums">Nothing here belongs to an album or playlist yet. Download a complete album or playlist and it will appear here.</string>
     <string name="play_your_replay">Play your Replay</string>
-    <string name="counted_on_device_with_bitchord">Counted on this device with BitChord</string>
+    <string name="counted_on_device_with_bitchord">Counted on this device with Auris</string>
     <string name="this_month">This month</string>
     <string name="this_year">This year</string>
     <string name="all_time">All time</string>
@@ -949,7 +950,7 @@
     <string name="listen_together_code">Party code</string>
     <string name="listen_together_code_footer">Read it out or send it. O and I aren’t used, so an “oh” is always a zero.</string>
     <string name="copy_code">Copy code</string>
-    <string name="listen_together_share_text">Listen with me on BitChord — party code %1$s</string>
+    <string name="listen_together_share_text">Listen with me on Auris — party code %1$s</string>
     <string name="listen_together_now_playing">Now playing</string>
     <string name="listen_together_nothing_playing">Nothing playing yet</string>
     <string name="listen_together_listening">Listening · %1$d of %2$d</string>
@@ -986,7 +987,7 @@
     <string name="listen_together_custom_server_dialog_message">This party is hosted on an external server:\n\n%1$s\n\nDo you want to switch your party server and join party %2$s?</string>
     <string name="listen_together_custom_server_switch_and_join">Switch &amp; Join</string>
     <string name="listen_together_official_server_dialog_title">Switch to official server?</string>
-    <string name="listen_together_official_server_dialog_message">This party is hosted on the official BitChord server.\n\nDo you want to switch back to the official server and join party %1$s?</string>
+    <string name="listen_together_official_server_dialog_message">This party is hosted on the official Auris server.\n\nDo you want to switch back to the official server and join party %1$s?</string>
     <string name="listen_together_switch_failed_stayed_in_party">Couldn’t join party: %1$s. Remaining in party %2$s.</string>
     <string name="listen_together_switch_failed">Couldn’t join party: %1$s.</string>
     <string name="listen_together_ping">%1$d ms</string>
@@ -1207,7 +1208,7 @@
 
     <!-- Tidal Hi-Fi (community instances, auto-failover) -->
     <string name="tidal_community_warning">Community instances · may break · Hi-Res FLAC when live</string>
-    <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. BitChord tries it first, then healthy community instances.</string>
+    <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. Auris tries it first, then healthy community instances.</string>
     <string name="tidal_auto_update">Auto-update instance list</string>
     <string name="qobuz_unlock_title">Unlock Qobuz conversions</string>
     <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
@@ -1216,13 +1217,13 @@
     <string name="qobuz_unlock_checking">Running the browser check…</string>
     <string name="qobuz_unlock_retry">Try again</string>
     <string name="qobuz_help_title">How to use the Qobuz addon</string>
-    <string name="qobuz_help_body">The Download button in the Qobuz page does not download the song.\n\nTap Download once and wait: it creates a session token that BitChord stores. BitChord then uses that token to stream or download the FLAC itself. The token stays active while you keep listening; after about an hour of inactivity, tap Download again.\n\nIf a file actually starts downloading, go back and tap Download again.</string>
+    <string name="qobuz_help_body">The Download button in the Qobuz page does not download the song.\n\nTap Download once and wait: it creates a session token that Auris stores. Auris then uses that token to stream or download the FLAC itself. The token stays active while you keep listening; after about an hour of inactivity, tap Download again.\n\nIf a file actually starts downloading, go back and tap Download again.</string>
     <string name="qobuz_help_never">Don\'t show this popup again</string>
     <string name="support">Support</string>
-    <string name="support_popup_title">BitChord Next is free</string>
-    <string name="support_popup_body">Built on BitChord by kushagra — credit for the app goes to him. This fork adds Flow, Classipod, lossless addons and more, and is maintained by OreoMuncher45. Donations keep the project alive:</string>
+    <string name="support_popup_title">Auris is free</string>
+    <string name="support_popup_body">Built by kushagra — credit for the original app goes to him. Auris adds Flow, Classipod, lossless addons and more, and is maintained by OreoMuncher45. Donations keep the project alive:</string>
     <string name="support_kushagra_kofi">Tip kushagra on Ko-fi</string>
-    <string name="support_kushagra_subtitle">The author of BitChord, which this app is built on</string>
+    <string name="support_kushagra_subtitle">The original author, whose app Auris is built on</string>
     <string name="support_donate_subtitle">Tap an address to copy it</string>
     <string name="copy_address">Copy address</string>
     <string name="address_copied">Address copied</string>
@@ -1231,7 +1232,7 @@
 
     <!-- Interface shell -->
     <string name="app_ui">Interface</string>
-    <string name="app_ui_subtitle">BitChord modern UI or Classipod click-wheel UI</string>
+    <string name="app_ui_subtitle">Auris modern UI or Classipod click-wheel UI</string>
 
     <!-- Cover art -->
     <string name="save_cover_art">Save cover art</string>
@@ -1262,10 +1263,11 @@
     <string name="custom_home">Home</string>
     <string name="custom_library">Library</string>
     <string name="custom_theme">Theme</string>
-    <string name="custom_now_playing_help">Leave a role on Automatic to follow the artwork. Colours picked here apply only to the player.</string>
+    <string name="custom_now_playing_help">Leave a role on Automatic to follow the artwork: ink takes a complementary colour from the cover. Colours picked here apply only to the player.</string>
     <string name="custom_buttons">Buttons, icons and controls</string>
     <string name="custom_seekbar">Seek bar and volume bar</string>
     <string name="custom_text">Song title and artist</string>
+    <string name="custom_lyrics">Lyric line</string>
     <string name="custom_recent">Recent colours</string>
     <string name="custom_reset_colors">Reset all player colours</string>
     <string name="custom_transport_smoothness">Transport corner smoothness</string>
@@ -1277,7 +1279,9 @@
     <string name="custom_reset_order">Reset to YouTube\'s order</string>
     <string name="custom_library_help">How the Library presents its shelves.</string>
     <string name="custom_library_sort">Show-all order</string>
-    <string name="custom_theme_help">Switch between the BitChord and Classipod shells, and pick a light or dark theme.</string>
+    <string name="custom_show_replay">Replay cards in Library</string>
+    <string name="custom_show_replay_subtitle">Show your listening-history cards above the shelves</string>
+    <string name="custom_theme_help">Switch between the Auris and Classipod shells, and pick a light or dark theme.</string>
     <string name="change">Change</string>
     <string name="sort_title_asc">Title A–Z</string>
     <string name="sort_title_desc">Title Z–A</string>
@@ -1289,9 +1293,9 @@
     <string name="spotify_monthly_listeners">Spotify · %1$s monthly listeners</string>
     <string name="spotify_followers">Spotify · %1$s followers</string>
     <!-- Community links -->
-    <string name="community_title">BitChord Next community</string>
+    <string name="community_title">Auris community</string>
     <string name="community_subtitle">Report bugs, suggest features, get beta access — join our Discord server!</string>
     <string name="community_join_discord">Join our Discord</string>
-    <string name="community_reddit">r/BitChordNext</string>
+    <string name="community_reddit">Reddit</string>
     <string name="community_star_github">Star on GitHub</string>
 </resources>

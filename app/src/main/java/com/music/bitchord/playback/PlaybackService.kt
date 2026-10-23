@@ -35,6 +35,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.core.net.toUri
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import com.music.bitchord.data.presence.AndroidPresence
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
@@ -708,6 +712,17 @@ class PlaybackService : MediaLibraryService() {
      */
     private var discordPresenceUp = false
 
+    /**
+     * Releases the Discord gateway when the app leaves the screen with nothing
+     * playing — the pause-before-background case, which doesn't fire a playback
+     * event of its own. See [clearDiscordPresence].
+     */
+    private val discordIdleObserver = object : DefaultLifecycleObserver {
+        override fun onStop(owner: LifecycleOwner) {
+            if (player?.isPlaying != true) clearDiscordPresence(releaseSocket = true)
+        }
+    }
+
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val localBitrateCache = ConcurrentHashMap<String, LocalBitrateReading>()
 
@@ -866,6 +881,10 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) prefetchAround(exoPlayer) else cancelPrefetch()
             if (isPlaying) lookForBetterCopy(exoPlayer)
             savePlaybackState(exoPlayer)
+            // Everything the sampler records is about audible time, so its job
+            // exists exactly while audio does instead of waking every five
+            // seconds to rediscover a paused player.
+            if (isPlaying) reportProgress() else stopProgressReporting()
             // Not strictly needed for the glyph — onPlayWhenReadyChanged has
             // already flipped that — but this is where hasNext/hasPrevious and
             // the artwork are known to be settled.
@@ -903,7 +922,11 @@ class PlaybackService : MediaLibraryService() {
                 pushDiscordPresence(exoPlayer)
                 startLyricsTicker()
             } else {
-                clearDiscordPresence()
+                // Released only once the app is also off screen: a pause with
+                // the app still open keeps the socket for an immediate resume,
+                // while a pause in the background would otherwise leave it
+                // heartbeating a presence-less session until the process dies.
+                clearDiscordPresence(releaseSocket = !AndroidPresence.isForeground)
                 stopLyricsTicker()
             }
         }
@@ -1292,6 +1315,10 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // The Discord gateway has no playback event to key its teardown on when
+        // the listener pauses and then leaves; ProcessLifecycleOwner does.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(discordIdleObserver)
 
         if (com.music.bitchord.data.innertube.Innertube.cookie == null) {
             com.music.bitchord.data.innertube.Innertube.cookie = com.music.bitchord.auth.AuthStore(this).cookie
@@ -1750,8 +1777,6 @@ class PlaybackService : MediaLibraryService() {
         // publisher reads the format off the player, so it can't go stale
         // against the track the bitrate is looked up for.
         exoPlayer.addAnalyticsListener(formatListener)
-
-        reportProgress()
 
         val controller = createCrossfadeController()
         crossfade = controller
@@ -3837,7 +3862,13 @@ class PlaybackService : MediaLibraryService() {
      * served from the disk cache was never resolved at all and is judged here
      * instead — see [adoptCachedTrack] and [QualityUpgrade.adoptUnresolved].
      */
-    private fun lookForBetterCopy(player: ExoPlayer) {
+    private fun lookForBetterCopy(player: ExoPlayer, byHand: Boolean = false) {
+        // A search and an audition pull a whole replacement stream while the
+        // listener may be on mobile data with the screen off. That is the
+        // listener's data and battery, so automatic hunts wait for a screen,
+        // a charger or an unmetered connection. A hand-asked upgrade is an
+        // explicit request and always goes ahead.
+        if (!byHand && !PlaybackNetworkPolicy.allowHeavyBackgroundWork(this)) return
         val item = player.currentMediaItem ?: return
         val mediaId = item.mediaId
         val uri = item.localConfiguration?.uri
@@ -3987,7 +4018,7 @@ class PlaybackService : MediaLibraryService() {
         SourceRegistry.clearCompletedAddonTrackCalls()
         QualityUpgrade.askByHand(mediaId)
         TrackLog.d("BitChord", "upgrade asked for by hand for $mediaId", about = mediaId)
-        lookForBetterCopy(player)
+        lookForBetterCopy(player, byHand = true)
     }
 
     /**
@@ -5612,13 +5643,21 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
+     * The sampler's job, alive only while the session player is playing. Every
+     * figure below is wall-clock or played-time evidence, so a tick with no
+     * audio behind it is a wake-up that records nothing.
+     */
+    private var progressJob: Job? = null
+
+    /**
      * Feeds played-seconds to [PlaybackTracker]. The tracker can't read the
      * player itself — ExoPlayer is confined to this thread — and a history
      * entry with no watchtime behind it barely registers as a listen, so the
      * sampling has to come from here.
      */
     private fun reportProgress() {
-        scope.launch {
+        if (progressJob?.isActive == true) return
+        progressJob = scope.launch {
             while (isActive) {
                 // Re-read every tick rather than captured once: the session
                 // moves between two players, and a sampler pinned to the one
@@ -5666,6 +5705,11 @@ class PlaybackService : MediaLibraryService() {
                 delay(PROGRESS_SAMPLE_MS)
             }
         }
+    }
+
+    private fun stopProgressReporting() {
+        progressJob?.cancel()
+        progressJob = null
     }
 
     /**
@@ -6728,14 +6772,15 @@ class PlaybackService : MediaLibraryService() {
                 .collect { metered ->
                     if (metered == null) return@collect
                     val rpc = discordRpc ?: return@collect
+                    // Nothing is published while paused, and the socket was let
+                    // go on purpose; waking it here would undo that teardown.
+                    if (!discordPresenceUp) return@collect
                     withContext(Dispatchers.IO) { runCatching { rpc.wakeUp() } }
                     // Re-pushed rather than left to the gateway's own replay,
                     // because a handover can strand the socket in a state where
                     // it believes it is still connected: the push is what makes
                     // it prove otherwise.
-                    if (discordPresenceUp) {
-                        player?.takeIf { p -> p.isPlaying }?.let(::pushDiscordPresence)
-                    }
+                    player?.takeIf { p -> p.isPlaying }?.let(::pushDiscordPresence)
                 }
         }
     }
@@ -6798,14 +6843,32 @@ class PlaybackService : MediaLibraryService() {
     /**
      * Takes the presence down but leaves the socket up, so resuming doesn't pay
      * for a reconnect. Discord clears the card on an activity-less presence.
+     *
+     * [releaseSocket] goes further, for a pause that happened out of sight: the
+     * gateway is dropped too. Left up, it would keep heartbeating every ~41
+     * seconds — and reconnect with backoff after every network change — for a
+     * session that has nothing to show, for as long as the app stays closed.
      */
-    private fun clearDiscordPresence() {
+    private fun clearDiscordPresence(releaseSocket: Boolean = false) {
         val rpc = discordRpc ?: return
-        if (!discordPresenceUp) return
+        if (!discordPresenceUp) {
+            if (releaseSocket) rpc.disconnect()
+            return
+        }
         discordPresenceUp = false
         discordUpdateJob?.cancel()
         discordUpdateJob = scope.launch(Dispatchers.IO) {
             runCatching { rpc.close() }
+            if (!releaseSocket) return@launch
+            // Re-checked here, on the player's own thread: a resume may have
+            // landed while the clear was in flight, and cancelling that
+            // half-finished job is not enough to stop this from closing a
+            // socket the resume just reopened.
+            withContext(Dispatchers.Main) {
+                if (!AndroidPresence.isForeground && player?.isPlaying != true) {
+                    rpc.disconnect()
+                }
+            }
         }
     }
 
@@ -6838,13 +6901,27 @@ class PlaybackService : MediaLibraryService() {
         mediaSession
 
     /**
+     * A paused session is not resurrected.
+     *
+     * [MediaSessionService] answers `START_STICKY` while it holds a session, so
+     * a process the system reclaimed could be rebuilt — Application, party
+     * socket and all — for a player that was not even playing. An explicit
+     * start (the notification, a media button, a controller) still works; this
+     * only refuses the implicit restart after death.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_NOT_STICKY
+    }
+
+    /**
      * Called by Android when the user swipes this app's task away from the
      * recent apps screen.
      *
-     * When [AppSettings.stopOnTaskRemoved] is on we stop the player and let the
-     * service die naturally; otherwise we leave it running in the background so
-     * music continues past the swipe, which is the default Android behaviour for
-     * a foreground-service-backed media session.
+     * When [AppSettings.stopOnTaskRemoved] is on — the default — we stop the
+     * player and let the service die naturally; with it off we leave the
+     * service running so music continues past the swipe, which is the ordinary
+     * Android behaviour for a foreground-service-backed media session.
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
@@ -6862,6 +6939,7 @@ class PlaybackService : MediaLibraryService() {
 
 
     override fun onDestroy() {
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(discordIdleObserver)
         // Let go of the receiver's player but leave its session alone: a
         // service that idles out while casting is not the listener choosing to
         // stop, and the next one picks the session up where it was.

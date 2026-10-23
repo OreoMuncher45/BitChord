@@ -127,6 +127,17 @@ open class DiscordWebSocket(
     private var closed = false
 
     /**
+     * Set by [disconnect] while nothing needs publishing.
+     *
+     * The object stays usable — unlike [close], which tears the client down for
+     * good — because playback resuming is expected, and paying for a fresh
+     * gateway handshake then is cheaper than heartbeating a socket Discord has
+     * nothing to show on for as long as the app sits in the background.
+     */
+    @Volatile
+    private var pausedLoop = false
+
+    /**
      * Whether there is a session that can carry a presence — true between
      * `READY`/`RESUMED` and the socket going down. A [MutableStateFlow] so
      * [sendActivity] can wait on it instead of polling: the wait used to be a
@@ -177,6 +188,11 @@ open class DiscordWebSocket(
     /** Starts the connection loop if it isn't already running. */
     fun connect() {
         if (closed) return
+        if (pausedLoop) {
+            pausedLoop = false
+            // Wakes the loop from the park [disconnect] left it in.
+            retrySignal.trySend(Unit)
+        }
         synchronized(loopLock) {
             if (connectionLoop?.isActive == true) {
                 logger.info("Gateway connection loop already running.")
@@ -184,6 +200,31 @@ open class DiscordWebSocket(
             }
             connectionLoop = launch { runConnectionLoop() }
         }
+    }
+
+    /**
+     * Drops the gateway while leaving this object ready to [connect] again.
+     *
+     * Used when playback has stopped *and* the app is off screen: the card is
+     * already clear, so the only thing left for the socket to do is send a
+     * heartbeat every ~41 seconds — and re-dial, with backoff, after every
+     * network change — until the listener comes back. [lastPresence] is kept on
+     * purpose, so the clear is what a later session replays, and [closed] stays
+     * false so resuming playback reconnects instead of having to rebuild this.
+     */
+    fun disconnect() {
+        if (closed) return
+        pausedLoop = true
+        sessionReady.value = false
+        awaitingAck = false
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        val socket = websocket
+        websocket = null
+        socket?.cancel()
+        forgetSession()
+        retrySignal.trySend(Unit)
+        logger.info("Gateway: disconnected while idle")
     }
 
     /**
@@ -202,6 +243,15 @@ open class DiscordWebSocket(
     private suspend fun runConnectionLoop() {
         var backoff = INITIAL_RECONNECT_DELAY.inWholeMilliseconds
         while (currentCoroutineContext().isActive && !closed) {
+            if (pausedLoop) {
+                // Parked by disconnect(). A stale signal from before the park
+                // just goes round once more and waits again.
+                retrySignal.receive()
+                // The next connect is a fresh start; a backoff that climbed
+                // before the pause shouldn't delay it.
+                backoff = INITIAL_RECONNECT_DELAY.inWholeMilliseconds
+                continue
+            }
             // A resume URL is only worth using while its session might still be
             // alive; every path that invalidates the session clears it, so
             // reaching for it here can't strand us on a dead one.

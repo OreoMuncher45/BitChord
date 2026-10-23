@@ -11,6 +11,7 @@ import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.settings.AppSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -88,7 +89,10 @@ object ArtistFacts {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
     private var dirty = false
+
+    private var saveJob: Job? = null
 
     /**
      * Bumped whenever a lookup lands.
@@ -107,15 +111,28 @@ object ArtistFacts {
             load()
             worker()
         }
-        // Writes are on a timer rather than one per answer. The cache holds
+        // Writes are coalesced rather than one per answer. The cache holds
         // every artist ever played, so rewriting it after each lookup meant a
         // few hundred kilobytes per artist during a backfill — for a file that
         // is only read once, at launch.
-        scope.launch {
-            while (true) {
-                delay(SAVE_INTERVAL_MS)
-                save()
-            }
+    }
+
+    /**
+     * Marks the cache dirty and writes it once the lookups settle.
+     *
+     * Event-driven rather than ticked: a process that has answered everything
+     * it needed to answer had no reason to wake up every five seconds for the
+     * rest of its life just to discover there was nothing to write.
+     */
+    private fun persistSoon() {
+        dirty = true
+        // Restarting the window on every answer is what coalesces a backfill:
+        // the file is written once, after the last lookup, not a hundred times
+        // while they run.
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            delay(SAVE_DEBOUNCE_MS)
+            save()
         }
     }
 
@@ -225,7 +242,7 @@ object ArtistFacts {
                 ?: entry.browseId,
             cardAt = System.currentTimeMillis(),
         )
-        dirty = true
+        persistSoon()
     }
 
     private fun fetchGenres(name: String) {
@@ -253,7 +270,7 @@ object ArtistFacts {
 
         val entry = known[key(name)] ?: StoredArtist(key = key(name))
         known[key(name)] = entry.copy(genres = genres, genresAt = System.currentTimeMillis())
-        dirty = true
+        persistSoon()
     }
 
     /**
@@ -291,6 +308,7 @@ object ArtistFacts {
         }
     }
 
+    @Synchronized
     private fun save() {
         if (!ready || !dirty) return
         dirty = false
@@ -301,7 +319,12 @@ object ArtistFacts {
                     .take(MAX_ARTISTS),
             )
             file.writeText(json.encodeToString(Stored.serializer(), stored))
-        }.onFailure { Log.w(TAG, "Could not write artist cache", it) }
+        }.onFailure {
+            // Keep the flag set: a failed write is data still waiting to be
+            // written, not a write that happened. The next lookup retries.
+            dirty = true
+            Log.w(TAG, "Could not write artist cache", it)
+        }
     }
 
     @Serializable
@@ -319,12 +342,12 @@ object ArtistFacts {
 
     private const val TAG = "BitChordArtists"
     private const val FILE_NAME = "artist_facts.json"
-    private const val USER_AGENT = "BitChord/${BuildConfig.VERSION_NAME}"
+    private const val USER_AGENT = "Auris/${BuildConfig.VERSION_NAME}"
     private const val MAX_NAME_LENGTH = 120
     private const val MAX_GENRES_PER_ARTIST = 2
     private const val MAX_ARTISTS = 4_000
     private const val REQUEST_SPACING_MS = 1_500L
-    private const val SAVE_INTERVAL_MS = 5_000L
+    private const val SAVE_DEBOUNCE_MS = 5_000L
     private const val RETRY_DAYS = 14L
 
     /**

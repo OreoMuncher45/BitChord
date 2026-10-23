@@ -151,7 +151,7 @@ class HiresDirectSourceTest {
 
     @Test
     fun `kind carries the branded display name`() {
-        assertEquals("BitChord Hi-Res Lossless Addon", SourceRegistry.HIRES_DISPLAY_NAME)
+        assertEquals("Auris Hi-Res Lossless Addon", SourceRegistry.HIRES_DISPLAY_NAME)
         assertEquals(SourceKind.HIRES, source().kind)
     }
 }

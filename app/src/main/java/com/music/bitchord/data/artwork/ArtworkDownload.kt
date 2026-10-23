@@ -42,7 +42,7 @@ object ArtworkDownload {
         return thumbnailUrl
     }
 
-    /** Fetches full-quality bytes and files them in Pictures/BitChord Next. */
+    /** Fetches full-quality bytes and files them in Pictures/Auris. */
     suspend fun save(context: Context, song: Song): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val url = fullUrl(song.thumbnailUrl) ?: error("no artwork")
@@ -55,7 +55,7 @@ object ArtworkDownload {
                     put(MediaStore.Images.Media.MIME_TYPE, bytes.contentType)
                     put(
                         MediaStore.Images.Media.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_PICTURES}/BitChord Next",
+                        "${Environment.DIRECTORY_PICTURES}/Auris",
                     )
                 }
                 val uri = context.contentResolver
@@ -66,7 +66,7 @@ object ArtworkDownload {
             } else {
                 val dir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                    "BitChord Next",
+                    "Auris",
                 ).also { it.mkdirs() }
                 FileOutputStream(File(dir, name)).use { it.write(bytes.data) }
             }
@@ -79,7 +79,7 @@ object ArtworkDownload {
 
     private fun fetch(url: String): Fetched {
         val request = Request.Builder().url(url)
-            .header("User-Agent", "BitChord")
+            .header("User-Agent", "Auris")
             .build()
         Http.client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")

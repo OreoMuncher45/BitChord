@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.rememberIsForeground
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -166,7 +167,9 @@ fun ClassipodRoot(
 private fun ClassipodStatusBar(lcd: ClassipodTheme.Lcd, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var minute by remember { mutableIntStateOf((System.currentTimeMillis() / 60_000).toInt()) }
-    LaunchedEffect(Unit) {
+    val foreground = rememberIsForeground()
+    LaunchedEffect(foreground) {
+        if (!foreground) return@LaunchedEffect
         while (true) {
             kotlinx.coroutines.delay(20_000)
             minute = (System.currentTimeMillis() / 60_000).toInt()

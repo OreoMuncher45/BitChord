@@ -29,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +49,7 @@ import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.AppUi
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
+import com.music.bitchord.ui.components.AurisSlider
 import kotlin.math.roundToInt
 
 /**
@@ -105,6 +105,7 @@ private fun NowPlayingCustomization() {
     val accent by AppSettings.playerAccentColor.collectAsStateWithLifecycle()
     val seekbar by AppSettings.playerSeekbarColor.collectAsStateWithLifecycle()
     val text by AppSettings.playerTextColor.collectAsStateWithLifecycle()
+    val lyricsColor by AppSettings.playerLyricsColor.collectAsStateWithLifecycle()
     val recents by AppSettings.recentPlayerColors.collectAsStateWithLifecycle()
     val blockAi by AppSettings.blockAiMusic.collectAsStateWithLifecycle()
     val smoothness by AppSettings.transportSmoothness.collectAsStateWithLifecycle()
@@ -131,6 +132,11 @@ private fun NowPlayingCustomization() {
             label = stringResource(R.string.custom_text),
             value = text,
             onPick = { picking = AppSettings.PlayerColorTarget.TEXT },
+        )
+        ColorSettingRow(
+            label = stringResource(R.string.custom_lyrics),
+            value = lyricsColor,
+            onPick = { picking = AppSettings.PlayerColorTarget.LYRICS },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         TransportSmoothnessSetting(smoothness)
@@ -189,11 +195,13 @@ private fun NowPlayingCustomization() {
                 AppSettings.PlayerColorTarget.ACCENT -> stringResource(R.string.custom_buttons)
                 AppSettings.PlayerColorTarget.SEEKBAR -> stringResource(R.string.custom_seekbar)
                 AppSettings.PlayerColorTarget.TEXT -> stringResource(R.string.custom_text)
+                AppSettings.PlayerColorTarget.LYRICS -> stringResource(R.string.custom_lyrics)
             },
             selected = when (target) {
                 AppSettings.PlayerColorTarget.ACCENT -> accent
                 AppSettings.PlayerColorTarget.SEEKBAR -> seekbar
                 AppSettings.PlayerColorTarget.TEXT -> text
+                AppSettings.PlayerColorTarget.LYRICS -> lyricsColor
             },
             onPick = {
                 AppSettings.setPlayerColor(target, it)
@@ -240,7 +248,7 @@ private fun TransportSmoothnessSetting(value: Float) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Slider(
+        AurisSlider(
             value = value,
             onValueChange = AppSettings::setTransportSmoothness,
             valueRange = 0f..1f,
@@ -468,6 +476,7 @@ private fun HomeCustomization(homeShelfTitles: List<String>) {
 @Composable
 private fun LibraryCustomization() {
     val sort by AppSettings.librarySort.collectAsStateWithLifecycle()
+    val replayVisible by AppSettings.libraryReplayVisible.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.custom_library_help),
@@ -475,11 +484,32 @@ private fun LibraryCustomization() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 10.dp),
         )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.custom_show_replay),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(R.string.custom_show_replay_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = replayVisible,
+                onCheckedChange = AppSettings::setLibraryReplayVisible,
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         Text(
             text = stringResource(R.string.custom_library_sort),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(4.dp, 4.dp, 4.dp, 8.dp),
+            modifier = Modifier.padding(4.dp, 16.dp, 4.dp, 8.dp),
         )
         SegmentedControl(
             options = listOf(

@@ -3,7 +3,6 @@ package com.music.bitchord.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.music.bitchord.R
 
 /**
@@ -58,19 +56,10 @@ object SupportDonations {
         ),
     )
 
-    /** The upstream author's tip page — credit where credit is due. */
-    const val KOFI_URL = "https://ko-fi.com/kushagrasinghx"
-
     fun copyAddress(context: Context, address: String) {
         val clipboard = context.getSystemService(ClipboardManager::class.java)
         clipboard?.setPrimaryClip(ClipData.newPlainText("donation address", address))
         Toast.makeText(context, context.getString(R.string.address_copied), Toast.LENGTH_SHORT).show()
-    }
-
-    fun openKoFi(context: Context) {
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, KOFI_URL.toUri()))
-        }
     }
 
     private const val FILE = "bitchord_support"
@@ -142,9 +131,6 @@ fun SupportPopup(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                TextButton(onClick = { SupportDonations.openKoFi(context) }) {
-                    Text(stringResource(R.string.support_kushagra_kofi))
-                }
             }
         },
         confirmButton = {

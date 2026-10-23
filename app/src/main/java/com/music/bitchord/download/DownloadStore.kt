@@ -56,7 +56,7 @@ object DownloadStore {
     private const val TAG = "BitChord"
 
     /** The subfolder of Music that everything lands in. */
-    const val FOLDER = "BitChord"
+    const val FOLDER = "Auris"
 
     private val relativePath = "${Environment.DIRECTORY_MUSIC}/$FOLDER"
 

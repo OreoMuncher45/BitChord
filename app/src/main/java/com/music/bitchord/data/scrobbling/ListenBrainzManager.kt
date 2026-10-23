@@ -30,7 +30,7 @@ object ListenBrainzManager {
                 val releaseName = song.albumName.orEmpty()
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
-                val trackMetadata = """{"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"position_ms":$positionMs,"submission_client":"BitChord"}}}"""
+                val trackMetadata = """{"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"position_ms":$positionMs,"submission_client":"Auris"}}}"""
                 val bodyJson = "{\"listen_type\":\"playing_now\",\"payload\":[$trackMetadata]}"
                 Log.d(TAG, "submitPlayingNow: $bodyJson")
                 val body = bodyJson.toRequestBody("application/json".toMediaType())
@@ -80,7 +80,7 @@ object ListenBrainzManager {
                     listenedAtStart = System.currentTimeMillis() / 1000L
                 }
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
-                val trackMetadata = """{"listened_at":$listenedAtStart,"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"start_ms":$startMs,"end_ms":$endMs,"submission_client":"BitChord"}}}"""
+                val trackMetadata = """{"listened_at":$listenedAtStart,"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"start_ms":$startMs,"end_ms":$endMs,"submission_client":"Auris"}}}"""
                 val bodyJson = "{\"listen_type\":\"single\",\"payload\":[$trackMetadata]}"
                 Log.d(TAG, "submitFinished: $bodyJson")
                 val body = bodyJson.toRequestBody("application/json".toMediaType())

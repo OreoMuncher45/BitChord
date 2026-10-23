@@ -121,7 +121,7 @@ enum class ThemeMode(val label: String) {
  * ways, from either shell's settings.
  */
 enum class AppUi(val label: String) {
-    BITCHORD("BitChord"), CLASSIPOD("Classipod")
+    BITCHORD("Auris"), CLASSIPOD("Classipod")
 }
 
 /**
@@ -438,6 +438,9 @@ object AppSettings {
     val playerSeekbarColor = MutableStateFlow<Int?>(null)
     val playerTextColor = MutableStateFlow<Int?>(null)
 
+    /** The one-line lyric above the scrubber; null follows the artwork ink. */
+    val playerLyricsColor = MutableStateFlow<Int?>(null)
+
     /**
      * How round the transport glyphs' corners are, 0 (sharp) to 1 (soft).
      *
@@ -479,7 +482,7 @@ object AppSettings {
     val performanceRefreshRate = MutableStateFlow(DEFAULT_PERFORMANCE_REFRESH_RATE)
 
     /** Stop playback when the app is swiped away from the recent apps screen. */
-    val stopOnTaskRemoved = MutableStateFlow(false)
+    val stopOnTaskRemoved = MutableStateFlow(true)
 
     /** Hides the volume slider on the main player, leaving the rest of the layout to reflow. */
     val hideVolumeBar = MutableStateFlow(false)
@@ -838,6 +841,13 @@ object AppSettings {
     val librarySort = MutableStateFlow(LibrarySort.DEFAULT)
 
     /**
+     * Whether the Replay cards sit at the head of the Library. Off by default:
+     * Replay now leads Home's Top Picks, so the Library row is optional rather
+     * than the first thing every visit starts with.
+     */
+    val libraryReplayVisible = MutableStateFlow(false)
+
+    /**
      * Each album/playlist page's track-list order, keyed by browse id —
      * Spotify-style, every page keeps its own. A page never touched reads as
      * [SongSort.DEFAULT].
@@ -1182,6 +1192,8 @@ object AppSettings {
             .takeUnless { it == RESET_COLOR }
         playerTextColor.value = prefs.getInt(KEY_PLAYER_TEXT, RESET_COLOR)
             .takeUnless { it == RESET_COLOR }
+        playerLyricsColor.value = prefs.getInt(KEY_PLAYER_LYRICS, RESET_COLOR)
+            .takeUnless { it == RESET_COLOR }
         recentPlayerColors.value = prefs.getString(KEY_RECENT_PLAYER_COLORS, null)
             ?.split(',')
             ?.mapNotNull { it.toIntOrNull() }
@@ -1204,7 +1216,7 @@ object AppSettings {
         performanceRefreshRate.value = normalizePerformanceRefreshRate(
             prefs.getInt(KEY_PERFORMANCE_REFRESH_RATE, DEFAULT_PERFORMANCE_REFRESH_RATE),
         )
-        stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
+        stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, true)
         hideVolumeBar.value = prefs.getBoolean(KEY_HIDE_VOLUME_BAR, false)
         hideSongStatus.value = prefs.getBoolean(KEY_HIDE_SONG_STATUS, false)
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
@@ -1275,6 +1287,7 @@ object AppSettings {
         librarySort.value = prefs.getString(KEY_LIBRARY_SORT, null)
             ?.let { saved -> LibrarySort.entries.firstOrNull { it.name == saved } }
             ?: LibrarySort.DEFAULT
+        libraryReplayVisible.value = prefs.getBoolean(KEY_LIBRARY_REPLAY_VISIBLE, false)
         detailSongSorts.value = readDetailSongSorts()
         localMusicFolderUri.value = prefs.getString(KEY_LOCAL_MUSIC_FOLDER_URI, "").orEmpty()
         webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
@@ -1452,13 +1465,14 @@ object AppSettings {
     }
 
     /** Which part of Now Playing a colour pick applies to. */
-    enum class PlayerColorTarget { ACCENT, SEEKBAR, TEXT }
+    enum class PlayerColorTarget { ACCENT, SEEKBAR, TEXT, LYRICS }
 
     fun setPlayerColor(target: PlayerColorTarget, argb: Int?) {
         when (target) {
             PlayerColorTarget.ACCENT -> playerAccentColor.value = argb
             PlayerColorTarget.SEEKBAR -> playerSeekbarColor.value = argb
             PlayerColorTarget.TEXT -> playerTextColor.value = argb
+            PlayerColorTarget.LYRICS -> playerLyricsColor.value = argb
         }
         prefs.edit()
             .putInt(
@@ -1466,6 +1480,7 @@ object AppSettings {
                     PlayerColorTarget.ACCENT -> KEY_PLAYER_ACCENT
                     PlayerColorTarget.SEEKBAR -> KEY_PLAYER_SEEKBAR
                     PlayerColorTarget.TEXT -> KEY_PLAYER_TEXT
+                    PlayerColorTarget.LYRICS -> KEY_PLAYER_LYRICS
                 },
                 argb ?: RESET_COLOR,
             )
@@ -1483,10 +1498,12 @@ object AppSettings {
         playerAccentColor.value = null
         playerSeekbarColor.value = null
         playerTextColor.value = null
+        playerLyricsColor.value = null
         prefs.edit()
             .putInt(KEY_PLAYER_ACCENT, RESET_COLOR)
             .putInt(KEY_PLAYER_SEEKBAR, RESET_COLOR)
             .putInt(KEY_PLAYER_TEXT, RESET_COLOR)
+            .putInt(KEY_PLAYER_LYRICS, RESET_COLOR)
             .apply()
     }
 
@@ -2230,6 +2247,11 @@ object AppSettings {
         prefs.edit().putString(KEY_LIBRARY_SORT, value.name).apply()
     }
 
+    fun setLibraryReplayVisible(value: Boolean) {
+        libraryReplayVisible.value = value
+        prefs.edit().putBoolean(KEY_LIBRARY_REPLAY_VISIBLE, value).apply()
+    }
+
     fun setDetailSongSort(browseId: String, value: SongSort) {
         detailSongSorts.value = detailSongSorts.value + (browseId to value)
         prefs.edit().putString(
@@ -2567,6 +2589,7 @@ object AppSettings {
     private const val KEY_PLAYER_ACCENT = "player_accent_color"
     private const val KEY_PLAYER_SEEKBAR = "player_seekbar_color"
     private const val KEY_PLAYER_TEXT = "player_text_color"
+    private const val KEY_PLAYER_LYRICS = "player_lyrics_color"
     private const val KEY_RECENT_PLAYER_COLORS = "recent_player_colors"
     private const val KEY_HOME_SHELF_ORDER = "home_shelf_order"
     private const val KEY_BLOCK_AI_MUSIC = "block_ai_music"
@@ -2615,6 +2638,7 @@ object AppSettings {
     private const val KEY_LOCAL_MUSIC_SORT = "local_music_sort"
     private const val KEY_DOWNLOADED_MUSIC_SORT = "downloaded_music_sort"
     private const val KEY_LIBRARY_SORT = "library_sort"
+    private const val KEY_LIBRARY_REPLAY_VISIBLE = "library_replay_visible"
     private const val KEY_DETAIL_SONG_SORTS = "detail_song_sorts"
     private const val KEY_LOCAL_MUSIC_VIEW_TYPE = "local_music_view_type"
     private const val KEY_DOWNLOADED_MUSIC_VIEW_TYPE = "downloaded_music_view_type"

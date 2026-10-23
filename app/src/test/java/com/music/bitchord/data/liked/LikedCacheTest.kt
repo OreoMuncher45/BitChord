@@ -99,9 +99,9 @@ class LikedCacheTest {
         // Encoding strips both control separators from every field, including
         // the file path — a real filename cannot contain them, and carrying one
         // through would split the row in two on the way back.
-        val uri = "file:///storage/emulated/0/Music/BitChord/A\u001fB - C.flac"
+        val uri = "file:///storage/emulated/0/Music/Auris/A\u001fB - C.flac"
         val back = decodeLikedRows(encodeLikedRows(listOf(song("a").copy(localUri = uri)))).single()
-        assertEquals("file:///storage/emulated/0/Music/BitChord/A B - C.flac", back.localUri)
+        assertEquals("file:///storage/emulated/0/Music/Auris/A B - C.flac", back.localUri)
     }
 
     @Test

@@ -307,7 +307,7 @@ class MediaTaggerTest {
         // bit isn't, and both are silent when written the other way.
         val comment = blocks[2].second
         val vendorLength = readU32Le(comment, 0)
-        assertEquals("BitChord", String(comment, 4, vendorLength, Charsets.UTF_8))
+        assertEquals("Auris", String(comment, 4, vendorLength, Charsets.UTF_8))
         var at = 4 + vendorLength
         val count = readU32Le(comment, at)
         at += 4

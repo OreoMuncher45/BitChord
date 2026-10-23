@@ -69,7 +69,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -295,6 +294,11 @@ private fun GlassFoldingNavBarChrome(
             }
         },
     ) {
+        // Five tabs (Home / Explore / Radio / Library / Search) each get less
+        // width than the four-tab bar was drawn for. Trim the glyph and label a
+        // hair so the labels keep clear of their neighbours instead of
+        // ellipsising "Library" on a narrow phone.
+        val dense = tabs.size > 4
         tabs.forEachIndexed { index, tab ->
             val isSelected = index == selectedIndex
             tab(
@@ -305,7 +309,7 @@ private fun GlassFoldingNavBarChrome(
                         color = if (isSelected) selectedColor else unselectedColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        fontSize = 10.sp,
+                        fontSize = if (dense) 9.5.sp else 10.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     )
                 },
@@ -314,7 +318,7 @@ private fun GlassFoldingNavBarChrome(
                         imageVector = tab.icon,
                         contentDescription = tab.label,
                         tint = if (isSelected) selectedColor else unselectedColor,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(if (dense) 26.dp else 28.dp),
                     )
                 },
                 onClick = {
@@ -375,14 +379,22 @@ private fun SearchBarPlaceholder(
             if (state.query.isNotEmpty()) {
                 Text(
                     text = state.query,
-                    style = TextStyle(color = contentColor, fontSize = 17.sp),
+                    // Built from the theme's body style rather than a bare TextStyle:
+                    // a bare one carries no fontFamily and falls back to Roboto.
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = contentColor,
+                        fontSize = 17.sp,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             } else {
                 Text(
                     text = placeholder,
-                    style = TextStyle(color = contentColor.copy(alpha = 0.6f), fontSize = 17.sp),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = contentColor.copy(alpha = 0.6f),
+                        fontSize = 17.sp,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -473,7 +485,10 @@ private fun NavBarSearchInputBar(
             if (state.query.isEmpty()) {
                 Text(
                     text = placeholder,
-                    style = TextStyle(color = contentColor.copy(alpha = 0.6f), fontSize = 17.sp),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = contentColor.copy(alpha = 0.6f),
+                        fontSize = 17.sp,
+                    ),
                     maxLines = 1,
                 )
             }
@@ -481,7 +496,10 @@ private fun NavBarSearchInputBar(
                 value = state.query,
                 onValueChange = state.onQueryChange,
                 singleLine = true,
-                textStyle = TextStyle(color = contentColor, fontSize = 17.sp),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = contentColor,
+                    fontSize = 17.sp,
+                ),
                 cursorBrush = SolidColor(contentColor),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(

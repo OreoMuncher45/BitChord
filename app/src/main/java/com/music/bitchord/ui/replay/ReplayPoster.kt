@@ -406,11 +406,11 @@ private fun drawHeader(
     val brand = type.heading(46f, 0xE6FFFFFF.toInt()).apply {
         textAlign = Paint.Align.RIGHT
     }
-    canvas.drawText("BitChord", POSTER_W - MARGIN, 132f, brand)
+    canvas.drawText("Auris", POSTER_W - MARGIN, 132f, brand)
     // The mark, to the left of the word, exactly as the story header and the
     // card carry it. Without it the one artefact of this app that ends up in
     // somebody else's chat was the only place the logo didn't appear.
-    val wordWidth = brand.measureText("BitChord")
+    val wordWidth = brand.measureText("Auris")
     drawLogo(canvas, context, POSTER_W - MARGIN - wordWidth - LOGO_GAP, 132f)
 
     val credit = listOfNotNull(
@@ -692,16 +692,15 @@ private fun drawRuns(
 }
 
 /**
- * The BitChord mark, baseline-aligned with the word beside it.
+ * The Auris note mark, baseline-aligned with the word beside it.
  *
- * The same vector the app draws everywhere, tinted and given bounds rather than
- * rasterised to a PNG first — a vector drawable renders into an ordinary canvas
- * on every version this app supports, so there is nothing to be gained by
- * keeping a second copy of the logo around at a fixed size.
+ * The same bitmap the app draws everywhere, tinted and given bounds rather than
+ * kept at a fixed size. It is a single portrait note, so the bounds keep its
+ * 367 x 512 aspect rather than the old landscape wordmark's shape.
  */
 internal fun drawLogo(canvas: Canvas, context: Context, right: Float, baseline: Float) {
     val logo = runCatching {
-        ResourcesCompat.getDrawable(context.resources, R.drawable.ic_logo, null)
+        ResourcesCompat.getDrawable(context.resources, R.drawable.ic_note, null)
     }.getOrNull() ?: return
     val left = right - LOGO_W
     val top = baseline - LOGO_H
@@ -767,8 +766,8 @@ private const val POSTER_H = 1920
 
 private const val MARGIN = 72f
 
-/** The mark's drawn size. 730×484 in the vector, so this keeps its proportions. */
-private const val LOGO_W = 66f
+/** The mark's drawn size. The note is 367x512, so this keeps its proportions. */
+private const val LOGO_W = 32f
 private const val LOGO_H = 44f
 private const val LOGO_GAP = 20f
 

@@ -3,9 +3,9 @@
 <br/>
 <br/>
 
-<img src="Logo.png" alt="BitChord Next app icon" width="200" />
+<img src="Logo.png" alt="Auris app icon" width="200" />
 
-# BitChord Next
+# Auris
 
 ### Free, lossless-first music — a community fork of BitChord
 
@@ -22,18 +22,18 @@
 <br/>
 
 > [!IMPORTANT]
-> BitChord Next is **free** and built on top of [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagra](https://github.com/kushagrasinghx) — credit for the app goes to him. If it earns a spot in your rotation, consider tipping him on [Ko-fi](https://ko-fi.com/kushagrasinghx). This fork adds the features below and is maintained by [OreoMuncher45](https://github.com/OreoMuncher45).
+> Auris is **free** and built on top of [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagra](https://github.com/kushagrasinghx) — credit for the app goes to him. If it earns a spot in your rotation, consider tipping him on [Ko-fi](https://ko-fi.com/kushagrasinghx). This fork adds the features below and is maintained by [OreoMuncher45](https://github.com/OreoMuncher45).
 
 </div>
 
 > [!NOTE]
-> BitChord Next is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
+> Auris is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
 
 ---
 
 <div align="center">
 
-<img src="Banner.png" alt="BitChord Next banner" width="100%" />
+<img src="Banner.png" alt="Auris banner" width="100%" />
 
 <h1><a id="extra-features"></a>Extra features (on top of everything BitChord does)</h1>
 
@@ -60,9 +60,9 @@ Everything upstream BitChord ships — search, playback, downloads, lyrics, Disc
 
 Extra sources under Sources, each with health checks and honest failure states:
 
-- **BitChord NEXT** — genuine Hi-Fi FLAC via community instances with automatic failover and daily list refresh.
-- **BitChord Hi-Res** — direct measured FLAC files, no converter, no account, no waiting.
-- **BitChord Qobuz** — catalogue search plus queued FLAC conversions up to 24/192. One in-app-browser unlock mints a resuming session; the row tells you when it needs renewing or the converter is down.
+- **Auris NEXT** — genuine Hi-Fi FLAC via community instances with automatic failover and daily list refresh.
+- **Auris Hi-Res** — direct measured FLAC files, no converter, no account, no waiting.
+- **Auris Qobuz** — catalogue search plus queued FLAC conversions up to 24/192. One in-app-browser unlock mints a resuming session; the row tells you when it needs renewing or the converter is down.
 - Stream refusals report themselves on the Sources rows instead of failing silently.
 
 > **Why no provider names?** The backends behind these addons are volunteers' servers and free tiers. Naming them draws traffic, and traffic gets things rate-limited or shut down — so the app shows only its own addon names. Nothing is hidden from you technically: every endpoint, ritual and fallback lives in the source, in plain sight, for anyone who knows where to look.
@@ -85,7 +85,7 @@ Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/
 
 <h1><a id="support"></a>Support</h1>
 
-BitChord Next is free and open source, and it's staying that way. No telemetry, no accounts, no ads, no "Pro" tier, and no plan to add one.
+Auris is free and open source, and it's staying that way. No telemetry, no accounts, no ads, no "Pro" tier, and no plan to add one.
 
 If you enjoy using it and want to throw a few bucks toward development, you can do so here:
 
@@ -123,11 +123,11 @@ Anything is appreciated, nothing is expected. A star, a bug report, or a pull re
 
 <h1><a id="disclaimer"></a>Disclaimer & Legal Notice</h1>
 
-BitChord Next is an independent, community-driven fork. It is **not** associated with Google LLC, YouTube Music, Deezer, Qobuz, Tidal, Telegram, or any of their parent companies.
+Auris is an independent, community-driven fork. It is **not** associated with Google LLC, YouTube Music, Deezer, Qobuz, Tidal, Telegram, or any of their parent companies.
 
-* **No Media Hosting:** BitChord Next does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
+* **No Media Hosting:** Auris does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
 * **Fair Use & API Usage:** This software is created solely for personal research, educational, and fair-use purposes. The user is entirely responsible for ensuring their usage aligns with their local copyright laws and the terms of service of any service used.
-* **Copyleft:** BitChord Next is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
+* **Copyleft:** Auris is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
 
 </div>
 

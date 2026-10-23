@@ -129,27 +129,19 @@ fun ReplayCreditCard(
         )
 
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp)) {
-            // The two things a card says about itself, at the two corners a card
-            // says them from: what it is on the left, whose it is on the right.
-            // The wordmark that used to sit here is gone — the logo says it, and
-            // saying it twice on an object this small is the difference between
-            // a card and an advert.
-            Row(verticalAlignment = Alignment.Top) {
-                Text(
-                    text = stringResource(Res.string.your_listening_experience).uppercase(Locale.getDefault()),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.W700,
-                    letterSpacing = 1.4.sp,
-                    lineHeight = 13.sp,
-                    color = Color.White.copy(alpha = 0.72f),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(10.dp))
+            // The note mark keeps the corner a card carries its issuer in. The
+            // "Your listening experience" caption that used to sit beside it is
+            // gone: the mark says whose the card is, and the Library row is now
+            // opt-in (see the Library tab's customization), so the cards speak
+            // for themselves wherever they're shown.
+            Box(Modifier.fillMaxWidth()) {
                 Icon(
-                    painter = painterResource(Res.drawable.ic_logo),
+                    painter = painterResource(Res.drawable.ic_note),
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(width = 34.dp, height = 22.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(width = 16.dp, height = 22.dp),
                 )
             }
 

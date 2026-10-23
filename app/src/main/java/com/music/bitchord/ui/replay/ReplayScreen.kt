@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -257,6 +259,17 @@ private fun Heading(state: ReplayState, onPeriodChange: (ReplayPeriod) -> Unit, 
     val textColor = if (dark) Color.White else Color.Black
     Column(Modifier.padding(horizontal = PAGE_GUTTER + 4.dp)) {
         Spacer(Modifier.height(48.dp))
+        // The same note mark the Home heading carries, so the Replay tab opens
+        // with the app's own signature rather than a bare word.
+        Icon(
+            painter = painterResource(R.drawable.ic_note),
+            contentDescription = null,
+            tint = textColor,
+            modifier = Modifier
+                .padding(bottom = 14.dp)
+                .height(52.dp)
+                .aspectRatio(367f / 512f),
+        )
         Text(
             text = stringResource(R.string.replay),
             style = MaterialTheme.typography.displayLarge,

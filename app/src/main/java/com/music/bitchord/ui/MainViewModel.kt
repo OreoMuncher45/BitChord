@@ -13,6 +13,7 @@ import com.music.bitchord.auth.adjacentProfile
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.LikeState
+import com.music.bitchord.data.presence.AndroidPresence
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.model.SPOTIFY_MISSING_PREFIX
 import com.music.bitchord.data.model.SPOTIFY_PENDING_PREFIX
@@ -3524,7 +3525,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             while (true) {
                 delay(FlowStore.FLOW_AUTO_REFRESH_MS)
-                maybeAutoRefreshFlow()
+                // Rebuilding Flow is a network job. The mix is not on screen
+                // (and usually not even playing) when the app is backgrounded,
+                // so it can wait for the next launch rather than waking for it.
+                if (AndroidPresence.isForeground) maybeAutoRefreshFlow()
             }
         }
     }

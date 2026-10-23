@@ -50,7 +50,7 @@ object Genius {
      * which travels up as "no lyrics for this track" — indistinguishable from
      * a song Genius genuinely does not have.
      */
-    private const val USER_AGENT = "BitChord"
+    private const val USER_AGENT = "Auris"
 
     private val json by lazy { Json { ignoreUnknownKeys = true; isLenient = true } }
 

@@ -15,8 +15,11 @@ data class PlayerColorOverrides(
     val accent: Color? = null,
     val seekbar: Color? = null,
     val text: Color? = null,
+    /** The one-line lyric above the scrubber; null follows the artwork ink. */
+    val lyrics: Color? = null,
 )
 
 internal val LocalPlayerAccent = staticCompositionLocalOf<Color?> { null }
 internal val LocalPlayerSeekbar = staticCompositionLocalOf<Color?> { null }
 internal val LocalPlayerText = staticCompositionLocalOf<Color?> { null }
+internal val LocalPlayerLyrics = staticCompositionLocalOf<Color?> { null }

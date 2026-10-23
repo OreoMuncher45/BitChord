@@ -147,6 +147,8 @@ fun HomeScreen(
      */
     flowItem: ShelfItem? = null,
     onFlowClick: (() -> Unit)? = null,
+    /** Opens Replay; its card leads Top Picks, the way Apple's does. */
+    onOpenReplay: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -208,6 +210,7 @@ fun HomeScreen(
                         isPlaying = isPlaying,
                         flowItem = flowItem,
                         onFlowClick = onFlowClick,
+                        onOpenReplay = onOpenReplay,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
@@ -258,6 +261,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     isPlaying: Boolean,
     flowItem: ShelfItem? = null,
     onFlowClick: (() -> Unit)? = null,
+    onOpenReplay: (() -> Unit)? = null,
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
@@ -276,6 +280,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     } else {
         null
     }
+    // Apple's Top Picks lead with Replay, so it shares the pinned row with
+    // Flow and Quick Picks instead of sitting in a shelf of its own.
+    val replayCard: (@Composable () -> Unit)? = onOpenReplay?.let { open ->
+        { ReplayPickCard(onClick = open) }
+    }
+    val topPickLeading: (@Composable () -> Unit)? =
+        if (replayCard != null || flowCard != null) {
+            {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    replayCard?.invoke()
+                    flowCard?.invoke()
+                }
+            }
+        } else {
+            null
+        }
 
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
@@ -288,7 +308,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     shelf = shelf,
                     onItemClick = openItem,
                     onItemLongPress = onItemLongPress,
-                    leadingCard = flowCard,
+                    leadingCard = topPickLeading,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                 )
@@ -1018,6 +1038,68 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
     }
 }
 
+/**
+ * The Replay tile at the head of Top Picks. A gradient rather than artwork:
+ * Replay is a recap, not a release, and Apple's tile is the one place on Home
+ * that is deliberately not a cover.
+ */
+@Composable
+private fun ReplayPickCard(onClick: () -> Unit) {
+    Column(modifier = Modifier.width(SHELF_CARD_WIDTH).clickable(onClick = onClick)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFFFF375F), Color(0xFFFF9F0A), Color(0xFFBF5AF2)),
+                    ),
+                )
+                .padding(14.dp),
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.ic_note),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .height(18.dp)
+                    .aspectRatio(LOGO_ASPECT),
+            )
+            Column(Modifier.align(Alignment.BottomStart)) {
+                Text(
+                    text = stringResource(Res.string.replay),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                )
+                Text(
+                    text = stringResource(Res.string.replay_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.82f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = stringResource(Res.string.replay),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(Res.string.replay_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShelfCard(
@@ -1036,6 +1118,30 @@ internal fun ShelfCard(
             .contextClick(onLongPress),
     ) {
         when (item.browseId) {
+            FlowRules.FLOW_BROWSE_ID -> {
+                // Flow has no cover of its own until its queue has a track, and
+                // a blank tile reads as a broken image. The gradient is the
+                // station's identity, not a placeholder for one.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF1D1B4F), Color(0xFF6D2FD8), Color(0xFFFF4B7A)),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = BitChordIcons.MusicNote,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.92f),
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
             "local:downloads" -> {
                 val palette = remember { MeshPalette(listOf(Color(0xFF1E3C72), Color(0xFF2A5298))) }
                 Box(

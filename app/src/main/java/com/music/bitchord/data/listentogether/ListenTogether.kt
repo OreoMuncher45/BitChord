@@ -1,6 +1,8 @@
 package com.music.bitchord.data.listentogether
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -9,6 +11,7 @@ import android.net.NetworkCapabilities
 import com.music.bitchord.BitChordApplication
 import com.music.bitchord.BuildConfig
 import com.music.bitchord.data.DebugLog as Log
+import com.music.bitchord.data.presence.AndroidPresence
 import com.music.bitchord.data.settings.AppSettings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -43,6 +46,9 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -449,28 +455,108 @@ object ListenTogether {
     const val CUSTOM_SERVER_TIMEOUT_MS = 6_000L
     const val DEFAULT_SERVER_TIMEOUT_MS = 30_000L
 
+    @Volatile
     private var isScreenActive: Boolean = false
     private var healthMonitorJob: Job? = null
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallbackRegistered = false
     private val resolutionMutex = Mutex()
     private var activeResolutionJob: Job? = null
     private var resolutionGeneration = 0L
 
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (healthMonitorJob?.isActive == true) refreshServerHealth(showChecking = false)
+        }
+
+        override fun onLost(network: Network) {
+            _serverConnectionState.value = ServerConnectionState.Offline
+            _serverStatus.value = ServerStatus(Health.OFFLINE)
+        }
+
+        override fun onCapabilitiesChanged(
+            network: Network,
+            capabilities: NetworkCapabilities,
+        ) {
+            if (healthMonitorJob?.isActive == true &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            ) {
+                refreshServerHealth(showChecking = false)
+            }
+        }
+    }
+
     fun setScreenActive(active: Boolean) {
+        val wasActive = isScreenActive
         isScreenActive = active
         if (active) {
             refreshServerHealth(showChecking = false)
         }
+        // The loop decides its next sleep from this flag when it wakes. Restart
+        // it on the transition so opening the screen is not followed by the
+        // remainder of a background-sized sleep before the fast cadence begins.
+        if (active != wasActive && healthMonitorJob?.isActive == true) {
+            stopHealthMonitor()
+            startHealthMonitor()
+        }
+        updateHealthMonitor()
     }
 
+    /**
+     * The health poll has nothing to say outside the party screen and a party:
+     * its only consumer is the screen's connection badge, and the 10s/30s loop
+     * plus the network callback would otherwise keep waking a device that is
+     * not using this feature at all.
+     */
+    private fun monitorWanted(): Boolean = isScreenActive || _state.value.inParty
+
+    @Synchronized
+    private fun updateHealthMonitor() {
+        if (monitorWanted()) startHealthMonitor() else stopHealthMonitor()
+    }
+
+    @Synchronized
     private fun startHealthMonitor() {
-        healthMonitorJob?.cancel()
+        if (healthMonitorJob?.isActive == true) return
+        registerNetworkCallback()
         healthMonitorJob = scope.launch {
             while (isActive) {
-                val delayMs = if (isScreenActive) 10_000L else 30_000L
+                val delayMs = when {
+                    isScreenActive -> 10_000L
+                    // A live socket is already proof the server answers, and
+                    // the badge this probe feeds is not on screen. Polling HTTP
+                    // behind a backgrounded party only spends radio wake-ups.
+                    _state.value.inParty && _state.value.connection == Connection.LIVE -> 120_000L
+                    else -> 30_000L
+                }
                 delay(delayMs)
                 refreshServerHealth(showChecking = false)
             }
         }
+    }
+
+    @Synchronized
+    private fun stopHealthMonitor() {
+        healthMonitorJob?.cancel()
+        healthMonitorJob = null
+        unregisterNetworkCallback()
+    }
+
+    private fun registerNetworkCallback() {
+        val manager = connectivityManager ?: return
+        if (networkCallbackRegistered) return
+        // The explicit main looper keeps this callable from the state collector
+        // on an IO thread; the no-handler overload needs a looper on the caller.
+        runCatching {
+            manager.registerDefaultNetworkCallback(networkCallback, Handler(Looper.getMainLooper()))
+            networkCallbackRegistered = true
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        networkCallbackRegistered = false
+        runCatching { connectivityManager?.unregisterNetworkCallback(networkCallback) }
     }
 
     suspend fun resolveServerConnection(
@@ -638,32 +724,16 @@ object ListenTogether {
             releaseStaleSlot(code, saved)
         }
 
-        val manager = context.getSystemService(ConnectivityManager::class.java)
-        if (manager != null) {
-            runCatching {
-                manager.registerDefaultNetworkCallback(
-                    object : ConnectivityManager.NetworkCallback() {
-                        override fun onAvailable(network: Network) {
-                            refreshServerHealth(showChecking = false)
-                        }
-                        override fun onLost(network: Network) {
-                            _serverConnectionState.value = ServerConnectionState.Offline
-                            _serverStatus.value = ServerStatus(Health.OFFLINE)
-                        }
-                        override fun onCapabilitiesChanged(
-                            network: Network,
-                            capabilities: NetworkCapabilities,
-                        ) {
-                            if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                                refreshServerHealth(showChecking = false)
-                            }
-                        }
-                    }
-                )
-            }
+        connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+        // A party can be entered or left from any screen, so the monitor follows
+        // membership rather than being started here for the process's lifetime.
+        scope.launch {
+            _state
+                .map { it.code }
+                .distinctUntilChanged()
+                .collect { updateHealthMonitor() }
         }
-
-        startHealthMonitor()
+        updateHealthMonitor()
         refreshServerHealth(showChecking = true)
     }
 
@@ -1217,7 +1287,7 @@ object ListenTogether {
             delay(300)
         }
         while (true) {
-            delay(PING_INTERVAL_MS)
+            delay(if (AndroidPresence.isForeground) PING_INTERVAL_MS else PING_BACKGROUND_INTERVAL_MS)
             ping()
         }
     }
@@ -1241,12 +1311,20 @@ object ListenTogether {
      */
     private suspend fun DefaultClientWebSocketSession.reportLoop() {
         while (true) {
+            // Reports only exist to make drift visible while there is a moving
+            // playhead to drift. A paused party has nothing to say, and waiting
+            // on the state flow costs no wake-up at all.
+            if (!_state.value.playback.isPlaying) {
+                _state.first { it.playback.isPlaying }
+                continue
+            }
             delay(REPORT_INTERVAL_MS)
+            if (!_state.value.playback.isPlaying) continue
             val position = partyPositionMs() ?: continue
             val frame = buildJsonObject {
                 put("type", "report")
                 put("positionMs", position)
-                put("isPlaying", _state.value.playback.isPlaying)
+                put("isPlaying", true)
             }
             runCatching { send(Frame.Text(frame.toString())) }
         }
@@ -1658,6 +1736,14 @@ object ListenTogether {
     private const val KICK_BLOCK_MS = 24L * 60 * 60 * 1000
 
     private const val PING_INTERVAL_MS = 15_000L
+
+    /**
+     * Background pings only keep the socket and the measured clock alive. The
+     * server closes an idle socket after fifteen minutes, so half a minute is
+     * still two orders of magnitude of headroom.
+     */
+    private const val PING_BACKGROUND_INTERVAL_MS = 30_000L
+
     private const val REPORT_INTERVAL_MS = 10_000L
     private const val HEALTH_TIMEOUT_MS = 45_000L
 }

@@ -248,5 +248,5 @@ object FlacTagger {
     /** The `PICTURE` type for a front cover, which is the only one written here. */
     private const val PICTURE_FRONT_COVER = 3
 
-    private const val VENDOR = "BitChord"
+    private const val VENDOR = "Auris"
 }

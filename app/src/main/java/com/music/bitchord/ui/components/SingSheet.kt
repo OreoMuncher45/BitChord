@@ -16,7 +16,6 @@ import androidx.compose.ui.text.style.TextAlign
 import com.music.bitchord.playback.SingMethod
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -96,7 +95,7 @@ fun SingSheet(onDismiss: () -> Unit) {
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.primary,
         )
-        Slider(
+        AurisSlider(
             value = level,
             onValueChange = { AppSettings.setSingLevel(it) },
             modifier = Modifier.fillMaxWidth(),

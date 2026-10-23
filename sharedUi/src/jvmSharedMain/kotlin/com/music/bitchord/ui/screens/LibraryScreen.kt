@@ -263,7 +263,7 @@ private fun LibraryLinkList(links: List<LibraryLink>, onClick: (ShelfItem) -> Un
                     Icon(
                         imageVector = link.icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.size(LINK_ICON_SIZE),
                     )
                 }
