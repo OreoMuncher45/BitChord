@@ -1499,20 +1499,20 @@ fun SettingsScreen(
                         textDecoration = TextDecoration.Underline,
                     ),
                 )
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/BitChord", linkStyles)) {
-                    append("GitHub")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx", linkStyles)) {
-                    append("Developer")
+                withLink(LinkAnnotation.Url("https://github.com/OreoMuncher45/BitChordNext", linkStyles)) {
+                    append("Star the Repo")
                 }
                 append("  ")
                 withLink(LinkAnnotation.Url("https://discord.gg/pDdKfrdHY6", linkStyles)) {
                     append("Discord")
                 }
                 append("  ")
-                withLink(LinkAnnotation.Url("https://bitchord.kushagrasingh.in/", linkStyles)) {
-                    append("Website")
+                withLink(LinkAnnotation.Url("https://www.reddit.com/r/BitChordNext/", linkStyles)) {
+                    append("Reddit")
+                }
+                append("  ")
+                withLink(LinkAnnotation.Url("https://discord.gg/KgpGvVwP6W", linkStyles)) {
+                    append("Beta")
                 }
                 append("\n~YouTube Music & Listen Together Backend")
             },

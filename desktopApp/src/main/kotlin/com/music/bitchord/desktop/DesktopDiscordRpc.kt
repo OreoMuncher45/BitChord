@@ -289,10 +289,10 @@ internal object DesktopDiscordRpc {
     private const val KEY_ENABLED = "discord_rpc_enabled"
 
     private const val APPLICATION_ID = "1411019391843172514"
-    private const val PROJECT_URL = "https://github.com/kushagrasinghx/BitChord"
+    private const val PROJECT_URL = "https://github.com/OreoMuncher45/BitChordNext"
     private const val ART_PX = 480
     private const val FALLBACK_ART_URL =
-        "https://raw.githubusercontent.com/kushagrasinghx/BitChord/main/app/src/main/ic_launcher-playstore.png"
+        "https://raw.githubusercontent.com/OreoMuncher45/BitChordNext/main/app/src/main/ic_launcher-playstore.png"
     private const val CLIENT_VERSION = "0.0.83"
     private const val CLIENT_BUILD = "352675"
     private const val USER_AGENT =
