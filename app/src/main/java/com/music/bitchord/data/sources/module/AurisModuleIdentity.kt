@@ -19,6 +19,9 @@ internal object AurisModuleIdentity {
     const val NAME = "Auris"
     const val WEBSITE = "https://auris.shehriyar.ink"
 
+    /** Only this origin receives the host secret; a user-added source never sees it. */
+    const val HOST = "https://auris.shehriyar.ink/"
+
     /** XOR-packed so the key is not a readable string in the APK. */
     private val PACKED_KEY = intArrayOf(
         0x3F, 0x04, 0x44, 0xE5, 0x6C, 0x82, 0x09, 0x2B, 0x3C, 0x55, 0x4D, 0xE0, 0x3D, 0x80, 0x5F, 0x2F,

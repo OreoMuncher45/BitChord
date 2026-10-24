@@ -134,7 +134,7 @@ class ModuleManager {
                     val request = Request.Builder()
                         .url(sourceUrl)
                         .apply {
-                            if (sourceUrl.startsWith(AURIS_HOST)) {
+                            if (sourceUrl.startsWith(AurisModuleIdentity.HOST)) {
                                 header("X-Auris-Host", AurisModuleIdentity.KEY)
                             }
                         }
@@ -225,7 +225,7 @@ class ModuleManager {
             val request = Request.Builder()
                 .url(downloadUrl)
                 .apply {
-                    if (downloadUrl.startsWith(AURIS_HOST)) {
+                    if (downloadUrl.startsWith(AurisModuleIdentity.HOST)) {
                         header("X-Auris-Host", AurisModuleIdentity.KEY)
                     }
                 }
@@ -403,9 +403,6 @@ class ModuleManager {
 
     private companion object {
         const val TAG = "BitChord"
-
-        /** Only this origin receives the host secret; a user-added source never sees it. */
-        const val AURIS_HOST = "https://auris.shehriyar.ink/"
 
         /**
          * How long a fetched index is trusted. Long enough that a run of

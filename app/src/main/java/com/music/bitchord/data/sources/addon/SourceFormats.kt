@@ -2,6 +2,7 @@ package com.music.bitchord.data.sources.addon
 
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.sources.module.AurisModuleIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -85,10 +86,12 @@ object SourceFormats {
 
         val base = AddonClient.normalizeBase(url)
         val isDocument = url.substringBefore('?').endsWith(".json", ignoreCase = true)
-        val attempts = if (isDocument) {
-            listOf(url, AddonClient.manifestUrl(base))
-        } else {
-            listOf(AddonClient.manifestUrl(url), url)
+        val attempts = when {
+            // The gated index answers on its exact path; `/manifest.json`
+            // does not exist under it and would only add a doomed request.
+            url.startsWith(AurisModuleIdentity.HOST) -> listOf(url)
+            isDocument -> listOf(url, AddonClient.manifestUrl(base))
+            else -> listOf(AddonClient.manifestUrl(url), url)
         }
 
         var lastFailure: Throwable? = null
@@ -211,6 +214,14 @@ object SourceFormats {
         val request = Request.Builder().url(url)
             .header("Accept", "application/json")
             .header("User-Agent", "Auris/v${com.music.bitchord.BuildConfig.VERSION_NAME}")
+            .apply {
+                // The gated index refuses any host that cannot prove it is
+                // Auris; this runs before the source is saved, so the proof
+                // has to be here as well as in ModuleManager.
+                if (url.startsWith(AurisModuleIdentity.HOST)) {
+                    header("X-Auris-Host", AurisModuleIdentity.KEY)
+                }
+            }
             .build()
         Http.client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
