@@ -10,9 +10,8 @@ upstream identity; do not rename `com.dev.bitchord` / `com.music.bitchord`.
 
 Last updated: 2026-10-24
 Branch: `convx-fresh`
-Latest commit at plan creation: `bd5c83bc fix(icon): use inverted badge`
-Release baseline: `v2.2.13-convx`, versionCode `75`, versionName `2.2.13`
-Release URL: https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.13-convx
+Release baseline: `v2.2.17-convx`, versionCode `79`, versionName `2.2.17`
+Release URL: https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.17-convx
 
 ## Non-negotiables
 
@@ -911,6 +910,12 @@ CI artifacts:
   `CN=BitChord Next Fork` (SHA-256 unchanged), with
   `lib/arm64-v8a/libbitchord_jamesdsp.so` and the baseline profile packaged.
   No tag and no GitHub Release were created, per the owner.
+- 2026-10-24 (release): The owner tested the artifact and asked for the public
+  release. Tagged the built commit `14bd1a52` as `v2.2.17-convx` and published
+  https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.17-convx with
+  the four `Auris-*-release.apk` assets (v8a, v7a, x86_64, universal).
+  The tag's desktop `Release` workflow run was cancelled so Linux/Windows
+  packages could not attach to or draft the Android release.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -996,14 +1001,17 @@ this to be recorded here because the beta is now in a bug-fix-only phase:
 ### Still open
 - JamesDSP is GPLv2-only and remains incompatible with the app's GPLv3 for a
   public release. It stays artifact-only until Workstream A is closed.
-- Release remains paused at the owner's request: bug fixes only for now.
+- Release gate re-opened 2026-10-24: owner tested `79 / 2.2.17` and asked for
+  the release, published as `v2.2.17-convx`. JamesDSP licensing (GPLv2-only)
+  is still unresolved and ships inside that APK.
 
 ## Release gate (do not break this)
 
 - **Nothing is published until the paying early-access testers stress test a
   build and the user says go.** No GitHub Release, no version tag.
-  2026-10-24: the owner then asked for a **minor-update artifact only** —
-  build it, upload the Actions artifact, and create no Release.
+  2026-10-24: release opened on the owner's instruction — `v2.2.17-convx`
+  (run `40086363860`, commit `14bd1a52`) published with the four APKs. Keep
+  this gate closed again until the next build is tested and they say go.
 - The only sanctioned way to produce a *installable-over-the-old-app* APK is the
   `Flow Debug APK` workflow (`workflow_dispatch`, artifact only). It builds
   `:app:assembleDevRelease` and signs with the fork's stable key from the
