@@ -917,6 +917,9 @@ fun NowPlayingScreen(
     }
     val hideVolumeBar by PlayerSettings.hideVolumeBar.collectAsStateWithLifecycle()
     val hideSongStatus by PlayerSettings.hideSongStatus.collectAsStateWithLifecycle()
+    // The lyric bloom reads the same switch on its own; this half silences the
+    // shadow behind the title, credits and transport type.
+    val textGlow by PlayerSettings.textGlow.collectAsStateWithLifecycle()
 
     // Animated cover art: the looping video some labels publish alongside a
     // release, laid over the sleeve. A miss is the normal answer — see
@@ -2167,7 +2170,7 @@ fun NowPlayingScreen(
     ) {
         CompositionLocalProvider(
             LocalPlayerInk provides playerInk,
-            LocalPlayerInkGlow provides playerInkGlow,
+            LocalPlayerInkGlow provides if (textGlow) playerInkGlow else Color.Transparent,
             LocalPlayerAccent provides colors.accent,
             LocalPlayerSeekbar provides colors.seekbar,
             LocalPlayerText provides colors.text,

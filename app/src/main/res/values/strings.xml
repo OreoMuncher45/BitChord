@@ -1265,8 +1265,8 @@
     <string name="custom_seekbar">Seek bar and volume bar</string>
     <string name="custom_text">Song title and artist</string>
     <string name="custom_lyrics">Lyric line</string>
-    <string name="custom_lyrics_glow">Lyric glow</string>
-    <string name="custom_lyrics_glow_help">Soft bloom behind the line being sung. Turn it off for flat, crisp text.</string>
+    <string name="custom_text_glow">Text glow</string>
+    <string name="custom_text_glow_help">Soft bloom behind lyrics and the shadow behind player text. Turn it off for flat, crisp type.</string>
     <string name="custom_recent">Recent colours</string>
     <string name="custom_reset_colors">Reset all player colours</string>
     <string name="custom_transport_smoothness">Transport corner smoothness</string>

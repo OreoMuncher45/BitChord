@@ -1689,10 +1689,10 @@ internal fun LyricsPanel(
 
     val reduceDynamicBlur by PlayerSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val lyricsBlur by PlayerSettings.lyricsBlur.collectAsStateWithLifecycle()
-    val lyricsGlow by PlayerSettings.lyricsGlow.collectAsStateWithLifecycle()
+    val textGlow by PlayerSettings.textGlow.collectAsStateWithLifecycle()
     val reduceAnimation by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
 
-    val glowing = lyricsGlow && !reduceAnimation && !reduceDynamicBlur && lyricsBlur &&
+    val glowing = textGlow && !reduceAnimation && !reduceDynamicBlur && lyricsBlur &&
         renderEffectBlurSupported
 
     LaunchedEffect(listState) {
