@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 import java.io.File
+import java.time.Instant
 
 /**
  * BitChord ships as a sideloaded APK off GitHub Releases rather than through
@@ -29,6 +30,13 @@ import java.io.File
  * downloaded into the app's cache and handed to the system package installer,
  * so the whole round trip stays inside the app instead of bouncing out to a
  * browser.
+ *
+ * A numeric bump is not the only way a new build ships. Release tags carry a
+ * packaging suffix (`v2.2.17-convx`) that `versionName` does not, and the same
+ * version can be rebuilt and republished. So an equal number still counts as
+ * an update when the release was published after this APK was installed — the
+ * installed-at stamp is what tells those rebuilds apart without the app having
+ * to know the packaging convention.
  */
 object AppUpdateChecker {
 
@@ -65,7 +73,7 @@ object AppUpdateChecker {
     @Volatile
     private var downloadCancelled = false
 
-    suspend fun check() = withContext(Dispatchers.IO) {
+    suspend fun check(context: Context) = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder().url(LATEST_RELEASE_URL).build()
             val body = Http.client.newCall(request).execute().use { response ->
@@ -77,11 +85,40 @@ object AppUpdateChecker {
             val apkUrl = apkAssetUrl(release)
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
+            val publishedAt = release["published_at"]
+                ?.jsonPrimitive
+                ?.contentOrNull
+                ?.let(::parseTimestamp)
+            val installedAt = installedAt(context)
+            if (isNewer(latest, BuildConfig.VERSION_NAME) ||
+                isRebuiltArtifact(latest, BuildConfig.VERSION_NAME, publishedAt, installedAt)
+            ) {
                 _available.value = UpdateInfo(latest, url, apkUrl, notes)
             }
         }
     }
+
+    /**
+     * A release with the same numeric version as this build, published after
+     * this APK was last replaced. The tag's packaging suffix is invisible to
+     * `versionName`, so this timestamp is the only signal that the artifact
+     * on GitHub is not the one running.
+     */
+    private fun isRebuiltArtifact(
+        latest: String,
+        current: String,
+        releasedAtMs: Long?,
+        installedAtMs: Long?,
+    ): Boolean = compareVersions(latest, current) == 0 &&
+        releasedAtMs != null && installedAtMs != null && installedAtMs > 0 &&
+        releasedAtMs > installedAtMs
+
+    private fun installedAt(context: Context): Long? = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    }.getOrNull()
+
+    private fun parseTimestamp(raw: String): Long? =
+        runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
 
     /**
      * Wipes any APK left over from a previous run. Called once at cold start
@@ -225,13 +262,25 @@ object AppUpdateChecker {
      * matches compare equal and testers never get nudged onto the real build.
      */
     private fun isNewer(latest: String, current: String): Boolean {
+        val order = compareVersions(latest, current)
+        if (order != 0) return order > 0
         val l = parseVersion(latest)
         val c = parseVersion(current)
-        for (i in 0 until maxOf(l.parts.size, c.parts.size)) {
-            val a = l.parts.getOrElse(i) { 0 }
-            val b = c.parts.getOrElse(i) { 0 }
-            if (a != b) return a > b
-        }
         return c.isPreRelease && !l.isPreRelease
+    }
+
+    /**
+     * Numeric, dot-separated ordering, negative when [left] is older. Shared
+     * with the announcements feed, which targets a version range the same way.
+     */
+    internal fun compareVersions(left: String, right: String): Int {
+        val l = parseVersion(left)
+        val r = parseVersion(right)
+        for (i in 0 until maxOf(l.parts.size, r.parts.size)) {
+            val a = l.parts.getOrElse(i) { 0 }
+            val b = r.parts.getOrElse(i) { 0 }
+            if (a != b) return a.compareTo(b)
+        }
+        return 0
     }
 }

@@ -125,6 +125,7 @@ import com.music.bitchord.auth.DiscordLoginScreen
 import com.music.bitchord.auth.GoogleAccountSession
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.auth.YtMusicLoginScreen
+import com.music.bitchord.data.AppAnnouncements
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.listentogether.JamInviteLink
@@ -267,6 +268,7 @@ import com.music.bitchord.ui.components.AppLanguageDialog
 import com.music.bitchord.ui.components.TranslationLanguageDialog
 import com.music.bitchord.ui.components.LyricsSourcesDialog
 import com.music.bitchord.ui.components.ServerEditorHost
+import com.music.bitchord.ui.components.AnnouncementDialog
 import com.music.bitchord.ui.components.UpdateAvailableDialog
 import com.music.bitchord.ui.components.WebDavConflictAlert
 import com.music.bitchord.ui.components.FieldConfig
@@ -809,10 +811,25 @@ private fun BitChordApp(
      */
     val updateNotice = updateAvailable
 
-    LaunchedEffect(updateNotice) {
-        if (updateNotice != null && !updateDialogShown) {
+    // Announcements are the other half of the same news channel: one per
+    // launch, and only once the update popup (if any) has been dealt with, so
+    // the two cards never stack or fight for the screen.
+    val announcement by viewModel.announcement.collectAsStateWithLifecycle()
+    var announcementShown by rememberSaveable { mutableStateOf(false) }
+    var showAnnouncementDialog by remember { mutableStateOf(false) }
+    // The announcement key is here as well as in the effect below: if the
+    // slower check lands while a notice is on screen, the update waits its
+    // turn instead of stacking a second scrim on top of the first.
+    LaunchedEffect(updateNotice, showAnnouncementDialog) {
+        if (updateNotice != null && !updateDialogShown && !showAnnouncementDialog) {
             updateDialogShown = true
             showUpdateDialog = true
+        }
+    }
+    LaunchedEffect(announcement, showUpdateDialog) {
+        if (announcement != null && !showUpdateDialog && !announcementShown) {
+            announcementShown = true
+            showAnnouncementDialog = true
         }
     }
     LaunchedEffect(flowSaveNotice) {
@@ -5374,6 +5391,32 @@ private fun BitChordApp(
                         AppUpdateChecker.resetDownload()
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
                         showUpdateDialog = false
+                    },
+                )
+            }
+        }
+
+        // ---- Server-driven announcement (once per id) ----
+        if (showAnnouncementDialog) {
+            announcement?.let { news ->
+                AnnouncementDialog(
+                    title = news.title,
+                    body = news.body,
+                    actionLabel = news.action,
+                    url = news.url,
+                    hazeState = hazeState,
+                    onDismiss = {
+                        showAnnouncementDialog = false
+                        AppAnnouncements.dismiss(context, news.id)
+                    },
+                    onOpenUrl = {
+                        showAnnouncementDialog = false
+                        AppAnnouncements.dismiss(context, news.id)
+                        news.url?.let { link ->
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                            }
+                        }
                     },
                 )
             }

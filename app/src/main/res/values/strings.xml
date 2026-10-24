@@ -151,6 +151,8 @@
     <string name="try_again">Try Again</string>
     <string name="open_releases_page">Open Releases Page</string>
     <string name="whats_new">What’s new</string>
+    <string name="announcement_ok">OK</string>
+    <string name="announcement_learn_more">Learn More</string>
     <string name="log_copied">Log copied · %1$d lines</string>
     <string name="sign_in_youtube_music">Sign in to YouTube Music</string>
     <string name="choose_a_channel">Choose a channel</string>

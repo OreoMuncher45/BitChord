@@ -10,6 +10,7 @@ import com.music.bitchord.auth.YouTubeProfile
 import com.music.bitchord.auth.profileId
 import com.music.bitchord.auth.sessionId
 import com.music.bitchord.auth.adjacentProfile
+import com.music.bitchord.data.AppAnnouncements
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.LikeState
@@ -607,6 +608,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Set once per launch if GitHub has a release newer than this build. */
     val updateAvailable: StateFlow<AppUpdateChecker.UpdateInfo?> = AppUpdateChecker.available
+
+    /** The next unseen server-driven notice aimed at this build. */
+    val announcement: StateFlow<AppAnnouncements.Announcement?> = AppAnnouncements.current
 
     // ---- Ratings, library and playlists -------------------------------------
 
@@ -1479,7 +1483,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // The first feed is the reason the app was opened; let it have the
             // network to itself rather than racing a release lookup.
             delay(3_000)
-            AppUpdateChecker.check()
+            AppUpdateChecker.check(getApplication())
+            // After the update lookup, so the update popup is the one that
+            // lands first when both are due; the announcement waits for it.
+            delay(2_500)
+            AppAnnouncements.check(getApplication())
         }
     }
 

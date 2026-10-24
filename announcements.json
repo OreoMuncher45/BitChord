@@ -1,0 +1,15 @@
+{
+  "announcements": [
+    {
+      "id": "example-disabled",
+      "title": "Example announcement",
+      "body": "This entry is disabled. Edit announcements.json on the main branch, set \"active\" to true, and the popup appears once on the next launch. Change the id to post a new notice; edit the text under an id someone already dismissed and it stays dismissed.",
+      "url": "https://auris.shehriyar.ink",
+      "action": "Open site",
+      "once": true,
+      "active": false,
+      "minVersion": "2.2.0",
+      "maxVersion": "2.2.99"
+    }
+  ]
+}
