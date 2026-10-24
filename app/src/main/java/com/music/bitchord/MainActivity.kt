@@ -29,6 +29,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -466,6 +467,25 @@ class MainActivity : AppCompatActivity() {
         PlayerDeepLink.consume(intent)
         JamInviteLink.consume(intent)
         MusicLink.consume(intent)
+    }
+}
+
+/**
+ * The screen's root surface.
+ *
+ * This exists so [BitChordApp]'s body reaches Compose as a lambda rather than
+ * through an inlined `Box`: inlined, the whole screen ended up in one method
+ * and crossed the JVM's 64 KB limit. The wrapper does the same layout, but a
+ * non-inline lambda is compiled separately, which keeps the caller small.
+ */
+@Composable
+private fun AppRootBox(content: @Composable BoxScope.() -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        content()
     }
 }
 
@@ -2746,11 +2766,7 @@ private fun BitChordApp(
         )
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
+    AppRootBox {
         // A pushed album/artist/playlist page replaces the tab content but
         // leaves the tab bar and mini player in place.
         // Replay's three layers unwind in the order they were opened. Ahead of
