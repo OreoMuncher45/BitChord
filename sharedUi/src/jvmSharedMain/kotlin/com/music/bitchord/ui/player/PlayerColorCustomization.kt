@@ -23,3 +23,9 @@ internal val LocalPlayerAccent = staticCompositionLocalOf<Color?> { null }
 internal val LocalPlayerSeekbar = staticCompositionLocalOf<Color?> { null }
 internal val LocalPlayerText = staticCompositionLocalOf<Color?> { null }
 internal val LocalPlayerLyrics = staticCompositionLocalOf<Color?> { null }
+
+/**
+ * The opacity roles that go with the artwork palette. Defaults match the
+ * player's own table, so any surface outside the expanded player is unchanged.
+ */
+internal val LocalPlayerAlphas = staticCompositionLocalOf { NowPlayingAlphas() }

@@ -10,8 +10,11 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.R
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.data.canvas.CanvasRepository
 import com.music.bitchord.data.listentogether.ListenTogether
@@ -92,6 +95,18 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
     @Composable
     override fun rememberRemoteArtworkUrl(song: Song?): String? =
         com.music.bitchord.ui.components.rememberRemoteArtworkUrl(song)
+
+    @Composable
+    override fun rememberFlowVideo(square: Boolean): CanvasArtwork? {
+        val context = LocalContext.current
+        return remember(context, square) {
+            val raw = if (square) R.raw.flow_square else R.raw.flow
+            CanvasArtwork(
+                url = "android.resource://${context.packageName}/$raw",
+                title = "Flow",
+            )
+        }
+    }
 
     // Lazy, all three: the player is not the first thing the process does, and
     // none of these objects should be woken for a launch that never opens it.

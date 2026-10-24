@@ -48,6 +48,14 @@ interface PlayerHost {
     @Composable
     fun rememberRemoteArtworkUrl(song: Song?): String?
 
+    /**
+     * The Flow station's own looping clip: the wide cut for the radio banner
+     * and the square cut for its home tile. Null where the platform ships no
+     * such asset, in which case callers keep their gradient.
+     */
+    @Composable
+    fun rememberFlowVideo(square: Boolean): CanvasArtwork? = null
+
     /** The system output level the player's volume bar drives, if it drives one. */
     val volume: SystemVolume
 
@@ -319,6 +327,10 @@ internal fun rememberOutputPicker(onOpen: () -> Unit): () -> Unit =
 @Composable
 internal fun rememberRemoteArtworkUrl(song: Song?): String? =
     PlayerPlatform.host.rememberRemoteArtworkUrl(song)
+
+@Composable
+internal fun rememberFlowVideo(square: Boolean): CanvasArtwork? =
+    PlayerPlatform.host.rememberFlowVideo(square)
 
 @Composable
 internal fun AudioPipelineDialog(hazeState: HazeState, isPlaying: Boolean, onDismiss: () -> Unit) =

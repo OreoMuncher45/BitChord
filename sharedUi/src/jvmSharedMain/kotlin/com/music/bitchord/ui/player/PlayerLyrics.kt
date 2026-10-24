@@ -2550,10 +2550,11 @@ private fun CurrentLyricLine(
     modifier: Modifier = Modifier,
 ) {
     val isSynced = remember(lines) { lines.any { it.timeMs > 0L } }
-    // A pinned lyric colour wins; otherwise the strip follows the artwork ink,
-    // which is the sleeve's own average colour, brightened rather than flipped
-    // between black and white — see [artworkAverageInk].
+    // A pinned lyric colour wins; otherwise the strip follows the player ink,
+    // which is always a light tint of the sleeve's accent — see
+    // [computeNowPlayingPalette].
     val ink = LocalPlayerLyrics.current ?: LocalPlayerInk.current
+    val alphas = LocalPlayerAlphas.current
     val lineStyle = MaterialTheme.typography.titleMedium.copy(
         shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
     )
@@ -2678,7 +2679,11 @@ private fun CurrentLyricLine(
                 Text(
                     text = lineText,
                     style = lineStyle,
-                    color = if (itemInstrumental) ink.copy(alpha = 0.5f) else ink,
+                    color = if (itemInstrumental) {
+                        ink.copy(alpha = alphas.tertiary)
+                    } else {
+                        ink.copy(alpha = alphas.secondary)
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2708,7 +2713,7 @@ private fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier) 
         visible = false
     }
     val alpha by animateFloatAsState(
-        targetValue = if (visible) 0.55f else 0f,
+        targetValue = if (visible) LocalPlayerAlphas.current.secondary else 0f,
         animationSpec = tween(durationMillis = LYRICS_UNAVAILABLE_FADE_MS),
         label = "lyricsUnavailableAlpha",
     )
@@ -2734,7 +2739,8 @@ private fun LyricsLoadingLine(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleMedium.copy(
             shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
         ),
-        color = (LocalPlayerLyrics.current ?: LocalPlayerInk.current).copy(alpha = 0.55f),
+        color = (LocalPlayerLyrics.current ?: LocalPlayerInk.current)
+            .copy(alpha = LocalPlayerAlphas.current.secondary),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(vertical = 4.dp),

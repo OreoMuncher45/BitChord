@@ -108,7 +108,6 @@ private fun NowPlayingCustomization() {
     val lyricsColor by AppSettings.playerLyricsColor.collectAsStateWithLifecycle()
     val recents by AppSettings.recentPlayerColors.collectAsStateWithLifecycle()
     val textGlow by AppSettings.textGlow.collectAsStateWithLifecycle()
-    val blockAi by AppSettings.blockAiMusic.collectAsStateWithLifecycle()
     val smoothness by AppSettings.transportSmoothness.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<AppSettings.PlayerColorTarget?>(null) }
 
@@ -158,24 +157,6 @@ private fun NowPlayingCustomization() {
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         TransportSmoothnessSetting(smoothness)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.block_ai_music),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = stringResource(R.string.block_ai_music_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = blockAi, onCheckedChange = AppSettings::setBlockAiMusic)
-        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         if (recents.isNotEmpty()) {
             Text(

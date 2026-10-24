@@ -27,10 +27,12 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.ui.player.DefaultNowPlayingPalette
+import com.music.bitchord.ui.player.NowPlayingPalette
 import com.music.bitchord.ui.player.PlayerPlatform
+import com.music.bitchord.ui.player.computeNowPlayingPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -143,45 +145,15 @@ fun rememberArtworkPalette(
 }
 
 /**
- * What the expanded player needs to tint its chrome off the sleeve: the
- * colour a blur of it would leave, how bright its lower half is, and whether
- * one colour owns the cover.
- *
- * [leadingShare] and [secondary] are what keep "Use artwork" from painting a
- * flat sleeve's single hue everywhere — see [chooseArtworkTint].
- */
-@Immutable
-data class ArtworkInk(
-    val average: Color?,
-    /** Relative luminance of the half the transport sits over, where white ink might wash out. */
-    val controlLuminance: Float?,
-    val leadingShare: Float,
-    /** A distinct, chromatic colour the sleeve holds besides its leading one. */
-    val secondary: Color?,
-)
-
-@Composable
-fun rememberArtworkInk(imageUrl: String?, artPx: Int = CARD_ART_PX): ArtworkInk {
-    val seed = rememberArtworkSeed(imageUrl, artPx)
-    return remember(seed) {
-        ArtworkInk(
-            average = seed?.average,
-            controlLuminance = seed?.controlBandLuminance,
-            leadingShare = seed?.leadingShare ?: 0f,
-            secondary = seed?.secondary,
-        )
-    }
-}
-
-/**
- * Reads top-band relative luminance from the cached palette decode.
- * Returns raw artwork luminance without applying top scrim calculations.
+ * The expanded player's palette, read from the same decode the page tint
+ * uses. Nothing else about the page's colours is involved: the player needs
+ * one light foreground and one dark backdrop from *this* sleeve.
  */
 @Composable
-fun rememberArtworkTopBandLuminance(
+internal fun rememberNowPlayingPalette(
     imageUrl: String?,
     artPx: Int = CARD_ART_PX,
-): Float? = rememberArtworkSeed(imageUrl, artPx)?.topBandLuminance
+): NowPlayingPalette = rememberArtworkSeed(imageUrl, artPx)?.nowPlaying ?: DefaultNowPlayingPalette
 
 @Composable
 private fun rememberArtworkSeed(imageUrl: String?, artPx: Int): Seed? {
@@ -232,14 +204,8 @@ private data class Seed(
     val dominant: Color,
     val vibrant: Color,
     val edge: Color,
-    /** The whole sleeve averaged — the colour a blur of it would leave. */
-    val average: Color,
-    val topBandLuminance: Float,
-    val controlBandLuminance: Float,
-    /** How much of the sleeve the leading swatch covers, 0..1. */
-    val leadingShare: Float = 0f,
-    /** A distinct chromatic colour the leading one does not own, if the sleeve has one. */
-    val secondary: Color? = null,
+    /** The expanded player's light-on-dark chrome, from the same pixels. */
+    val nowPlaying: NowPlayingPalette,
 )
 
 private fun seedOf(bitmap: ImageBitmap): Seed? {
@@ -262,11 +228,7 @@ private fun seedOf(bitmap: ImageBitmap): Seed? {
         // A sleeve owned by one colour hands over in that colour, not in a
         // different one the page was moved to.
         edge = if (tint.leadingShare >= SINGLE_COLOUR_SHARE) tint.page else bitmap.bottomEdgeColor(),
-        average = bitmap.averageColor(),
-        topBandLuminance = bitmap.topBandRelativeLuminance(),
-        controlBandLuminance = bitmap.controlBandRelativeLuminance(),
-        leadingShare = tint.leadingShare,
-        secondary = tint.secondary,
+        nowPlaying = computeNowPlayingPalette(bitmap.paletteSamples()),
     )
 }
 
@@ -370,9 +332,7 @@ private fun ArtworkKeyColors.toSeed() = Seed(
     dominant = background,
     vibrant = accent,
     edge = background,
-    average = background,
-    topBandLuminance = relativeLuminance(background.toArgb()),
-    controlBandLuminance = relativeLuminance(background.toArgb()),
+    nowPlaying = computeNowPlayingPalette(listOf(background.toArgb(), accent.toArgb())),
 )
 
 private const val SWATCH_COUNT = 24
@@ -410,83 +370,25 @@ private fun ImageBitmap.bottomEdgeColor(): Color {
 private const val EDGE_BAND = 0.18f
 
 /**
- * The whole sleeve averaged: exactly the colour a wide blur leaves behind, and
- * what the player's chrome is tinted from.
+ * A bounded sample of the sleeve's pixels for the player's palette. The whole
+ * 128 px decode is only sixteen thousand pixels, but the palette clusters it
+ * and the cover may already be the largest thing on the main thread's plate.
  */
-private fun ImageBitmap.averageColor(): Color {
-    if (width <= 0 || height <= 0) return Color.Transparent
+private fun ImageBitmap.paletteSamples(limit: Int = PALETTE_SAMPLES): List<Int> {
+    if (width <= 0 || height <= 0) return emptyList()
     val pixels = IntArray(width * height)
     readPixels(pixels, startX = 0, startY = 0, width = width, height = height)
-    var red = 0L
-    var green = 0L
-    var blue = 0L
-    pixels.forEach { pixel ->
-        red += (pixel shr 16) and 0xFF
-        green += (pixel shr 8) and 0xFF
-        blue += pixel and 0xFF
+    val step = (pixels.size / limit).coerceAtLeast(1)
+    return buildList(minOf(pixels.size, limit)) {
+        var index = 0
+        while (index < pixels.size) {
+            add(pixels[index])
+            index += step
+        }
     }
-    val count = pixels.size.coerceAtLeast(1)
-    return Color(
-        red = (red / count).toInt(),
-        green = (green / count).toInt(),
-        blue = (blue / count).toInt(),
-    )
 }
 
-/**
- * The status inset occupies only the upper sliver of the full-bleed hero on a
- * phone. Keep this tight so titles or faces lower in the cover do not decide
- * the icon colour for pixels that are never behind the system bar.
- */
-private const val TOP_BAND = 0.10f
-
-private fun ImageBitmap.topBandRelativeLuminance(): Float {
-    val band = (height * TOP_BAND).toInt().coerceIn(1, height)
-    val pixels = IntArray(width * band)
-    readPixels(pixels, startX = 0, startY = 0, width = width, height = band)
-    return averageRelativeLuminance(pixels)
-}
-
-/** The lower half is where the player's controls sit over the sleeve. */
-private const val CONTROL_BAND_START = 0.50f
-
-private fun ImageBitmap.controlBandRelativeLuminance(): Float {
-    if (width <= 0 || height <= 0) return 0f
-    val start = (height * CONTROL_BAND_START).toInt().coerceIn(0, height - 1)
-    val band = height - start
-    val pixels = IntArray(width * band)
-    readPixels(pixels, startX = 0, startY = start, width = width, height = band)
-    return averageRelativeLuminance(pixels)
-}
-
-/** WCAG relative luminance: average in linear light, never gamma-encoded RGB. */
-internal fun averageRelativeLuminance(pixels: IntArray): Float {
-    if (pixels.isEmpty()) return 0f
-    return pixels.sumOf { relativeLuminance(it).toDouble() }.div(pixels.size).toFloat()
-}
-
-internal fun relativeLuminance(argb: Int): Float {
-    fun linear(channel: Int): Float {
-        val srgb = channel / 255f
-        return if (srgb <= 0.04045f) srgb / 12.92f else ((srgb + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
-    }
-    return 0.2126f * linear((argb shr 16) and 0xFF) +
-        0.7152f * linear((argb shr 8) and 0xFF) +
-        0.0722f * linear(argb and 0xFF)
-}
-
-/**
- * Maps artwork luminance to top scrim opacity to keep white status bar
- * icons legible over light album covers while staying subtle on dark ones.
- */
-internal fun topBandScrimAlpha(artworkLuminance: Float?): Float {
-    val luminance = artworkLuminance?.coerceIn(0f, 1f) ?: 0f
-    return PLAYER_STATUS_SCRIM_MIN_ALPHA +
-        (PLAYER_STATUS_SCRIM_MAX_ALPHA - PLAYER_STATUS_SCRIM_MIN_ALPHA) * luminance
-}
-
-private const val PLAYER_STATUS_SCRIM_MIN_ALPHA = 0.16f
-private const val PLAYER_STATUS_SCRIM_MAX_ALPHA = 0.65f
+private const val PALETTE_SAMPLES = 4_096
 
 private fun Seed.toPalette(dark: Boolean): ArtworkPalette = if (dark) {
     ArtworkPalette(

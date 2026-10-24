@@ -220,6 +220,7 @@ fun SettingsScreen(
     val foldingNavBar by AppSettings.foldingNavBar.collectAsStateWithLifecycle()
     val homeFlowVisible by AppSettings.homeFlowVisible.collectAsStateWithLifecycle()
     val blockedArtists by AppSettings.blockedArtists.collectAsStateWithLifecycle()
+    val blockAi by AppSettings.blockAiMusic.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -916,6 +917,25 @@ fun SettingsScreen(
                         stringResource(R.string.blocked_artists_count, blockedArtists.size)
                     },
                     onClick = { showBlockedArtists = true },
+                )
+            }
+            val blockAiTitle = stringResource(R.string.block_ai_music)
+            row(blockAiTitle, "ai", "block") {
+                SettingsRow(
+                    icon = Icons.Rounded.AutoAwesome,
+                    title = blockAiTitle,
+                    subtitle = stringResource(R.string.block_ai_music_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = blockAi,
+                            onCheckedChange = AppSettings::setBlockAiMusic,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setBlockAiMusic(!blockAi) },
                 )
             }
             val reduceDynamicBlurTitle = stringResource(R.string.reduce_dynamic_blur)

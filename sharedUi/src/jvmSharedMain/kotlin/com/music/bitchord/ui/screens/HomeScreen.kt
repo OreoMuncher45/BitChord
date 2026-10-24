@@ -88,8 +88,11 @@ import com.music.bitchord.ui.components.recentlyPlayedSkeleton
 import com.music.bitchord.ui.components.heroCardWidth
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.trackColumnWidth
+import com.music.bitchord.ui.player.CanvasArtworkPlayer
+import com.music.bitchord.ui.player.CanvasContentMode
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.MeshPalette
+import com.music.bitchord.ui.player.rememberFlowVideo
 
 /** How far the Listen now heading and feed sit above the shared top inset. */
 private val HOME_TITLE_LIFT = 28.dp
@@ -1140,6 +1143,16 @@ internal fun ShelfCard(
                         tint = Color.White.copy(alpha = 0.92f),
                         modifier = Modifier.size(40.dp),
                     )
+                    // The square cut of Flow's clip, over the gradient and note
+                    // while it decodes — so the tile keeps its identity either way.
+                    rememberFlowVideo(square = true)?.let { clip ->
+                        CanvasArtworkPlayer(
+                            canvas = clip,
+                            isPlaying = true,
+                            contentMode = CanvasContentMode.CROP,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
             "local:downloads" -> {

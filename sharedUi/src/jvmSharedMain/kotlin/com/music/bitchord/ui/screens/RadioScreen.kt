@@ -51,6 +51,9 @@ import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.ShelfRow
 import com.music.bitchord.ui.components.ShimmerBox
 import com.music.bitchord.ui.icons.BitChordIcons
+import com.music.bitchord.ui.player.CanvasArtworkPlayer
+import com.music.bitchord.ui.player.CanvasContentMode
+import com.music.bitchord.ui.player.rememberFlowVideo
 
 /**
  * The Radio tab, built the way Apple Music's is: one featured station at the
@@ -194,6 +197,16 @@ private fun RadioFeatureCard(item: ShelfItem?, onClick: () -> Unit) {
                             listOf(Color(0xFF2A1B5C), Color(0xFF6E3BC4), Color(0xFFFF4B7A)),
                         ),
                     ),
+            )
+        }
+        // Flow's own clip plays over whichever still is underneath, so a slow
+        // decode leaves the sleeve or the gradient up rather than a hole.
+        rememberFlowVideo(square = false)?.let { clip ->
+            CanvasArtworkPlayer(
+                canvas = clip,
+                isPlaying = true,
+                contentMode = CanvasContentMode.CROP,
+                modifier = Modifier.fillMaxSize(),
             )
         }
         Box(

@@ -138,9 +138,7 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.music.bitchord.ui.theme.StatusBarIcons
-import com.music.bitchord.ui.theme.rememberArtworkInk
-import com.music.bitchord.ui.theme.rememberArtworkTopBandLuminance
-import com.music.bitchord.ui.theme.topBandScrimAlpha
+import com.music.bitchord.ui.theme.rememberNowPlayingPalette
 import com.music.bitchord.ui.LyricsProviderState
 import com.music.bitchord.ui.components.optimizedHazeEffect
 import com.music.bitchord.ui.haptics.Haptic
@@ -163,7 +161,6 @@ import dev.chrisbanes.haze.ExperimentalHazeApi
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import kotlin.math.abs
-import kotlin.math.pow
 import kotlin.math.roundToInt
 
 
@@ -351,9 +348,12 @@ private const val HERO_FADE_FRACTION = 0.42f
  * this tall the crease is the only thing the eye caught.
  */
 private const val ART_FADE_END_FRACTION = 1.0f
-/** Kept transparent so the cover remains edge-to-edge, while aiding icon contrast. */
-/** A modest floor while a subview replaces the hero with its artwork-derived mesh. */
-private const val SUBVIEW_STATUS_SCRIM_MIN_ALPHA = 0.40f
+/** Black at the very top of the player, fading out over [TOP_SCRIM_FRACTION]. */
+private const val TOP_SCRIM_ALPHA = 0.40f
+private const val TOP_SCRIM_FRACTION = 0.14f
+/** Black behind the credits block, reached at its bottom edge. */
+private const val CREDITS_SCRIM_ALPHA = 0.40f
+private const val CREDITS_SCRIM_LEAD_FRACTION = 0.06f
 
 /**
  * How often the backdrop re-reads the colours of a playing Canvas clip.
@@ -840,33 +840,28 @@ fun NowPlayingScreen(
     val density = LocalDensity.current
     val haptics = rememberHaptics()
 
+    // The lyric bloom reads the same switch on its own; this half silences the
+    // shadow behind the title, credits and transport type.
+    val textGlow by PlayerSettings.textGlow.collectAsStateWithLifecycle()
+
     // Remote tracks whose art lives inside the file resolve it here, once —
     // every surface below reads the same value rather than each triggering
     // its own extraction.
     val remoteArt = rememberRemoteArtworkUrl(song)
-    // This is produced by the palette's existing 128 px decode and cache. It
-    // samples the upper band rather than the whole sleeve because that is what
-    // lies beneath the status bar when the player expands to full bleed.
-    val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
-    val artworkInk = rememberArtworkInk(remoteArt, ART_PX)
-    // The backdrop is the sleeve blurred down to its average, so the chrome is
-    // tinted with that same average, lifted until it clears the blur rather
-    // than picked from black or white. A sleeve owned by a single colour hands
-    // the ink its less-used colour instead, or black and white when there is
-    // none — see [artworkAverageInk]. [playerInkGlow] is the opposite light,
-    // faded in behind glyphs and text so the tint still reads where it crosses
-    // a patch of the sleeve.
-    val playerInkTarget = artworkAverageInk(
-        average = artworkInk.average,
-        controlLuminance = artworkInk.controlLuminance,
-        leadingShare = artworkInk.leadingShare,
-        secondary = artworkInk.secondary,
-    )
+    // Every cover takes the same route: a light tint of its accent on a
+    // backdrop clamped dark. The old average-and-lift engine could land ink
+    // and background on the same tone for low-colour sleeves; this one has
+    // no path that puts them there. See [computeNowPlayingPalette].
+    val nowPlayingPalette = rememberNowPlayingPalette(remoteArt, ART_PX)
+    val playerInkTarget = nowPlayingPalette.fg
     val playerInk by animateColorAsState(
         targetValue = playerInkTarget,
         animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
         label = "playerInk",
     )
+    // The ink is always light now, so its halo is the dark one. It is also
+    // strictly optional: with the switch off neither the composition local
+    // nor the text shadow may carry any colour at all.
     val playerInkGlowTarget = if (playerInkTarget.isLightInk()) {
         PLAYER_GLOW_ON_LIGHT
     } else {
@@ -877,9 +872,8 @@ fun NowPlayingScreen(
         animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
         label = "playerInkGlow",
     )
-    val artworkStatusScrimAlpha = topBandScrimAlpha(artTopLuminance)
-    val playerShadow = remember(playerInkGlow) {
-        Shadow(color = playerInkGlow, blurRadius = 9f)
+    val playerShadow = remember(playerInkGlow, textGlow) {
+        if (textGlow) Shadow(color = playerInkGlow, blurRadius = 9f) else null
     }
 
     // Media-player convention: the player always owns light status icons. The
@@ -917,9 +911,6 @@ fun NowPlayingScreen(
     }
     val hideVolumeBar by PlayerSettings.hideVolumeBar.collectAsStateWithLifecycle()
     val hideSongStatus by PlayerSettings.hideSongStatus.collectAsStateWithLifecycle()
-    // The lyric bloom reads the same switch on its own; this half silences the
-    // shadow behind the title, credits and transport type.
-    val textGlow by PlayerSettings.textGlow.collectAsStateWithLifecycle()
 
     // Animated cover art: the looping video some labels publish alongside a
     // release, laid over the sleeve. A miss is the normal answer — see
@@ -1457,7 +1448,14 @@ fun NowPlayingScreen(
     // Portrait clips always use the existing artwork mesh, even if the user
     // selected the legacy backdrop for ordinary artwork.
     val artMesh = if (legacyMesh && !canvasFirstPortrait) null else
-        key(song.videoId) { rememberArtworkMesh(remoteArt, canvasFrame, ART_PX) }
+        key(song.videoId) {
+            rememberArtworkMesh(
+                remoteArt,
+                canvasFrame,
+                ART_PX,
+                backgroundCap = nowPlayingPalette.backgroundLightnessCap,
+            )
+        }
     // Whether the banner is the presentation at all: full-bleed is on, and there
     // is something to blow out. The collapse is deliberately *not* part of this:
     // the sleeve goes from banner to thumbnail as one movement, rather than the
@@ -2175,6 +2173,7 @@ fun NowPlayingScreen(
             LocalPlayerSeekbar provides colors.seekbar,
             LocalPlayerText provides colors.text,
             LocalPlayerLyrics provides colors.lyrics,
+            LocalPlayerAlphas provides nowPlayingPalette.alphas,
         ) {
         // Anchored to the sleeve's bottom edge, so the screen carries on in the
         // colours the artwork ended in rather than in a quantiser's idea of what
@@ -2333,30 +2332,16 @@ fun NowPlayingScreen(
             }
         }
 
-        // This transparent top gradient is always present while the modal
-        // player owns the system bar. Its opacity follows the actual top-band
-        // artwork, rather than changing the status-bar glyph colour per cover.
-        // A subview replaces that hero with an artwork-derived mesh, so it gets
-        // only a modest floor rather than an opaque status-bar surface.
-        val playerSubviewOpen = lyricsOpen || queueOpen || lyricsOffsetOpen ||
-            showAudioPipeline || showCast || showAudioOutput || showLyricsProviders ||
-            lyricsShare != null
-        val topGradientAlpha = if (playerSubviewOpen) {
-            maxOf(artworkStatusScrimAlpha, SUBVIEW_STATUS_SCRIM_MIN_ALPHA)
-        } else {
-            artworkStatusScrimAlpha
-        }
-
-        val steps = 8
-        val gradientColors = remember(topGradientAlpha) {
-            List(steps) { index ->
-                val progress = index / (steps - 1).toFloat()
-                val factor = (1f - progress).toDouble().pow(1.5).toFloat()
-                Color.Black.copy(alpha = topGradientAlpha * factor)
-            }
-        }
-        val topScrimBrush = remember(gradientColors) {
-            Brush.verticalGradient(gradientColors)
+        // The top of the screen is always shaded, whatever the cover: 40% black
+        // at the very top, gone by 14% of the screen. It keeps the system icons
+        // and the "Playing from..." line readable over a bright sleeve, and it
+        // is the same treatment on every cover so the player does not flicker
+        // brighter when the album changes.
+        val topScrimBrush = remember {
+            Brush.verticalGradient(
+                0f to Color.Black.copy(alpha = TOP_SCRIM_ALPHA),
+                1f to Color.Transparent,
+            )
         }
         // Painted by the handle strip rather than laid out here — see there.
 
@@ -2497,12 +2482,19 @@ fun NowPlayingScreen(
                     .height(topStrip)
                     .drawBehind {
                         // Translated rather than offset: the gradient is laid
-                        // out from the canvas origin, not from the rect's.
+                        // out from the canvas origin, not from the rect's. It
+                        // runs past this strip to 14% of the player, over the
+                        // top of the artwork, which is what the caption and
+                        // the system icons actually sit on.
                         val above = statusBarTop.toPx()
+                        val scrimHeight = playerBounds.height
+                            .takeIf { it > 0 }
+                            ?.let { it * TOP_SCRIM_FRACTION }
+                            ?: (size.height + above)
                         translate(top = -above) {
                             drawRect(
                                 brush = topScrimBrush,
-                                size = Size(size.width, size.height + above),
+                                size = Size(size.width, scrimHeight),
                             )
                         }
                     },
@@ -3380,6 +3372,26 @@ fun NowPlayingScreen(
                             ) { placeable.placeRelative(start, 0) }
                         }
                         .height(HEADER_HEIGHT)
+                        // A scrim under the whole credits block rather than a
+                        // chip behind each word: it starts 6% of the screen
+                        // above the block, at nothing, and reaches 40% black
+                        // at the block's bottom — so the title, artist, star
+                        // and menu read over the brightest sleeve without a
+                        // visible plate around them.
+                        .drawBehind {
+                            val shown = 1f - p()
+                            if (shown <= 0.01f) return@drawBehind
+                            val screen = playerBounds.height.toFloat()
+                            val lead = if (screen > 0f) screen * CREDITS_SCRIM_LEAD_FRACTION else size.height
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = CREDITS_SCRIM_ALPHA * shown),
+                                    startY = -lead,
+                                    endY = size.height,
+                                ),
+                            )
+                        }
                         // Where the dismiss band ends — see its top on the
                         // artwork above. Taken from the row rather than added up
                         // from the sleeve so the gap between the two is inside
@@ -3432,6 +3444,7 @@ fun NowPlayingScreen(
                         ) {
                             val scrolling = scrolls()
                             val ink = LocalPlayerText.current ?: LocalPlayerInk.current
+                            val alphas = LocalPlayerAlphas.current
                             Column {
                                 MarqueeText(
                                     text = song.title,
@@ -3461,7 +3474,7 @@ fun NowPlayingScreen(
                                         fontSize = 20.sp,
                                         shadow = playerShadow,
                                     ),
-                                    color = ink.copy(alpha = 0.55f),
+                                    color = ink.copy(alpha = alphas.secondary),
                                     enabled = scrolling,
                                     // A title that's also scrolling gets to go first —
                                     // starting together reads as clutter, so the artist
@@ -3515,7 +3528,6 @@ fun NowPlayingScreen(
                                 if (liked) Res.string.remove_from_liked else Res.string.like,
                             ),
                             onClick = onToggleLike,
-                            active = liked,
                             haptic = if (liked) Haptic.ToggleOff else Haptic.ToggleOn,
                             glyphSize = 22.dp,
                         )

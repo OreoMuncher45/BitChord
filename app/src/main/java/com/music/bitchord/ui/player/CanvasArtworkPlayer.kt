@@ -46,6 +46,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import com.music.bitchord.ui.rememberIsForeground
@@ -193,8 +194,15 @@ internal fun AndroidCanvasArtworkPlayer(
             // loop past the first is read off disk rather than re-fetched;
             // see that object's doc for why this matters far more here than
             // it would for a clip played once.
+            // Raw-resource clips (the Flow station) bypass the HTTP cache
+            // through DefaultDataSource, while remote clips keep it.
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(CanvasCache.dataSourceFactory(OkHttpDataSource.Factory(Http.client))),
+                DefaultMediaSourceFactory(
+                    DefaultDataSource.Factory(
+                        context,
+                        CanvasCache.dataSourceFactory(OkHttpDataSource.Factory(Http.client)),
+                    ),
+                ),
             )
             .build()
             .apply {
