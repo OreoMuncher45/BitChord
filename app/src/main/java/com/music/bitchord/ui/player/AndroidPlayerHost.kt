@@ -59,6 +59,7 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         override val lastPlayerScreen get() = AppSettings.lastPlayerScreen
         override val legacyMeshGradient get() = AppSettings.legacyMeshGradient
         override val lyricsBlur get() = AppSettings.lyricsBlur
+        override val lyricsGlow get() = AppSettings.lyricsGlow
         override val lyricsOffsetMs get() = AppSettings.lyricsOffsetMs
         override val lyricsSourceOrder get() = AppSettings.lyricsSourceOrder
         override val meteredConnection get() = AppSettings.meteredConnection

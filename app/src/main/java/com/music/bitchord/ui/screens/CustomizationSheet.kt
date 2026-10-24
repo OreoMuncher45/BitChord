@@ -107,6 +107,7 @@ private fun NowPlayingCustomization() {
     val text by AppSettings.playerTextColor.collectAsStateWithLifecycle()
     val lyricsColor by AppSettings.playerLyricsColor.collectAsStateWithLifecycle()
     val recents by AppSettings.recentPlayerColors.collectAsStateWithLifecycle()
+    val lyricsGlow by AppSettings.lyricsGlow.collectAsStateWithLifecycle()
     val blockAi by AppSettings.blockAiMusic.collectAsStateWithLifecycle()
     val smoothness by AppSettings.transportSmoothness.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<AppSettings.PlayerColorTarget?>(null) }
@@ -138,6 +139,23 @@ private fun NowPlayingCustomization() {
             value = lyricsColor,
             onPick = { picking = AppSettings.PlayerColorTarget.LYRICS },
         )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.custom_lyrics_glow),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(R.string.custom_lyrics_glow_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = lyricsGlow, onCheckedChange = AppSettings::setLyricsGlow)
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         TransportSmoothnessSetting(smoothness)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))

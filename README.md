@@ -16,7 +16,7 @@
 
 <br/>
 
-[**Features**](#features) · [**Sources & addons**](#sources--addons) · [**Download**](#download) · [**Build from source**](#build-from-source) · [**Support**](#support) · [**Credits & license**](#credits--license)
+[**Features**](#features) · [**Sources**](#sources) · [**Download**](#download) · [**Build from source**](#build-from-source) · [**Support**](#support) · [**Credits & license**](#credits--license)
 
 </div>
 
@@ -30,7 +30,7 @@
 
 ## What Auris is
 
-A free Android music player built around **lossless-first playback**. It plays your local library, YouTube Music, and optional lossless addons, with the same library, downloads, lyrics, scrobbling and Discord presence you expect from a modern player.
+A free Android music player built around **lossless-first playback**. It plays your local library, YouTube Music, and sources you add yourself, with the same library, downloads, lyrics, scrobbling and Discord presence you expect from a modern player.
 
 Android only. No ads, no telemetry, no account required, no "Pro" tier.
 
@@ -56,25 +56,17 @@ Android only. No ads, no telemetry, no account required, no "Pro" tier.
 - **Save cover art** from any song menu.
 - **Replay** appears in Library through a Customisation toggle instead of taking over Home.
 
-## Sources & addons
+## Sources
 
-Auris ranks sources itself: your addons first, then JioSaavn if you opt in, then YouTube Music as the fallback. Each addon has a health check and reports stream refusals on its own row instead of failing silently.
+Auris ranks sources itself: the ones you add first, then JioSaavn if you opt in, then YouTube Music as the fallback. Every row has a health check and reports stream refusals instead of failing silently.
 
-Three built-in lossless addons ship with the app:
+The app ships with YouTube Music, optional JioSaavn, and the **Auris Qobuz** lossless source — catalogue search plus queued FLAC conversions up to 24/192. One in-app unlock starts a resuming session and the row tells you when it needs renewing.
 
-| Addon | What it does |
-|---|---|
-| **Auris Addon** | Hi-Fi FLAC through community instances, with automatic failover and a refreshed instance list. |
-| **Auris Hi-Res Lossless Addon** | Direct FLAC files at measured quality — no converter, no account, no waiting. |
-| **Auris Qobuz Addon** | Catalogue search plus queued FLAC conversions up to 24/192. One in-app unlock starts a resuming session and the row tells you when it needs renewing. |
-
-Those three names belong to the sources Auris ships, and only those are permanent. **Anything you add yourself stays yours**: it is listed under its own name or host, and it can always be deleted — including links that happen to speak one of the built-in protocols. Adding an addon never creates a second "Auris" row.
-
-> **Why the addons aren't named after their backends:** they run on volunteers' servers and free tiers. Naming them draws traffic, and traffic gets things rate-limited or shut down. The endpoints, fallbacks and setup steps are all in the source for anyone who wants to look.
+**Anything you add yourself stays yours**: it is listed under its own name or host, and it can always be deleted — including links that happen to speak a built-in protocol. Adding a source never creates a second "Auris" row.
 
 ## Download
 
-Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChordNext/releases) page. Current build: **2.2.17** (`versionCode 79`, package `com.dev.bitchord`).
+Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChordNext/releases) page. Current build: **2.2.18** (`versionCode 80`, package `com.dev.bitchord`).
 
 | APK | Use it for |
 |---|---|
@@ -130,7 +122,7 @@ u1z9k30yyvy63f5w0jypt02kvvw6dcpcgprlhzmsgc57mw6qc8rtuc5tfd9ny4atqhr448udexhkuc8x
 ## Credits & license
 
 - **BitChord** by [kushagra](https://github.com/kushagrasinghx) — the app this fork is built on. If you redistribute Auris, keep that credit.
-- Everyone whose libraries and community services make the addons possible.
+- Everyone whose libraries and community services make the sources possible.
 - Third-party components and their licences are listed in [NOTICE](NOTICE).
 
 Auris is free software under the **GNU General Public License v3.0**. You may use, study, share and modify it, including commercially, but any distribution must keep this credit and ship the corresponding source under the same licence. See [LICENSE](LICENSE).

@@ -59,7 +59,6 @@ import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
@@ -348,12 +347,6 @@ fun SourcesScreen(
             AddSourceRow(
                 onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
             )
-            // Community instances rot, so the pool refreshes itself daily from
-            // a curated list — off, and only the primary URL is ever touched.
-            if (configs.any { it.kind == SourceKind.TIDAL }) {
-                RowDivider()
-                TidalAutoUpdateRow()
-            }
         }
 
         // A personal library rather than a catalogue in the order above: it
@@ -745,41 +738,6 @@ private const val SWAP_THRESHOLD = 0.6f
  * put another one in here".
  */
 @Composable
-private fun TidalAutoUpdateRow() {
-    val autoUpdate by com.music.bitchord.data.tidal.TidalInstances.autoUpdate
-        .collectAsStateWithLifecycle()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ROW_INSET, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.tidal_auto_update),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = stringResource(R.string.tidal_auto_update_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(
-            checked = autoUpdate,
-            onCheckedChange = {
-                com.music.bitchord.data.tidal.TidalInstances.setAutoUpdate(it)
-            },
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                checkedBorderColor = MaterialTheme.colorScheme.primary,
-            ),
-        )
-    }
-}
-
-@Composable
 private fun AddSourceRow(onClick: () -> Unit) {
     Row(
         modifier = Modifier
@@ -945,9 +903,7 @@ private fun SourceRow(
                 SourceKind.CUSTOM_MODULE -> Icons.Rounded.Extension
                 SourceKind.MODULE -> Icons.Rounded.Extension
                 SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq // or some other icon
-                SourceKind.TIDAL -> Icons.Rounded.MusicNote
                 SourceKind.QOBUZ -> Icons.Rounded.Album
-                SourceKind.HIRES -> Icons.Rounded.MusicNote
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },
             contentDescription = null,
@@ -1217,21 +1173,13 @@ internal fun SourceEditorAlert(
         } else {
             config.displayName
         },
-        description = stringResource(
-            when (config.kind) {
-                SourceKind.TIDAL -> R.string.tidal_url_description
-                else -> R.string.addon_url_description
-            },
-        ),
+        description = stringResource(R.string.addon_url_description),
         urlValue = baseUrl,
         // A result describes the address it was run against, so the moment that
         // address is edited it stops being true and is cleared. Left up, it
         // would report "Connected" over a URL nobody has tried.
         onUrlChange = { baseUrl = it; status = null; secretSettings = emptyList(); secretValues.clear() },
-        urlPlaceholder = when (config.kind) {
-            SourceKind.TIDAL -> "https://lossless.example.com"
-            else -> "https://my-addon.example.com"
-        },
+        urlPlaceholder = "https://my-addon.example.com",
         status = status,
         statusIsGood = statusIsGood,
         testing = busy,

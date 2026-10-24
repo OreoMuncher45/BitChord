@@ -545,6 +545,9 @@ object AppSettings {
     /** Blurs unfocused lyric lines, keeping the active line sharp. */
     val lyricsBlur = MutableStateFlow(true)
 
+    /** Draws the soft bloom behind the line being sung. */
+    val lyricsGlow = MutableStateFlow(true)
+
     /** Positive values delay synced lyrics; negative values bring them forward. */
     val lyricsOffsetMs = MutableStateFlow(0)
 
@@ -1230,6 +1233,7 @@ object AppSettings {
         liquidGlassIntensity.value = prefs.getFloat(KEY_LIQUID_GLASS_INTENSITY, 1f)
             .coerceIn(MIN_LIQUID_GLASS_INTENSITY, MAX_LIQUID_GLASS_INTENSITY)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
+        lyricsGlow.value = prefs.getBoolean(KEY_LYRICS_GLOW, true)
         lyricsOffsetMs.value = prefs.getInt(KEY_LYRICS_OFFSET_MS, 0)
             .coerceIn(MIN_LYRICS_OFFSET_MS, MAX_LYRICS_OFFSET_MS)
         translationLanguage.value = prefs.getString(KEY_TRANSLATION_LANGUAGE, "").orEmpty()
@@ -1851,6 +1855,11 @@ object AppSettings {
     fun setLyricsBlur(value: Boolean) {
         lyricsBlur.value = value
         prefs.edit().putBoolean(KEY_LYRICS_BLUR, value).apply()
+    }
+
+    fun setLyricsGlow(value: Boolean) {
+        lyricsGlow.value = value
+        prefs.edit().putBoolean(KEY_LYRICS_GLOW, value).apply()
     }
 
     fun setLyricsOffsetMs(value: Int) {
@@ -2617,6 +2626,7 @@ object AppSettings {
     private const val KEY_QOBUZ_HELP_DISMISSED = "qobuz_help_dismissed"
     private const val KEY_LIQUID_GLASS_INTENSITY = "liquid_glass_intensity"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
+    private const val KEY_LYRICS_GLOW = "lyrics_glow"
     private const val KEY_LYRICS_OFFSET_MS = "lyrics_offset_ms"
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
     private const val KEY_ANIMATED_CANVAS = "animated_canvas"

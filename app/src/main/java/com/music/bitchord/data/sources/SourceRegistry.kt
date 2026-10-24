@@ -11,8 +11,6 @@ import com.music.bitchord.data.settings.permits
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.data.sources.addon.AddonException
 import com.music.bitchord.data.sources.addon.DetectedFormat
-import com.music.bitchord.data.tidal.TidalApi
-import com.music.bitchord.data.tidal.TidalInstances
 import com.music.bitchord.data.sources.addon.SourceFormats
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.playback.audio.LosslessOutput
@@ -112,13 +110,8 @@ data class SourceConfig(
             // listener's source, not ours: calling it "Auris Addon" claimed an
             // addon this app does not run and made a user's own server
             // indistinguishable from the bundled one.
-            if (stock) {
-                when (kind) {
-                    SourceKind.TIDAL -> return SourceRegistry.TIDAL_DISPLAY_NAME
-                    SourceKind.HIRES -> return SourceRegistry.HIRES_DISPLAY_NAME
-                    SourceKind.QOBUZ -> return SourceRegistry.QOBUZ_DISPLAY_NAME
-                    else -> Unit
-                }
+            if (stock && kind == SourceKind.QOBUZ) {
+                return SourceRegistry.QOBUZ_DISPLAY_NAME
             }
             // A user-added source cannot borrow one of those names either —
             // third-party manifests and typed labels reach the same field.
@@ -199,18 +192,12 @@ object SourceRegistry {
     ): List<SourceConfig> {
         // Seeded rather than persisted-on-first-write, so a build adding a new
         // built-in kind picks it up for existing installs too. SourceConfig's
-        // default is the policy: JioSaavn off, everything else on. Tidal
-        // arrives with the first bundled instance as its primary so it works
-        // with zero setup — the toggle is the off switch.
+        // default is the policy: JioSaavn off, everything else on.
         val seeded = stored + BUILT_IN_KINDS
             .filter { kind -> stored.none { it.kind == kind } }
             .map { kind ->
                 SourceConfig(
                     kind = kind,
-                    baseUrl = when (kind) {
-                        SourceKind.TIDAL -> TidalInstances.BUNDLED.first().url
-                        else -> ""
-                    },
                     // JioSaavn arrives off after the forced opt-out migration.
                     // Qobuz without an unlock can search but stream nothing,
                     // so it arrives off too: one tap plus the toggle.
@@ -240,20 +227,15 @@ object SourceRegistry {
      * already have added a second row of a built-in kind by pasting a URL that
      * answered the same protocol — the row that used to be stuck, branded and
      * unremovable. Preference keeps history rather than rewriting it: an
-     * already-stamped row stays stock across launches, then for Tidal the row
-     * pointing at the bundled primary wins, then whichever row came first.
-     * Every other row of that kind is left unstamped, so it is named after
-     * itself and the delete button works.
+     * already-stamped row stays stock across launches, then whichever row came
+     * first. Every other row of that kind is left unstamped, so it is named
+     * after itself and the delete button works.
      */
     private fun stampStock(configs: List<SourceConfig>): List<SourceConfig> {
-        val bundledTidal = canonicalUrl(TidalInstances.BUNDLED.first().url)
         val stockIds = BUILT_IN_KINDS.mapNotNull { kind ->
-            val candidates = configs.filter { it.kind == kind }
-            val bundled = candidates.firstOrNull {
-                kind == SourceKind.TIDAL && canonicalUrl(it.baseUrl) == bundledTidal
-            }
-            val chosen = candidates.firstOrNull { it.stock } ?: bundled ?: candidates.firstOrNull()
-            chosen?.id
+            configs.filter { it.kind == kind }
+                .let { candidates -> candidates.firstOrNull { it.stock } ?: candidates.firstOrNull() }
+                ?.id
         }.toSet()
         return configs.map { it.copy(stock = it.id in stockIds) }
     }
@@ -400,8 +382,7 @@ object SourceRegistry {
         val target = config(configId) ?: return
         // Only a shipped row is permanent. Anything the listener added is
         // theirs to delete, even when it speaks a built-in protocol — the old
-        // kind check is what left a pasted Tidal-compatible link stuck in the
-        // list forever.
+        // kind check is what left a pasted link stuck in the list forever.
         if (target.stock) return
         // YouTube is never removable whatever its flag: it is the only source
         // that can supply a home feed, radio or related tracks, and nothing a
@@ -496,22 +477,6 @@ object SourceRegistry {
      * its on/off state; a new source gets a fresh config.
      */
     suspend fun identify(url: String, existing: SourceConfig? = null): Result<SourceConfig> {
-        // Tidal first: its root answers a version document no other format
-        // shapes, and the probe is one cheap GET. Anything else falls through
-        // to the addon/module detection untouched.
-        TidalApi.probeBestEffort(url)?.let { version ->
-            val base = TidalApi.normalize(url) ?: url.trim().trimEnd('/')
-            val host = runCatching { android.net.Uri.parse(base).host }.getOrNull()
-            return Result.success(
-                (existing ?: SourceConfig(kind = SourceKind.TIDAL)).copy(
-                    kind = SourceKind.TIDAL,
-                    baseUrl = base,
-                    label = existing?.label.orEmpty().ifBlank {
-                        host?.takeIf { it.isNotBlank() } ?: SourceKind.TIDAL.label
-                    },
-                ),
-            )
-        }
         val detected = SourceFormats.identify(url).getOrElse { return Result.failure(it) }
         return when (detected) {
             is DetectedFormat.Addon -> Result.success(
@@ -591,8 +556,6 @@ object SourceRegistry {
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
-        SourceKind.TIDAL -> TidalSource(config)
-        SourceKind.HIRES -> HiresDirectSource(config)
         SourceKind.QOBUZ -> QobuzQueueSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
@@ -638,27 +601,19 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.TIDAL, SourceKind.HIRES, SourceKind.QOBUZ, SourceKind.YOUTUBE)
-
-    /** The branded name of the sealed lossless source. */
-    const val TIDAL_DISPLAY_NAME = "Auris Addon"
-
-    /** The branded name of the community Hi-Res source. */
-    const val HIRES_DISPLAY_NAME = "Auris Hi-Res Lossless Addon"
+    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.QOBUZ, SourceKind.YOUTUBE)
 
     /** The branded name of the Qobuz conversion-queue source. */
     const val QOBUZ_DISPLAY_NAME = "Auris Qobuz Addon"
 
     /**
-     * Whether [label] is one of the three names only this app's own sources may
-     * show. A pasted source that names itself one of these is displayed under
-     * its host instead — see [SourceConfig.displayName].
+     * Whether [label] is a name only this app's own sources may show. A
+     * pasted source that names itself one of these is displayed under its host
+     * instead — see [SourceConfig.displayName].
      */
     internal fun isReservedDisplayName(label: String): Boolean {
         val name = label.trim()
-        return name.equals(TIDAL_DISPLAY_NAME, ignoreCase = true) ||
-            name.equals(HIRES_DISPLAY_NAME, ignoreCase = true) ||
-            name.equals(QOBUZ_DISPLAY_NAME, ignoreCase = true)
+        return name.equals(QOBUZ_DISPLAY_NAME, ignoreCase = true)
     }
 
     /**

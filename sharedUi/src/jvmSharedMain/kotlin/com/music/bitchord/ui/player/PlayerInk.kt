@@ -4,6 +4,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import com.music.bitchord.ui.graphics.ColorUtils
+import com.music.bitchord.ui.theme.SINGLE_COLOUR_SHARE
 
 /**
  * Ink for the controls laid directly over album artwork.
@@ -36,12 +37,28 @@ internal val LocalPlayerInkGlow = staticCompositionLocalOf { Color.Transparent }
  * because nothing lighter than a bright backdrop is legible on it. Sleeves
  * with no hue keep the existing barely-warm white or near-black rather than
  * inventing a colour that isn't there.
+ *
+ * A sleeve that is mostly one colour is the exception. Repeating that colour
+ * as the ink turns the whole player into one flat hue, so the ink goes black
+ * and white — or, when the artwork has a distinct colour of its own, borrows
+ * that less-used one instead. [leadingShare] and [secondary] come from the
+ * same palette read that produced [average]; see `chooseArtworkTint`.
  */
-internal fun artworkAverageInk(average: Color?, controlLuminance: Float?): Color {
+internal fun artworkAverageInk(
+    average: Color?,
+    controlLuminance: Float?,
+    leadingShare: Float = 0f,
+    secondary: Color? = null,
+): Color {
     val brightBackdrop = (controlLuminance ?: 0f) >= 0.55f
     if (average == null) return if (brightBackdrop) Color(0xFF0B0B0C) else Color.White
 
-    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(average.toArgb(), it) }
+    val source = if (leadingShare >= SINGLE_COLOUR_SHARE) secondary else average
+    if (source == null) {
+        return if (brightBackdrop) Color(0xFF1B1513) else Color(0xFFFFF6F1)
+    }
+
+    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(source.toArgb(), it) }
     if (hsl[1] < MONOCHROME_SATURATION) {
         return if (brightBackdrop) Color(0xFF1B1513) else Color(0xFFFFF6F1)
     }

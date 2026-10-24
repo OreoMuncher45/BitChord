@@ -1208,10 +1208,6 @@
     <string name="flow_personal">Personal</string>
     <string name="flow_adventurous">Adventurous</string>
 
-    <!-- Tidal Hi-Fi (community instances, auto-failover) -->
-    <string name="tidal_community_warning">Community instances · may break · Hi-Res FLAC when live</string>
-    <string name="tidal_url_description">Paste a Tidal Hi-Fi API instance URL — a hifi-api-compatible server. Auris tries it first, then healthy community instances.</string>
-    <string name="tidal_auto_update">Auto-update instance list</string>
     <string name="qobuz_unlock_title">Unlock Qobuz conversions</string>
     <string name="qobuz_unlock_waiting">Opening the download site for one browser check…</string>
     <string name="qobuz_unlock_auto">Trying automatic unlock…</string>
@@ -1229,7 +1225,6 @@
     <string name="support_donate_subtitle">Tap an address to copy it</string>
     <string name="copy_address">Copy address</string>
     <string name="address_copied">Address copied</string>
-    <string name="tidal_auto_update_subtitle">Refresh the community instance pool daily; off touches only your primary URL</string>
 
 
     <!-- Interface shell -->
@@ -1270,6 +1265,8 @@
     <string name="custom_seekbar">Seek bar and volume bar</string>
     <string name="custom_text">Song title and artist</string>
     <string name="custom_lyrics">Lyric line</string>
+    <string name="custom_lyrics_glow">Lyric glow</string>
+    <string name="custom_lyrics_glow_help">Soft bloom behind the line being sung. Turn it off for flat, crisp text.</string>
     <string name="custom_recent">Recent colours</string>
     <string name="custom_reset_colors">Reset all player colours</string>
     <string name="custom_transport_smoothness">Transport corner smoothness</string>

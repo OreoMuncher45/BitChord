@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.ImageBitmap
 import coil3.compose.LocalPlatformContext
 import com.music.bitchord.ui.graphics.ColorUtils
+import com.music.bitchord.ui.graphics.Swatch
 import com.music.bitchord.ui.graphics.forPixelAccess
 import com.music.bitchord.ui.graphics.paletteSwatches
 import com.music.bitchord.ui.graphics.toImageBitmap
@@ -142,17 +143,35 @@ fun rememberArtworkPalette(
 }
 
 /**
- * The artwork's mean colour — what a blur wide enough to lose the picture
- * leaves behind.
+ * What the expanded player needs to tint its chrome off the sleeve: the
+ * colour a blur of it would leave, how bright its lower half is, and whether
+ * one colour owns the cover.
  *
- * Used by the expanded player to tint its chrome with the record's own colour
- * family rather than falling back to plain black or white.
+ * [leadingShare] and [secondary] are what keep "Use artwork" from painting a
+ * flat sleeve's single hue everywhere — see [chooseArtworkTint].
  */
+@Immutable
+data class ArtworkInk(
+    val average: Color?,
+    /** Relative luminance of the half the transport sits over, where white ink might wash out. */
+    val controlLuminance: Float?,
+    val leadingShare: Float,
+    /** A distinct, chromatic colour the sleeve holds besides its leading one. */
+    val secondary: Color?,
+)
+
 @Composable
-fun rememberArtworkAverageColor(
-    imageUrl: String?,
-    artPx: Int = CARD_ART_PX,
-): Color? = rememberArtworkSeed(imageUrl, artPx)?.average
+fun rememberArtworkInk(imageUrl: String?, artPx: Int = CARD_ART_PX): ArtworkInk {
+    val seed = rememberArtworkSeed(imageUrl, artPx)
+    return remember(seed) {
+        ArtworkInk(
+            average = seed?.average,
+            controlLuminance = seed?.controlBandLuminance,
+            leadingShare = seed?.leadingShare ?: 0f,
+            secondary = seed?.secondary,
+        )
+    }
+}
 
 /**
  * Reads top-band relative luminance from the cached palette decode.
@@ -163,17 +182,6 @@ fun rememberArtworkTopBandLuminance(
     imageUrl: String?,
     artPx: Int = CARD_ART_PX,
 ): Float? = rememberArtworkSeed(imageUrl, artPx)?.topBandLuminance
-
-/**
- * Relative luminance of the artwork's lower half, where the player's transport
- * and action icons sit. Unlike [rememberArtworkTopBandLuminance] this is not
- * about the status bar.
- */
-@Composable
-fun rememberArtworkControlLuminance(
-    imageUrl: String?,
-    artPx: Int = CARD_ART_PX,
-): Float? = rememberArtworkSeed(imageUrl, artPx)?.controlBandLuminance
 
 @Composable
 private fun rememberArtworkSeed(imageUrl: String?, artPx: Int): Seed? {
@@ -228,6 +236,10 @@ private data class Seed(
     val average: Color,
     val topBandLuminance: Float,
     val controlBandLuminance: Float,
+    /** How much of the sleeve the leading swatch covers, 0..1. */
+    val leadingShare: Float = 0f,
+    /** A distinct chromatic colour the leading one does not own, if the sleeve has one. */
+    val secondary: Color? = null,
 )
 
 private fun seedOf(bitmap: ImageBitmap): Seed? {
@@ -243,24 +255,111 @@ private fun seedOf(bitmap: ImageBitmap): Seed? {
     val all = swatches(clearFilters = true)
     if (all.isEmpty()) return null
     val accentCandidates = swatches(clearFilters = false).ifEmpty { all }
-
-    val dominant = all.maxBy { it.population }
-    // The accent has to earn its place twice over: a colour nobody sees enough
-    // of reads as arbitrary, and a grey one isn't an accent at all. Scoring on
-    // saturation against the *square root* of population is what stops a sleeve
-    // that is four-fifths black sky from accenting in black.
-    val vibrant = accentCandidates.maxBy { swatch ->
-        val hsl = FloatArray(3).also { ColorUtils.colorToHSL(swatch.rgb, it) }
-        hsl[1] * sqrt(swatch.population.toFloat())
-    }
+    val tint = chooseArtworkTint(all, accentCandidates) ?: return null
     return Seed(
-        dominant = Color(dominant.rgb),
-        vibrant = Color(vibrant.rgb),
-        edge = bitmap.bottomEdgeColor(),
+        dominant = tint.page,
+        vibrant = tint.accent,
+        // A sleeve owned by one colour hands over in that colour, not in a
+        // different one the page was moved to.
+        edge = if (tint.leadingShare >= SINGLE_COLOUR_SHARE) tint.page else bitmap.bottomEdgeColor(),
         average = bitmap.averageColor(),
         topBandLuminance = bitmap.topBandRelativeLuminance(),
         controlBandLuminance = bitmap.controlBandRelativeLuminance(),
+        leadingShare = tint.leadingShare,
+        secondary = tint.secondary,
     )
+}
+
+/**
+ * The page and accent a quantised sleeve can honestly support.
+ *
+ * A sleeve that is one colour most of the way across is not a page tint, it is
+ * a single flat hue painted over everything — the case that made automatic
+ * artwork colour look muddy. Once one swatch owns [SINGLE_COLOUR_SHARE] of the
+ * pixels the page moves to black and white, and the accent borrows the most
+ * present *other* colour the artwork holds. If it holds none, the accent is
+ * the same black and white: better a clean monochrome page than a different
+ * shade of the one colour already everywhere.
+ */
+internal data class ArtworkTint(
+    val page: Color,
+    val accent: Color,
+    val leadingShare: Float,
+    val secondary: Color?,
+)
+
+internal fun chooseArtworkTint(
+    swatches: List<Swatch>,
+    accentCandidates: List<Swatch> = swatches,
+): ArtworkTint? {
+    if (swatches.isEmpty()) return null
+    val total = swatches.sumOf { it.population }.coerceAtLeast(1)
+    val lead = swatches.maxBy { it.population }
+    val share = lead.population.toFloat() / total
+
+    if (share < SINGLE_COLOUR_SHARE) {
+        val accent = (accentCandidates.ifEmpty { swatches }).maxBy(::vibrance)
+        return ArtworkTint(
+            page = Color(lead.rgb),
+            accent = Color(accent.rgb),
+            leadingShare = share,
+            secondary = null,
+        )
+    }
+
+    val lessUsed = swatches
+        .filter { it !== lead }
+        .filter { it.population >= total * SECONDARY_MIN_SHARE }
+        .filter { it.holdsAnotherHue(than = lead.rgb) }
+        .maxByOrNull(::vibrance)
+    val page = neutralized(lead.rgb)
+    return ArtworkTint(
+        page = page,
+        accent = lessUsed?.let { Color(it.rgb) } ?: page,
+        leadingShare = share,
+        secondary = lessUsed?.let { Color(it.rgb) },
+    )
+}
+
+/**
+ * The accent has to earn its place twice over: a colour nobody sees enough of
+ * reads as arbitrary, and a grey one isn't an accent at all. Scoring on
+ * saturation against the *square root* of population is what stops a sleeve
+ * that is four-fifths black sky from accenting in black.
+ */
+private fun vibrance(swatch: Swatch): Float {
+    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(swatch.rgb, it) }
+    return hsl[1] * sqrt(swatch.population.toFloat())
+}
+
+/** At or above this share, one colour owns the sleeve and stops being a usable page tint. */
+internal const val SINGLE_COLOUR_SHARE = 0.70f
+
+/** How much of the sleeve a secondary colour must cover before it can carry the accent. */
+private const val SECONDARY_MIN_SHARE = 0.06f
+
+/** Below this a swatch is a grey, not a colour worth reaching for. */
+private const val SECONDARY_MIN_SATURATION = 0.30f
+
+/** A leading swatch below this is neutral, so hue distance from it means nothing. */
+private const val NEUTRAL_LEAD_SATURATION = 0.15f
+
+/** Degrees of hue between the leading colour and the one asked to stand in for it. */
+private const val SECONDARY_MIN_HUE_GAP = 30f
+
+private fun Swatch.holdsAnotherHue(than: Int): Boolean {
+    val candidate = FloatArray(3).also { ColorUtils.colorToHSL(rgb, it) }
+    if (candidate[1] < SECONDARY_MIN_SATURATION) return false
+    val lead = FloatArray(3).also { ColorUtils.colorToHSL(than, it) }
+    if (lead[1] < NEUTRAL_LEAD_SATURATION) return true
+    val gap = kotlin.math.abs(candidate[0] - lead[0])
+    return (if (gap > 180f) 360f - gap else gap) >= SECONDARY_MIN_HUE_GAP
+}
+
+/** The same tone with its hue removed, so a flat sleeve becomes black and white. */
+private fun neutralized(rgb: Int): Color {
+    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(rgb, it) }
+    return Color(ColorUtils.HSLToColor(floatArrayOf(0f, 0f, hsl[2])))
 }
 
 /**

@@ -146,6 +146,7 @@ interface PlayerSettingsSource {
     val lastPlayerScreen: StateFlow<LastPlayerScreen>
     val legacyMeshGradient: StateFlow<Boolean>
     val lyricsBlur: StateFlow<Boolean>
+    val lyricsGlow: StateFlow<Boolean>
     val lyricsOffsetMs: StateFlow<Int>
     val lyricsSourceOrder: StateFlow<List<LyricsSource>>
     val meteredConnection: StateFlow<Boolean?>

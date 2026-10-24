@@ -138,45 +138,6 @@ enum class SourceKind(
     ),
 
     /**
-     * Tidal Hi-Fi through a hifi-api-compatible instance: genuine lossless
-     * FLAC (up to 24-bit/192kHz) streamed straight from Tidal's CDN, no
-     * account or keys on this device — the instance holds its own tokens.
-     *
-     * On by default with community instances and silent failover between
-     * them; a custom instance URL can replace the primary. Instances are
-     * volunteers' servers and die regularly (Tidal bans aggressively), so
-     * the address is infrastructure that rots rather than a promise — see
-     * [TidalInstances][com.music.bitchord.data.tidal.TidalInstances].
-     */
-    TIDAL(
-        label = "Tidal Hi-Fi",
-        detail = "Genuine lossless FLAC via community instances with automatic failover. Instances break often; disable anytime.",
-        labels = listOf("FLAC", "Lossless", "Hi-Res"),
-        needsServer = true,
-        canServeLossless = true,
-        worthPrefetching = true,
-        rank = 1,
-    ),
-
-    /**
-     * Community Hi-Res FLAC through a downloader backend: Qobuz catalogue
-     * search with Deezer ISRC precision matching, conversions up to
-     * 24-bit/192kHz. No account, no key, no URL — the backend holds whatever
-     * it holds. Conversion is a queued job rather than an instant URL, so it
-     * resolves slowly and loses races it cannot win in time; that is a miss,
-     * not a fault. On by default; the toggle is the off switch.
-     */
-    HIRES(
-        label = "Hi-Res Lossless",
-        detail = "Direct FLAC files, verified and measured — no converter, no account, no waiting. Only tracks the catalogue holds; disable anytime.",
-        labels = listOf("FLAC", "Lossless", "Hi-Res"),
-        needsServer = false,
-        canServeLossless = true,
-        worthPrefetching = true,
-        rank = 1,
-    ),
-
-    /**
      * Qobuz FLAC through flacdownloader.com's conversion queue: catalogue
      * search with ISRC-grade rows, conversions up to 24-bit/192kHz. One
      * in-app-browser unlock mints a resuming session — no account, no key

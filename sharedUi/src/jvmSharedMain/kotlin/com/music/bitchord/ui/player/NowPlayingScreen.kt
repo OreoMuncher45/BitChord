@@ -138,8 +138,7 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.music.bitchord.ui.theme.StatusBarIcons
-import com.music.bitchord.ui.theme.rememberArtworkAverageColor
-import com.music.bitchord.ui.theme.rememberArtworkControlLuminance
+import com.music.bitchord.ui.theme.rememberArtworkInk
 import com.music.bitchord.ui.theme.rememberArtworkTopBandLuminance
 import com.music.bitchord.ui.theme.topBandScrimAlpha
 import com.music.bitchord.ui.LyricsProviderState
@@ -849,14 +848,20 @@ fun NowPlayingScreen(
     // samples the upper band rather than the whole sleeve because that is what
     // lies beneath the status bar when the player expands to full bleed.
     val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
-    val artControlLuminance = rememberArtworkControlLuminance(remoteArt, ART_PX)
-    val artAverage = rememberArtworkAverageColor(remoteArt, ART_PX)
+    val artworkInk = rememberArtworkInk(remoteArt, ART_PX)
     // The backdrop is the sleeve blurred down to its average, so the chrome is
     // tinted with that same average, lifted until it clears the blur rather
-    // than picked from black or white. [playerInkGlow] is the opposite light,
+    // than picked from black or white. A sleeve owned by a single colour hands
+    // the ink its less-used colour instead, or black and white when there is
+    // none — see [artworkAverageInk]. [playerInkGlow] is the opposite light,
     // faded in behind glyphs and text so the tint still reads where it crosses
     // a patch of the sleeve.
-    val playerInkTarget = artworkAverageInk(artAverage, artControlLuminance)
+    val playerInkTarget = artworkAverageInk(
+        average = artworkInk.average,
+        controlLuminance = artworkInk.controlLuminance,
+        leadingShare = artworkInk.leadingShare,
+        secondary = artworkInk.secondary,
+    )
     val playerInk by animateColorAsState(
         targetValue = playerInkTarget,
         animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),
