@@ -531,11 +531,12 @@ internal object QuickJsExecutor {
 
     // ── Polyfills ────────────────────────────────────────────────────────
 
-    private const val POLYFILLS = """
+    private val POLYFILLS = """
         // The host identity a locked module can read at load time. Other
-        // module hosts do not define it, which is how an Auris-only module
-        // refuses to initialise anywhere else.
-        var __spine_app = { id: 'auris', name: 'Auris', website: 'https://auris.shehriyar.ink' };
+        // module hosts do not define it, and a plain id is not the lock: the
+        // key is only present in this build, which is how an Auris-only
+        // module refuses to initialise anywhere else.
+        var __spine_app = ${AurisModuleIdentity.json};
 
         if (typeof AbortController === 'undefined') {
             var AbortController = function() { this.signal = { aborted: false }; };

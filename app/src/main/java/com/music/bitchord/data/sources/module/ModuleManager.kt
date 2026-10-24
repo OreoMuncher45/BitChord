@@ -359,7 +359,7 @@ class ModuleManager {
             // The app identity is what lets an Auris-locked module tell this
             // host from every other module runtime. It sits beside the module
             // settings, so a module that ignores it is unaffected.
-            prefix = "{app:{\"id\":\"auris\",\"name\":\"Auris\",\"website\":\"https://auris.shehriyar.ink\"},settings:{",
+            prefix = "{app:${AurisModuleIdentity.json},settings:{",
             postfix = "}}",
         ) { (key, value) -> "\"$key\":{\"value\":\"$value\"}" }
 
