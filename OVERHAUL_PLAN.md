@@ -916,6 +916,11 @@ CI artifacts:
   the four `Auris-*-release.apk` assets (v8a, v7a, x86_64, universal).
   The tag's desktop `Release` workflow run was cancelled so Linux/Windows
   packages could not attach to or draft the Android release.
+- 2026-10-24 (readme): Rewrote `README.md` for Auris — Android-only scope,
+  current feature set, the three fixed addon names and the "your adds stay
+  yours" rule, 2.2.17 download table, build commands, credits/licence. The old
+  BitChord banner was dropped. GitHub shows `main`, so the file is mirrored
+  there too (docs-only commit); `main` otherwise still points at `bd5c83bc`.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed

@@ -1,13 +1,12 @@
 <div align="center">
 
 <br/>
-<br/>
 
-<img src="Logo.png" alt="Auris app icon" width="200" />
+<img src="Logo.png" alt="Auris app icon" width="160" />
 
 # Auris
 
-### Free, lossless-first music — a community fork of BitChord
+### A lossless-first Android music player, rebuilt from BitChord
 
 <br/>
 
@@ -17,77 +16,94 @@
 
 <br/>
 
-[**Download**](#download) · [**Extra features**](#extra-features) · [**Lossless addons**](#lossless-addons) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
+[**Features**](#features) · [**Sources & addons**](#sources--addons) · [**Download**](#download) · [**Build from source**](#build-from-source) · [**Support**](#support) · [**Credits & license**](#credits--license)
 
-<br/>
+</div>
 
 > [!IMPORTANT]
-> Auris is **free** and built on top of [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagra](https://github.com/kushagrasinghx) — credit for the app goes to him. If it earns a spot in your rotation, consider tipping him on [Ko-fi](https://ko-fi.com/kushagrasinghx). This fork adds the features below and is maintained by [OreoMuncher45](https://github.com/OreoMuncher45).
-
-</div>
+> Auris is a community fork of [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagra](https://github.com/kushagrasinghx) — the original app is his work, and credit belongs to him. This fork adds the interface and features described below and is maintained by [OreoMuncher45](https://github.com/OreoMuncher45).
 
 > [!NOTE]
-> Auris is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
+> Auris is not affiliated with, endorsed by, or connected to YouTube, Google, Deezer, Qobuz, Tidal, or any other service mentioned here.
 
 ---
 
-<div align="center">
+## What Auris is
 
-<img src="Banner.png" alt="Auris banner" width="100%" />
+A free Android music player built around **lossless-first playback**. It plays your local library, YouTube Music, and optional lossless addons, with the same library, downloads, lyrics, scrobbling and Discord presence you expect from a modern player.
 
-<h1><a id="extra-features"></a>Extra features (on top of everything BitChord does)</h1>
+Android only. No ads, no telemetry, no account required, no "Pro" tier.
 
-Everything upstream BitChord ships — search, playback, downloads, lyrics, Discord presence, scrobbling — plus:
+## Features
 
-#### Flow
-- **Deezer-style endless personal mix** — unlocks at 16 favorites, moods, discovery slider, genre tuner, trains on skips and bans.
-- **One mix stays, refreshes hourly**, survives restarts, never autoplays until you press play.
+### Interface
+- **Apple Music–style layout** — full-bleed Now Playing, large artwork, and a seeded palette that follows the current cover.
+- **Folding glass navigation** — one bar that folds as you scroll, with a search pill that now docks directly on top of the keyboard.
+- **Customisation hub** — pin colours for buttons, seekbar, text and lyrics, or leave them on Automatic. Automatic ink uses the artwork's own average colour, nudged brighter or darker so it stays legible.
+- **Light and dark themes**, reduced motion, and Home/Library layout toggles.
 
-#### Classipod
-- **Full iPod Classic theme** — click-wheel navigation, Cover Flow, A–Z search, Now Playing modes, per-page wheel slots.
+### Listening
+- **Flow** — an endless personal mix that unlocks at 16 favourites, trains on skips and bans, refreshes hourly, survives restarts, and never autoplays until you press play.
+- **Classipod** — a full iPod Classic theme with click-wheel navigation and Cover Flow.
+- **Automix V2** — DJ-style transitions with beat locking, entrance rescoring and vocal gating.
+- **Sing** — karaoke mode that turns the lead vocal down so you can sing over the track.
+- **Honest lossless numbers** — stats and Discord presence report the decoded PCM rate (1411 / 4608 kbps), never a container guess.
+- **AI badge with strict mode** — flags AI-generated uploads and can skip them.
 
-#### Sound
-- **Automix V2** — DJ-style transitions with entrance rescoring and vocal gating.
-- **Sing (karaoke)** — turn the lead vocal down and sing over the track, mic button in lyrics.
-- **Honest lossless numbers** — stats-for-nerds and Discord show the PCM decode rate (1411/4608), never a bogus container figure.
-
-#### Library & downloads
-- **Downloads play at your settings quality when online**, file stays the offline path with failure fallback.
-- **Instant downloads screen** — snapshot first paint, memoized reopen, batched verification, single-song cache updates.
+### Library & downloads
+- **Downloads play at your chosen quality when online**, with the downloaded file kept as the offline fallback.
+- **Instant downloads screen** — snapshot first paint, batched verification, single-song cache updates.
 - **Save cover art** from any song menu.
+- **Replay** appears in Library through a Customisation toggle instead of taking over Home.
 
-<h1><a id="lossless-addons"></a>Lossless addons</h1>
+## Sources & addons
 
-Extra sources under Sources, each with health checks and honest failure states:
+Auris ranks sources itself: your addons first, then JioSaavn if you opt in, then YouTube Music as the fallback. Each addon has a health check and reports stream refusals on its own row instead of failing silently.
 
-- **Auris NEXT** — genuine Hi-Fi FLAC via community instances with automatic failover and daily list refresh.
-- **Auris Hi-Res** — direct measured FLAC files, no converter, no account, no waiting.
-- **Auris Qobuz** — catalogue search plus queued FLAC conversions up to 24/192. One in-app-browser unlock mints a resuming session; the row tells you when it needs renewing or the converter is down.
-- Stream refusals report themselves on the Sources rows instead of failing silently.
+Three built-in lossless addons ship with the app:
 
-> **Why no provider names?** The backends behind these addons are volunteers' servers and free tiers. Naming them draws traffic, and traffic gets things rate-limited or shut down — so the app shows only its own addon names. Nothing is hidden from you technically: every endpoint, ritual and fallback lives in the source, in plain sight, for anyone who knows where to look.
+| Addon | What it does |
+|---|---|
+| **Auris Addon** | Hi-Fi FLAC through community instances, with automatic failover and a refreshed instance list. |
+| **Auris Hi-Res Lossless Addon** | Direct FLAC files at measured quality — no converter, no account, no waiting. |
+| **Auris Qobuz Addon** | Catalogue search plus queued FLAC conversions up to 24/192. One in-app unlock starts a resuming session and the row tells you when it needs renewing. |
 
-</div>
+Those three names belong to the sources Auris ships, and only those are permanent. **Anything you add yourself stays yours**: it is listed under its own name or host, and it can always be deleted — including links that happen to speak one of the built-in protocols. Adding an addon never creates a second "Auris" row.
 
----
+> **Why the addons aren't named after their backends:** they run on volunteers' servers and free tiers. Naming them draws traffic, and traffic gets things rate-limited or shut down. The endpoints, fallbacks and setup steps are all in the source for anyone who wants to look.
 
-<div align="center">
+## Download
 
-<h1><a id="download"></a>Download</h1>
+Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChordNext/releases) page. Current build: **2.2.17** (`versionCode 79`, package `com.dev.bitchord`).
 
-Grab the latest signed APK from the [Releases](https://github.com/OreoMuncher45/BitChordNext/releases) page — `arm64-v8a` fits almost all modern phones (`armeabi-v7a`, `x86_64` and `universal` are there too). Sideloading requires enabling "Install unknown apps" for whichever app you download it with. Updates install over the old build; your library, downloads and settings carry over.
+| APK | Use it for |
+|---|---|
+| `Auris-v8a-release.apk` | Almost every modern phone (recommended). |
+| `Auris-v7a-release.apk` | Older 32-bit devices. |
+| `Auris-x86_64-release.apk` | Emulators and x86 Chromebooks. |
+| `Auris-universal-release.apk` | If you aren't sure which one you need. |
 
-</div>
+- Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
+- Every release is signed with the same key, so updates install over the old build. Your library, downloads and settings carry over.
+- Requires Android 8.0 (API 26) or newer.
 
----
+## Build from source
 
-<div align="center">
+This fork is developed for Android. The desktop and backend trees remain upstream code and are not part of the Auris build.
 
-<h1><a id="support"></a>Support</h1>
+```bash
+# JDK 21 and the Android SDK (compileSdk 37) are required.
+./gradlew :app:assembleDebug          # debug build
+./gradlew :app:assembleDevRelease     # minified, R8-optimised release build
+```
 
-Auris is free and open source, and it's staying that way. No telemetry, no accounts, no ads, no "Pro" tier, and no plan to add one.
+A signed, installable release APK is produced by the **Flow Debug APK** workflow (Actions → Run workflow). It signs with the fork's stable key so it updates over previous installs. Last.fm credentials are optional and read from `local.properties`; scrobbling stays unavailable until they are provided.
 
-If you enjoy using it and want to throw a few bucks toward development, you can do so here:
+## Support
+
+Auris is free and open source, and it is staying that way. A star, a bug report or a pull request is appreciated as much as a donation.
+
+- [Discord](https://discord.gg/8VnWqcuzqg) · [Reddit](https://reddit.com/r/BitChordNext) · [Issues](https://github.com/OreoMuncher45/BitChordNext/issues)
 
 | Asset | Address |
 |---|---|
@@ -111,32 +127,18 @@ u1z9k30yyvy63f5w0jypt02kvvw6dcpcgprlhzmsgc57mw6qc8rtuc5tfd9ny4atqhr448udexhkuc8x
 
 </details>
 
-The upstream author takes tips on [Ko-fi](https://ko-fi.com/kushagrasinghx) — without his BitChord, none of this exists.
+## Credits & license
 
-Anything is appreciated, nothing is expected. A star, a bug report, or a pull request is just as welcome.
+- **BitChord** by [kushagra](https://github.com/kushagrasinghx) — the app this fork is built on. If you redistribute Auris, keep that credit.
+- Everyone whose libraries and community services make the addons possible.
+- Third-party components and their licences are listed in [NOTICE](NOTICE).
 
-</div>
+Auris is free software under the **GNU General Public License v3.0**. You may use, study, share and modify it, including commercially, but any distribution must keep this credit and ship the corresponding source under the same licence. See [LICENSE](LICENSE).
 
----
+## Disclaimer
 
-<div align="center">
+Auris is an independent, community-driven fork. It is **not** associated with Google LLC, YouTube Music, Deezer, Qobuz, Tidal, or any of their parent companies.
 
-<h1><a id="disclaimer"></a>Disclaimer & Legal Notice</h1>
-
-Auris is an independent, community-driven fork. It is **not** associated with Google LLC, YouTube Music, Deezer, Qobuz, Tidal, Telegram, or any of their parent companies.
-
-* **No Media Hosting:** Auris does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
-* **Fair Use & API Usage:** This software is created solely for personal research, educational, and fair-use purposes. The user is entirely responsible for ensuring their usage aligns with their local copyright laws and the terms of service of any service used.
-* **Copyleft:** Auris is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="license"></a>License</h1>
-
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
-
-</div>
+- **No media hosting.** Auris does not host, upload or store copyrighted music. It is an interface to local storage and to user-authenticated or public APIs.
+- **Fair use and API usage.** The software is provided for personal research, educational and fair-use purposes. You are responsible for complying with your local copyright law and the terms of any service you connect.
+- **No warranty.** Provided as is, without warranty of any kind. Use it at your own discretion.
