@@ -28,7 +28,7 @@ internal object AurisModuleIdentity {
     )
     private val MASK = intArrayOf(0x5A, 0x31, 0x7C, 0xD2, 0x09, 0xE4, 0x6B, 0x18)
 
-    private val KEY: String by lazy {
+    val KEY: String by lazy {
         buildString(PACKED_KEY.size) {
             for (i in PACKED_KEY.indices) {
                 append(((PACKED_KEY[i] xor MASK[i % MASK.size]) and 0xFF).toChar())

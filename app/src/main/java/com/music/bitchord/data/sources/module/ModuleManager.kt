@@ -131,7 +131,14 @@ class ModuleManager {
 
                 TrackLog.d(TAG, "▶ fetchIndex(${redactModuleUrl(sourceUrl)})")
                 runCatching {
-                    val request = Request.Builder().url(sourceUrl).build()
+                    val request = Request.Builder()
+                        .url(sourceUrl)
+                        .apply {
+                            if (sourceUrl.startsWith(AURIS_HOST)) {
+                                header("X-Auris-Host", AurisModuleIdentity.KEY)
+                            }
+                        }
+                        .build()
                     Http.client.newCall(request).execute().use { resp ->
                         if (!resp.isSuccessful) {
                             throw Exception("HTTP ${resp.code} from ${redactModuleUrl(sourceUrl)}")
@@ -215,7 +222,14 @@ class ModuleManager {
             }
 
             TrackLog.d(TAG, "  Resolved download URL: ${redactModuleUrl(downloadUrl)}")
-            val request = Request.Builder().url(downloadUrl).build()
+            val request = Request.Builder()
+                .url(downloadUrl)
+                .apply {
+                    if (downloadUrl.startsWith(AURIS_HOST)) {
+                        header("X-Auris-Host", AurisModuleIdentity.KEY)
+                    }
+                }
+                .build()
             val jsCode = Http.client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     throw Exception("HTTP ${resp.code} downloading module ${module.id}")
@@ -389,6 +403,9 @@ class ModuleManager {
 
     private companion object {
         const val TAG = "BitChord"
+
+        /** Only this origin receives the host secret; a user-added source never sees it. */
+        const val AURIS_HOST = "https://auris.shehriyar.ink/"
 
         /**
          * How long a fetched index is trusted. Long enough that a run of
