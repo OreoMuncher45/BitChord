@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="LOGO.png" alt="Auris app icon" width="350" />
+<img src="LOGO.png" alt="Auris app icon" width="250" />
 
 # Auris
 
