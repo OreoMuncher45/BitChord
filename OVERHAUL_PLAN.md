@@ -903,6 +903,14 @@ CI artifacts:
 - 2026-10-24 (verify): Compile clean; `SourcesTest` green (113 tests). Host
   fallback uses OkHttp rather than `android.net.Uri` so it also works under
   JVM tests. No APK built; release gate still closed.
+- 2026-10-24 (artifact): Committed `14bd1a52` (79 / 2.2.17) and ran the
+  `Flow Debug APK` workflow on `convx-fresh` — run `40086363860`, success.
+  Artifact `bitchord-next-release` holds arm64/armeabi-v7a/x86_64/universal
+  dev-release APKs; arm64 and universal passed 16 KB `zipalign`. Verified
+  `com.dev.bitchord`, versionCode 79, versionName 2.2.17, signed by
+  `CN=BitChord Next Fork` (SHA-256 unchanged), with
+  `lib/arm64-v8a/libbitchord_jamesdsp.so` and the baseline profile packaged.
+  No tag and no GitHub Release were created, per the owner.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -1004,6 +1012,8 @@ this to be recorded here because the beta is now in a bug-fix-only phase:
   `com.dev.bitchord`, `versionCode 77`, `versionName 2.2.15`, signed by
   `CN=BitChord Next Fork` (SHA-256
   `385af3b4b3f5b4357b7bb271fd71b267fad4d536be87e44f2057b0c2de8971ce`).
+  2026-10-24 verification: run `40086363860` (commit `14bd1a52`) built
+  `79 / 2.2.17` with the same certificate; artifact only, no Release.
   The arm64 APK contains `lib/arm64-v8a/libbitchord_jamesdsp.so`; the universal
   APK contains all three ABI libraries; 16 KB `zipalign` verification passed.
   Local arm64 copy: `BitChordNext-2.2.15-code77-forkkey-arm64.apk`, SHA-256
