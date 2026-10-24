@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="Logo.png" alt="Auris app icon" width="350" />
+<img src="LOGO.png" alt="Auris app icon" width="350" />
 
 # Auris
 
@@ -15,7 +15,7 @@
 [![Downloads](https://img.shields.io/github/downloads/OreoMuncher45/BitChordNext/total?style=for-the-badge&labelColor=0d1117)](https://github.com/OreoMuncher45/BitChordNext/releases)
 
 <br/>
-<img src="Banner.png" alt="Auris app icon" width="160" />
+<img src="BANNER.png" alt="Auris app icon" width="500" />
 
 [**Features**](#features) · [**Sources & addons**](#sources--addons) · [**Download**](#download) · [**Build from source**](#build-from-source) · [**Support**](#support) · [**Credits & license**](#credits--license)
 
