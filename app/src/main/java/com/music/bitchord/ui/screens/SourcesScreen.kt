@@ -286,8 +286,11 @@ fun SourcesScreen(
                         // Anything the user configured is theirs to edit or
                         // delete. JioSaavn and YouTube have no address to
                         // change, so a tap on them would open an empty editor.
-                        // The lossless source is sealed: branded row, toggle
-                        // only, no editor and no address anywhere.
+                        // The *stock* sources are sealed — branded row, toggle
+                        // only, no address anywhere — but a link the listener
+                        // pasted keeps its editor even when its protocol was
+                        // recognised as one of those kinds, which is what makes
+                        // its delete button reachable.
                         onClick = when {
                             config.kind == SourceKind.QOBUZ -> ({
                                 if (AppSettings.qobuzHelpDismissed.value) {
@@ -296,7 +299,7 @@ fun SourcesScreen(
                                     qobuzHelpFor = config
                                 }
                             })
-                            config.kind.needsServer && config.kind != SourceKind.TIDAL ->
+                            config.kind.needsServer && !config.stock ->
                                 ({ onEditSource(config) })
                             else -> null
                         },

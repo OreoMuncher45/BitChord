@@ -59,8 +59,14 @@ object CanvasCache {
      * choice [com.music.bitchord.playback.AudioCache] makes for audio.
      */
     fun dataSourceFactory(upstream: DataSource.Factory): DataSource.Factory =
-        CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(upstream)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        // Init runs on the startup thread; a deep link that opens the player
+        // before it lands just streams without keeping the clip.
+        if (!this::cache.isInitialized) {
+            upstream
+        } else {
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(upstream)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        }
 }

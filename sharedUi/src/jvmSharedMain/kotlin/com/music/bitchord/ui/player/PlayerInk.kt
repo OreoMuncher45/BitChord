@@ -26,15 +26,18 @@ internal val LocalPlayerInkGlow = staticCompositionLocalOf { Color.Transparent }
  * The chrome colour that stands in for "Use artwork".
  *
  * The backdrop is a blur of the sleeve, so its average is the colour of that
- * blur. Chrome is painted in the *complement* of that colour — warm over a cool
- * record, cool over a warm one — which stays recognisably about this cover
- * while reading as a deliberate tint rather than the same black or white on
- * every screen. Lightness is chosen against the measured lower-band luminance
- * so the ink still clears the backdrop; for sleeves with no hue to complement,
- * a barely-warm white or near-black keeps the same softness without inventing
- * a colour that isn't there.
+ * blur. Chrome keeps that same hue — the record's own colour, not its
+ * complement — and lifts it until the glyphs clear the backdrop. The lift is
+ * what makes the tint visible rather than a near-copy of the blur behind it;
+ * keeping the hue is what makes it read as *this* cover's colour.
+ *
+ * "Brighter" only works one way up the scale. A dark sleeve gets a lightened
+ * version of its average; a bright one gets the same colour deepened instead,
+ * because nothing lighter than a bright backdrop is legible on it. Sleeves
+ * with no hue keep the existing barely-warm white or near-black rather than
+ * inventing a colour that isn't there.
  */
-internal fun artworkComplementInk(average: Color?, controlLuminance: Float?): Color {
+internal fun artworkAverageInk(average: Color?, controlLuminance: Float?): Color {
     val brightBackdrop = (controlLuminance ?: 0f) >= 0.55f
     if (average == null) return if (brightBackdrop) Color(0xFF0B0B0C) else Color.White
 
@@ -43,9 +46,14 @@ internal fun artworkComplementInk(average: Color?, controlLuminance: Float?): Co
         return if (brightBackdrop) Color(0xFF1B1513) else Color(0xFFFFF6F1)
     }
 
-    val hue = (hsl[0] + 180f) % 360f
-    val saturation = hsl[1].coerceIn(0.34f, 0.60f)
-    val lightness = if (brightBackdrop) 0.30f else 0.84f
+    val hue = hsl[0]
+    // A small floor: a muted average still reads as a tint, not as grey.
+    val saturation = hsl[1].coerceIn(0.22f, 0.80f)
+    val lightness = if (brightBackdrop) {
+        (hsl[2] - 0.30f).coerceIn(0.18f, 0.36f)
+    } else {
+        (hsl[2] + 0.28f).coerceIn(0.60f, 0.88f)
+    }
     return Color(ColorUtils.HSLToColor(floatArrayOf(hue, saturation, lightness)))
 }
 
@@ -53,5 +61,5 @@ internal fun artworkComplementInk(average: Color?, controlLuminance: Float?): Co
 internal fun Color.isLightInk(): Boolean =
     ColorUtils.calculateLuminance(toArgb()) >= 0.5f
 
-/** Below this a sleeve has no hue worth complementing. */
+/** Below this a sleeve has no hue worth tinting. */
 private const val MONOCHROME_SATURATION = 0.10f

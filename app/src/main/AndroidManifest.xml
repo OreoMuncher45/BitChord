@@ -104,11 +104,20 @@
           uiMode is deliberately *not* in the list: a day/night change should
           still recreate the Activity so the theme is rebuilt from resources.
         -->
+        <!--
+          Resize rather than pan. The search field sits at the bottom of the
+          folding nav bar and lifts itself with imePadding; with the default
+          adjustUnspecified the window is panned to reveal that field as well,
+          so the two offsets stacked and the pill landed around the middle of
+          the screen. adjustResize leaves the offset to the inset, which is the
+          one the bar is already written against.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.BitChord">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

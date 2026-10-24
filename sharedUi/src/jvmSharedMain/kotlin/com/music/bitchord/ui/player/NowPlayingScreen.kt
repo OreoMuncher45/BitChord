@@ -852,10 +852,11 @@ fun NowPlayingScreen(
     val artControlLuminance = rememberArtworkControlLuminance(remoteArt, ART_PX)
     val artAverage = rememberArtworkAverageColor(remoteArt, ART_PX)
     // The backdrop is the sleeve blurred down to its average, so the chrome is
-    // tinted with that average's complement rather than picked from black or
-    // white. [playerInkGlow] is the opposite light, faded in behind glyphs and
-    // text so the tint still reads where it crosses a patch of the sleeve.
-    val playerInkTarget = artworkComplementInk(artAverage, artControlLuminance)
+    // tinted with that same average, lifted until it clears the blur rather
+    // than picked from black or white. [playerInkGlow] is the opposite light,
+    // faded in behind glyphs and text so the tint still reads where it crosses
+    // a patch of the sleeve.
+    val playerInkTarget = artworkAverageInk(artAverage, artControlLuminance)
     val playerInk by animateColorAsState(
         targetValue = playerInkTarget,
         animationSpec = tween(durationMillis = PLAYER_INK_FADE_MS),

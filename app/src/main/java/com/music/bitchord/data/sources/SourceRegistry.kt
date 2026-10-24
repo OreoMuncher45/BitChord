@@ -38,6 +38,20 @@ data class SourceConfig(
     /** What the user called it. Blank falls back to the server's host, or the kind's own label. */
     val label: String = "",
     val baseUrl: String = "",
+    /**
+     * Whether this is one of the sources this build ships, rather than one the
+     * listener pointed at.
+     *
+     * Only a stock row is a permanent part of the list: it wears the Auris
+     * name for its kind and cannot be removed. A source the listener added is
+     * theirs even when it speaks one of the built-in protocols — it keeps its
+     * own name (or its host), against stock-or-not, and the delete button
+     * works. Decoded as false by every config written before this existed;
+     * [SourceRegistry.sourcesForInit] then promotes exactly one row per
+     * built-in kind, so old duplicates become removable instead of staying
+     * indistinguishable from the bundled source.
+     */
+    val stock: Boolean = false,
     /** JioSaavn is opt-in because catalogue matches can select the wrong recording. */
     val enabled: Boolean = kind != SourceKind.JIOSAAVN,
     /**
@@ -93,16 +107,25 @@ data class SourceConfig(
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
         get() {
-            // The bundled lossless source is a sealed appliance: one brand,
-            // no address anywhere in the UI. Toggle on/off is the only control.
-            if (kind == SourceKind.TIDAL) return SourceRegistry.TIDAL_DISPLAY_NAME
-            if (kind == SourceKind.HIRES) return SourceRegistry.HIRES_DISPLAY_NAME
-            if (kind == SourceKind.QOBUZ) return SourceRegistry.QOBUZ_DISPLAY_NAME
-            return label.ifBlank {
-                baseUrl.takeIf { it.isNotBlank() }
-                    ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                    ?: kind.label
+            // Only the rows this build seeded wear the Auris names. A link the
+            // listener pasted that happens to speak the same protocol is that
+            // listener's source, not ours: calling it "Auris Addon" claimed an
+            // addon this app does not run and made a user's own server
+            // indistinguishable from the bundled one.
+            if (stock) {
+                when (kind) {
+                    SourceKind.TIDAL -> return SourceRegistry.TIDAL_DISPLAY_NAME
+                    SourceKind.HIRES -> return SourceRegistry.HIRES_DISPLAY_NAME
+                    SourceKind.QOBUZ -> return SourceRegistry.QOBUZ_DISPLAY_NAME
+                    else -> Unit
+                }
             }
+            // A user-added source cannot borrow one of those names either —
+            // third-party manifests and typed labels reach the same field.
+            val named = label.trim().takeUnless(SourceRegistry::isReservedDisplayName)
+            return named?.takeIf { it.isNotBlank() }
+                ?: baseUrl.takeIf { it.isNotBlank() }?.let(SourceRegistry::hostOf)
+                ?: kind.label
         }
 
     /** Whether this has enough filled in to be worth contacting at all. */
@@ -192,12 +215,13 @@ object SourceRegistry {
                     // Qobuz without an unlock can search but stream nothing,
                     // so it arrives off too: one tap plus the toggle.
                     enabled = kind != SourceKind.JIOSAAVN && kind != SourceKind.QOBUZ,
+                    stock = true,
                 )
             }
 
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
-        return seeded
+        val migrated = seeded
             .filterNot { it.kind == SourceKind.MODULE }
             .map { config ->
                 when {
@@ -206,6 +230,32 @@ object SourceRegistry {
                     else -> config
                 }
             }
+        return stampStock(migrated)
+    }
+
+    /**
+     * Marks exactly one shipped source per built-in kind as [SourceConfig.stock].
+     *
+     * Builds before the flag stored every row without it, and a listener could
+     * already have added a second row of a built-in kind by pasting a URL that
+     * answered the same protocol — the row that used to be stuck, branded and
+     * unremovable. Preference keeps history rather than rewriting it: an
+     * already-stamped row stays stock across launches, then for Tidal the row
+     * pointing at the bundled primary wins, then whichever row came first.
+     * Every other row of that kind is left unstamped, so it is named after
+     * itself and the delete button works.
+     */
+    private fun stampStock(configs: List<SourceConfig>): List<SourceConfig> {
+        val bundledTidal = canonicalUrl(TidalInstances.BUNDLED.first().url)
+        val stockIds = BUILT_IN_KINDS.mapNotNull { kind ->
+            val candidates = configs.filter { it.kind == kind }
+            val bundled = candidates.firstOrNull {
+                kind == SourceKind.TIDAL && canonicalUrl(it.baseUrl) == bundledTidal
+            }
+            val chosen = candidates.firstOrNull { it.stock } ?: bundled ?: candidates.firstOrNull()
+            chosen?.id
+        }.toSet()
+        return configs.map { it.copy(stock = it.id in stockIds) }
     }
 
     /**
@@ -312,12 +362,25 @@ object SourceRegistry {
 
     // ── Editing ─────────────────────────────────────────────────────────
 
-    fun add(config: SourceConfig) = publish(configs.value + config.tidied())
+    /**
+     * Adds a source the listener configured. Never stock: a pasted link is
+     * theirs, so it must stay removable and keep its own name however its
+     * protocol happens to be recognised.
+     */
+    fun add(config: SourceConfig) =
+        publish(configs.value + config.tidied().copy(stock = false))
 
-    fun update(config: SourceConfig) =
+    /**
+     * Saves an edit. Stock-ness is not the editor's to set — it stays whatever
+     * the stored row already was, so editing a shipped source cannot turn a
+     * user's own row into a permanent one or the reverse.
+     */
+    fun update(config: SourceConfig) {
+        val current = config(config.id)
         config.tidied().let { tidied ->
-            publish(configs.value.map { if (it.id == tidied.id) tidied else it })
+            publish(configs.value.map { if (it.id == tidied.id) tidied.copy(stock = current?.stock ?: false) else it })
         }
+    }
 
     /**
      * The config as it should be stored, rather than as it was typed.
@@ -335,7 +398,15 @@ object SourceRegistry {
 
     fun remove(configId: String) {
         val target = config(configId) ?: return
-        if (target.kind in BUILT_IN_KINDS) return
+        // Only a shipped row is permanent. Anything the listener added is
+        // theirs to delete, even when it speaks a built-in protocol — the old
+        // kind check is what left a pasted Tidal-compatible link stuck in the
+        // list forever.
+        if (target.stock) return
+        // YouTube is never removable whatever its flag: it is the only source
+        // that can supply a home feed, radio or related tracks, and nothing a
+        // listener types in could recreate it.
+        if (target.kind == SourceKind.YOUTUBE) return
         publish(configs.value.filterNot { it.id == configId })
     }
 
@@ -577,6 +648,31 @@ object SourceRegistry {
 
     /** The branded name of the Qobuz conversion-queue source. */
     const val QOBUZ_DISPLAY_NAME = "Auris Qobuz Addon"
+
+    /**
+     * Whether [label] is one of the three names only this app's own sources may
+     * show. A pasted source that names itself one of these is displayed under
+     * its host instead — see [SourceConfig.displayName].
+     */
+    internal fun isReservedDisplayName(label: String): Boolean {
+        val name = label.trim()
+        return name.equals(TIDAL_DISPLAY_NAME, ignoreCase = true) ||
+            name.equals(HIRES_DISPLAY_NAME, ignoreCase = true) ||
+            name.equals(QOBUZ_DISPLAY_NAME, ignoreCase = true)
+    }
+
+    /**
+     * The host a source's address points at, for rows that have no name of
+     * their own. Accepts a bare host as well as a full URL, since both reach
+     * the same field. OkHttp parses both; `android.net.Uri` is only a stub in
+     * JVM unit tests, which is why this is not the parser used.
+     */
+    internal fun hostOf(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        val candidate = if ("://" in trimmed) trimmed else "https://$trimmed"
+        return candidate.toHttpUrlOrNull()?.host?.takeIf { it.isNotBlank() }
+    }
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

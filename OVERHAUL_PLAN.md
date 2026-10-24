@@ -1,11 +1,14 @@
-# BitChord Overhaul Plan
+# Auris Overhaul Plan (BitChord fork)
 
 Read this file at the start of every fresh/compaction turn before touching code.
 It is the working memory for the current overhaul. Keep it current: move items
 between **Next**, **In progress**, **Done**, and **Blocked**, and record decisions
 that would otherwise be lost.
 
-Last updated: 2026-10-22
+The product name in the UI is **Auris**. The fork keeps its package ids and
+upstream identity; do not rename `com.dev.bitchord` / `com.music.bitchord`.
+
+Last updated: 2026-10-24
 Branch: `convx-fresh`
 Latest commit at plan creation: `bd5c83bc fix(icon): use inverted badge`
 Release baseline: `v2.2.13-convx`, versionCode `75`, versionName `2.2.13`
@@ -21,9 +24,10 @@ Release URL: https://github.com/OreoMuncher45/BitChordNext/releases/tag/v2.2.13-
 - Do not touch `bitchord-lossless-shitass`.
 - Do not restore the removed player glyph halo/radio discs. `LocalPlayerInkGlow`
   is for text shadows only.
-- Test builds currently carry `versionCode 77 / versionName 2.2.15` so they
-  install over the last delivered build (`76 / 2.2.14`). Do not tag or publish
-  while the release gate is closed. Bump again only for a new test artifact.
+- Test builds currently carry `versionCode 79 / versionName 2.2.17` so they
+  install over the last delivered build (`78 / 2.2.16`). Artifact-only: no tag
+  and no GitHub Release until the owner says otherwise. Bump again only for a
+  new test artifact.
 - No emulator/adb on this machine. User verifies APKs on a real device.
 - Build locally with the QEMU workaround described under **Build commands**.
   Restoring qemu 4.2.1 breaks the NDK build.
@@ -800,8 +804,8 @@ CI artifacts:
   to avoid double processing. Default plan: leave both available, document the
   order, and let the user disable one.
 - Next version number/name after the overhaul. Current test build:
-  **78 / 2.2.16**. The public release number is still undecided; revisit only
-  when the release gate opens.
+  **79 / 2.2.17** (artifact only). The public release number is still
+  undecided; revisit only when the owner asks for a real release.
 - AI label field shape is undocumented. Detection is best-effort against the
   player overlay; it must fail open and be re-checked when YouTube changes it.
 - Spotify monthly listeners require parsing the public artist page; no official
@@ -884,6 +888,21 @@ CI artifacts:
   `lib/arm64-v8a/libbitchord_jamesdsp.so` is present; 16 KB `zipalign` passed;
   the community strings and all three `BitChordNext` URLs are present in the
   dex. No tag or GitHub Release was created.
+- 2026-10-24 (startup): Removed the blocking `backgroundInit.join()` from
+  `BitChordApplication`, moved the image-cache wipe off the main thread, made
+  Explore/Radio lazy (`ensureExploreLoaded`), moved Downloads' JSON decode off
+  main, and delayed the update check by 3 s. See "Auris beta changes" above.
+- 2026-10-24 (sources): Added `SourceConfig.stock`; stock seeding/migration,
+  reserved Auris names, removable user duplicates, and editor access for
+  non-stock server rows. Tests added in `SourcesTest`.
+- 2026-10-24 (player): Automatic ink changed from the artwork average's
+  complement to the average's own hue lifted for legibility
+  (`artworkAverageInk`). Help string updated.
+- 2026-10-24 (search): Activity set to `windowSoftInputMode="adjustResize"` so
+  the folding search pill rests above the keyboard instead of mid-screen.
+- 2026-10-24 (verify): Compile clean; `SourcesTest` green (113 tests). Host
+  fallback uses OkHttp rather than `android.net.Uri` so it also works under
+  JVM tests. No APK built; release gate still closed.
 
 - 2026-10-22: Install note. `dev` flavour is applicationId `com.dev.bitchord`
   ("BitChord Next"), `prod` is `com.music.bitchord`. Dev debug APKs are signed
@@ -894,10 +913,89 @@ CI artifacts:
   every build on one machine/keystore. No `keystore.properties` exists on the
   build server, so `prod` release builds are unsigned and cannot be shipped.
 
+## Auris beta changes (current build)
+
+These are the changes in the current early-access build. The owner asked for
+this to be recorded here because the beta is now in a bug-fix-only phase:
+**artifact only, no GitHub Release** (2026-10-24).
+
+### Rebrand and player
+- Product renamed to **Auris** in the UI, notification, Settings/About and
+  community copy. Package id is unchanged.
+- Apple Music-style pages and tabs; Customisation hub for Now Playing, Home,
+  Library and Theme.
+- Now Playing colour roles (buttons, seekbar, text, lyrics) can be pinned; an
+  unpinned role follows the artwork.
+- The automatic player ink now uses the cover's **average hue, lifted for
+  legibility**, instead of its complement (`PlayerInk.kt`,
+  `artworkAverageInk`). Dark sleeves get a brighter same-hue tint; bright
+  sleeves get the same hue deepened, since nothing lighter is legible on them.
+  The Customisation help text says this.
+- Replay's "Your Listening Experience" cards were removed; Replay is shown in
+  Library through a Customisation -> Library toggle instead.
+- Ko-fi removed; crypto only. Community card (Discord / Reddit / GitHub) is at
+  the top of Settings.
+- AI badge + strict mode, transport glyph smoothing.
+
+### Startup / performance (2026-10-24)
+- `BitChordApplication` no longer joins `startup-init` before the first frame.
+  `SourceRegistry`, InnerTubeX's config and `CanvasCache` open concurrently
+  with the rest of startup. Consumers tolerate the short window: sources
+  publish when ready, and `CanvasCache.dataSourceFactory` streams uncached
+  until the cache is open.
+- The version-update image-cache wipe runs on `Dispatchers.IO`.
+- Explore/Radio is no longer fetched in `MainViewModel.init`; first visit calls
+  `ensureExploreLoaded()` (Home/Explore/Radio tab effect), and a pull-to-refresh
+  marks it requested.
+- Downloads' large saved JSON blobs decode off the main thread and merge under
+  the live flows, so an edit that lands first wins.
+- The update check waits 3 seconds so it cannot compete with the first frame.
+- The baseline profile was already packaged at
+  `app/src/main/assets/dexopt/baseline.prof`; `androidx.profileinstaller` was
+  already present transitively, so no manifest change was needed.
+
+### Sources / addons (2026-10-24)
+- `SourceConfig.stock` is new. Only seeded built-ins are stock. Only a stock
+  row displays **"Auris Addon"**, **"Auris Hi-Res Lossless Addon"** or
+  **"Auris Qobuz Addon"**, and only a stock row cannot be deleted.
+- `SourceRegistry.add` always stores `stock = false`; `update` keeps the stored
+  flag; `remove` refuses only stock rows (and YouTube), not whole kinds. This
+  fixes a pasted Tidal-compatible link being branded as the bundled source and
+  becoming unremovable.
+- `sourcesForInit` stamps exactly one stock row per built-in kind on every
+  launch. For legacy installs an already-stamped row wins, else Tidal's bundled
+  primary URL, else the first row. Old duplicate rows become non-stock, show
+  their own label/host and are removable.
+- A non-stock source may not *display* a reserved Auris name even if its
+  manifest or label says so; it falls back to its host
+  (`SourceRegistry.hostOf`, OkHttp-based because `android.net.Uri` is a stub
+  in JVM unit tests).
+- `SourcesScreen` opens the editor for non-stock server-backed rows, including
+  pasted Tidal-compatible links. Stock Tidal stays toggle-only.
+- Regression tests cover seeding, duplicate migration, reserved names and
+  deleting a duplicate while the stock row remains.
+- Verified 2026-10-24: `:app:compileDevDebugKotlin` succeeds and all 113
+  `SourcesTest` tests pass. (An unescaped apostrophe in
+  `custom_now_playing_help` broke `mergeDevDebugResources` and was fixed.)
+
+### Search bar (2026-10-24)
+- `MainActivity` now declares `android:windowSoftInputMode="adjustResize"`.
+  With the default mode the window was panned to reveal the focused field at
+  the same time as the folding nav bar's `imePadding()` lifted the search pill,
+  so the two offsets stacked and the pill landed around the middle of the
+  screen. Resize leaves the offset to the inset the bar is written against.
+
+### Still open
+- JamesDSP is GPLv2-only and remains incompatible with the app's GPLv3 for a
+  public release. It stays artifact-only until Workstream A is closed.
+- Release remains paused at the owner's request: bug fixes only for now.
+
 ## Release gate (do not break this)
 
 - **Nothing is published until the paying early-access testers stress test a
   build and the user says go.** No GitHub Release, no version tag.
+  2026-10-24: the owner then asked for a **minor-update artifact only** —
+  build it, upload the Actions artifact, and create no Release.
 - The only sanctioned way to produce a *installable-over-the-old-app* APK is the
   `Flow Debug APK` workflow (`workflow_dispatch`, artifact only). It builds
   `:app:assembleDevRelease` and signs with the fork's stable key from the

@@ -83,9 +83,15 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // opens at startup — SourceRegistry's encrypted store most of all.
         // Started only once [AuthStore] exists, because both encrypted stores
         // share one keystore master key and a first launch must not have two
-        // threads racing to create it. Joined before onCreate returns, so
-        // nothing that runs after startup can see any of them half open.
-        val backgroundInit = thread(name = "startup-init") {
+        // threads racing to create it.
+        //
+        // Deliberately not joined: waiting for it here serialised a Keystore
+        // open, an InnerTubeX config read and a cache database open ahead of
+        // the first frame, which was a large part of the cold-start stall. Each
+        // consumer tolerates the short window before this finishes — the
+        // sources flow simply publishes once ready, and CanvasCache falls back
+        // to streaming uncached if the player somehow opens that early.
+        thread(name = "startup-init") {
             SourceRegistry.init(this)
             AndroidStreamHooks.initInnerTubeX(this)
             // Its own directory: canvas clips are looping video, not audio, and
@@ -162,16 +168,21 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // bytes from a cache the new code didn't write.
         if (AppSettings.consumeVersionUpdate(BuildConfig.VERSION_CODE)) {
             AudioCache.clear()
-            SingletonImageLoader.get(this).let { loader ->
-                loader.memoryCache?.clear()
-                loader.diskCache?.clear()
+            // Walking and deleting up to 100 MB of image files is real disk
+            // I/O; on the main thread it ran ahead of the first frame on the
+            // first launch of every update. Off the main thread, the UI is
+            // already up while it happens.
+            CoroutineScope(Dispatchers.IO).launch {
+                SingletonImageLoader.get(this@BitChordApplication).let { loader ->
+                    loader.memoryCache?.clear()
+                    loader.diskCache?.clear()
+                }
             }
         }
         // Initialize LastFM with saved settings if available
         initLastfm()
         // The public "apps open right now" count; see Presence.
         com.music.bitchord.data.presence.AndroidPresence.install(this)
-        backgroundInit.join()
     }
 
     /**

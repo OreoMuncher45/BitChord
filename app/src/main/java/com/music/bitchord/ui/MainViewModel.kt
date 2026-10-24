@@ -1427,7 +1427,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startSuggestPipeline()
         startTypeaheadMediaPipeline()
         loadHome()
-        loadExplore()
+        // Explore is fetched when its tab (or Radio, which is built from the
+        // same mood/genre page) is first shown. Loading it here put a second
+        // network page and its artwork lookups on the wire before the home
+        // feed had landed — for a page the listener might never open.
         if (_signedIn.value) {
             loadLibrary()
             loadAccount()
@@ -1473,6 +1476,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // A leftover APK only means "Install Now" for the session that
             // downloaded it — see AppUpdateChecker.clearCache.
             AppUpdateChecker.clearCache(getApplication())
+            // The first feed is the reason the app was opened; let it have the
+            // network to itself rather than racing a release lookup.
+            delay(3_000)
             AppUpdateChecker.check()
         }
     }
@@ -1546,6 +1552,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (feed in _refreshing.value) return
         if (feed == Feed.LIBRARY && !_signedIn.value) return
         val identity = listenerKey()
+        if (feed == Feed.EXPLORE) exploreRequested = true
         _refreshing.value = _refreshing.value + feed
         viewModelScope.launch {
             when (feed) {
@@ -1558,9 +1565,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadExplore() {
+        exploreRequested = true
         _explore.value = UiState.Loading
         viewModelScope.launch { fetchExplore() }
     }
+
+    /**
+     * Fetches Explore once, the first time a tab that shows it becomes
+     * visible. A later failure is left to the page's own Retry rather than
+     * re-fetched on every tab switch.
+     */
+    fun ensureExploreLoaded() {
+        if (exploreRequested) return
+        loadExplore()
+    }
+
+    private var exploreRequested = false
 
     private suspend fun fetchExplore() {
         val state = YtMusicRepository.moodAndGenres().fold(

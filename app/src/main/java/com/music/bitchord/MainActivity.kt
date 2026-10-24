@@ -831,6 +831,7 @@ private fun BitChordApp(
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
     LaunchedEffect(selectedTab) {
+        if (selectedTab == TAB_EXPLORE || selectedTab == TAB_RADIO) viewModel.ensureExploreLoaded()
         if (selectedTab == TAB_SEARCH) {
             searchVisualActive = true
         } else {

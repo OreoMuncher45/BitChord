@@ -2550,8 +2550,8 @@ private fun CurrentLyricLine(
 ) {
     val isSynced = remember(lines) { lines.any { it.timeMs > 0L } }
     // A pinned lyric colour wins; otherwise the strip follows the artwork ink,
-    // which is tinted from the sleeve rather than flipped between black and
-    // white — see [artworkComplementInk].
+    // which is the sleeve's own average colour, brightened rather than flipped
+    // between black and white — see [artworkAverageInk].
     val ink = LocalPlayerLyrics.current ?: LocalPlayerInk.current
     val lineStyle = MaterialTheme.typography.titleMedium.copy(
         shadow = Shadow(LocalPlayerInkGlow.current, blurRadius = 9f),
