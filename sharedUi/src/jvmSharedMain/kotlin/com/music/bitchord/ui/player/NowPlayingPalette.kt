@@ -28,6 +28,13 @@ internal data class NowPlayingPalette(
     val alphas: NowPlayingAlphas = NowPlayingAlphas(),
     /** The highest OKLCH L the backdrop's mesh may use. */
     val backgroundLightnessCap: Float = MAX_BACKGROUND_L,
+    /**
+     * The highest WCAG luminance any backdrop cell may reach. Only the cells
+     * that exceed it are darkened — a bright yellow patch is toned down while
+     * the rest of the sleeve keeps the lightness it had. This is what keeps
+     * the blur from collapsing to near-black on a pale cover.
+     */
+    val backgroundLuminanceLimit: Float = 1f,
 )
 
 /**
@@ -50,8 +57,9 @@ internal data class NowPlayingAlphas(
 
 /** The palette before any artwork has been read: neutral, dark, near-white ink. */
 internal val DefaultNowPlayingPalette = NowPlayingPalette(
-    backgroundStops = listOf(Oklch(0.30f, 0f, 0f).toColor()),
+    backgroundStops = listOf(Oklch(0.36f, 0f, 0f).toColor()),
     fg = Oklch(0.92f, 0f, 0f).toColor(),
+    backgroundLuminanceLimit = backgroundLuminanceLimit(Oklch(0.92f, 0f, 0f).toColor()),
 )
 
 /**
@@ -86,31 +94,41 @@ internal fun computeNowPlayingPalette(art: List<Int>): NowPlayingPalette {
 
     // One stop per leading colour; the mesh keeps their spatial arrangement
     // separately, but every cell is clamped by the same rule.
-    var cap = MAX_BACKGROUND_L
-    var stops = buckets
+    val cap = MAX_BACKGROUND_L
+    val luminanceLimit = backgroundLuminanceLimit(fg)
+    val stops = buckets
         .sortedByDescending { it.count }
         .take(BACKGROUND_STOP_COUNT)
-        .map { backgroundColor(it.color, cap) }
-
-    var textContrast = minTextContrast(fg, stops)
-    var iconContrast = minIconContrast(fg, stops)
-    var attempts = 0
-    while (
-        (textContrast < MIN_TEXT_CONTRAST || iconContrast < MIN_ICON_CONTRAST) &&
-        attempts < CONTRAST_ATTEMPTS
-    ) {
-        cap = (cap - CONTRAST_STEP).coerceAtLeast(MIN_BACKGROUND_L_FLOOR)
-        stops = stops.map { it.darkenedTo(cap) }
-        textContrast = minTextContrast(fg, stops)
-        iconContrast = minIconContrast(fg, stops)
-        attempts++
-    }
+        .map { backgroundColor(it.color, cap, luminanceLimit) }
 
     return NowPlayingPalette(
         backgroundStops = stops,
         fg = fg,
         backgroundLightnessCap = cap,
+        backgroundLuminanceLimit = luminanceLimit,
     )
+}
+
+/**
+ * The brightest a backdrop cell may be while every text and icon role still
+ * clears its contrast target over it.
+ *
+ * A role with opacity `a` over a backdrop of luminance `Yb` composites to
+ * `a*Yf + (1-a)*Yb`, and WCAG contrast against that backdrop is
+ * `(composite + 0.05) / (Yb + 0.05)`. Solving for `Yb` gives the ceiling.
+ * Only the cell is darkened, so a sleeve that is mostly mid-toned stays
+ * mid-toned; one bright patch no longer drags the whole blur down with it.
+ */
+internal fun backgroundLuminanceLimit(fg: Color): Float {
+    val roles = NowPlayingAlphas()
+    val ink = relativeLuminance(fg.toArgb())
+    fun limit(alpha: Float, target: Float): Float =
+        (alpha * ink + 0.05f * (1f - target)) / (target - 1f + alpha)
+    return minOf(
+        limit(roles.secondary, MIN_TEXT_CONTRAST + CONTRAST_MARGIN),
+        limit(roles.tertiary, MIN_ICON_CONTRAST + CONTRAST_MARGIN),
+        1f,
+    ).coerceAtLeast(0f)
 }
 
 /** Text is scored at the dimmest text role — the artist line. */
@@ -160,28 +178,38 @@ private fun relativeLuminance(argb: Int): Float {
     return 0.2126f * linear(16) + 0.7152f * linear(8) + 0.0722f * linear(0)
 }
 
-private fun backgroundColor(source: Color, cap: Float): Color =
-    Oklch.fromArgb(source.toArgb()).clampedBackground(cap).toColor()
+private fun backgroundColor(source: Color, cap: Float, luminanceLimit: Float): Color =
+    Oklch.fromArgb(source.toArgb()).clampedBackground(cap, luminanceLimit).toColor()
 
-private fun Color.darkenedTo(cap: Float): Color =
-    Oklch.fromArgb(toArgb()).clampedBackground(cap).toColor()
-
-private fun Oklch.clampedBackground(cap: Float): Oklch {
+private fun Oklch.clampedBackground(cap: Float, luminanceLimit: Float): Oklch {
     val floor = minOf(MIN_BACKGROUND_L, cap)
     val chroma = if (this.chroma < MIN_BACKGROUND_CHROMA) {
         0f
     } else {
         this.chroma.coerceIn(MIN_BACKGROUND_CHROMA, MAX_BACKGROUND_CHROMA)
     }
-    return Oklch(l = l.coerceIn(floor, cap), chroma = chroma, hue = hue)
+    val base = Oklch(l = l.coerceIn(floor, cap), chroma = chroma, hue = hue)
+    if (luminanceLimit >= 1f) return base
+    if (relativeLuminance(base.toColor().toArgb()) <= luminanceLimit) return base
+
+    // Luminance rises with L at a fixed hue and chroma, so the brightest
+    // admissible cell is a search along L — hue and chroma stay untouched.
+    var low = 0f
+    var high = base.l
+    repeat(LUMINANCE_STEPS) {
+        val mid = (low + high) / 2f
+        val lit = relativeLuminance(base.copy(l = mid).toColor().toArgb())
+        if (lit <= luminanceLimit) low = mid else high = mid
+    }
+    return base.copy(l = low)
 }
 
 /**
  * The same clamp the palette says it used, for the mesh's own cells — see
  * [computeNowPlayingPalette] and `meshOf`.
  */
-internal fun backgroundStopArgb(argb: Int, cap: Float): Int =
-    Oklch.fromArgb(argb).clampedBackground(cap).toColor().toArgb()
+internal fun backgroundStopArgb(argb: Int, cap: Float, luminanceLimit: Float = 1f): Int =
+    Oklch.fromArgb(argb).clampedBackground(cap, luminanceLimit).toColor().toArgb()
 
 /** One colour's share of the sleeve, averaged rather than quantised to its bin. */
 private class Bucket {
@@ -305,9 +333,8 @@ private const val MAX_ACCENT_L = 0.95f
 private const val FOREGROUND_L = 0.92f
 private const val MAX_FOREGROUND_CHROMA = 0.09f
 
-private const val MIN_BACKGROUND_L = 0.24f
-internal const val MAX_BACKGROUND_L = 0.40f
-private const val MIN_BACKGROUND_L_FLOOR = 0.18f
+private const val MIN_BACKGROUND_L = 0.28f
+internal const val MAX_BACKGROUND_L = 0.46f
 private const val MIN_BACKGROUND_CHROMA = 0.03f
 private const val MAX_BACKGROUND_CHROMA = 0.16f
 private const val BACKGROUND_STOP_COUNT = 6
@@ -315,8 +342,10 @@ private const val BACKGROUND_STOP_COUNT = 6
 /** WCAG AA for the artist line; 3:1 for controls and icons. */
 private const val MIN_TEXT_CONTRAST = 4.5f
 private const val MIN_ICON_CONTRAST = 3f
-private const val CONTRAST_STEP = 0.03f
-private const val CONTRAST_ATTEMPTS = 6
+/** A hair of headroom so 8-bit rounding cannot land a stop just under target. */
+private const val CONTRAST_MARGIN = 0.05f
+/** Search steps for the brightest admissible L; well below a JND. */
+private const val LUMINANCE_STEPS = 14
 
 /** Binary-search steps for the largest in-gamut chroma; far below a JND. */
 private const val GAMUT_STEPS = 18

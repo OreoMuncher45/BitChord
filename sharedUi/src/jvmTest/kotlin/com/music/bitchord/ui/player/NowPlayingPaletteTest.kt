@@ -1,9 +1,12 @@
 package com.music.bitchord.ui.player
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import kotlin.math.pow
 
 /**
  * The six covers the old colour engine got wrong or nearly wrong. Each one is
@@ -46,8 +49,9 @@ class NowPlayingPaletteTest {
             println(
                 String.format(
                     Locale.US,
-                    "%-26s text %.2f:1  icons %.2f:1  bg cap %.2f",
-                    cover.name, text, icon, palette.backgroundLightnessCap,
+                    "%-26s text %.2f:1  icons %.2f:1  bg cap %.2f  luminance limit %.3f",
+                    cover.name, text, icon,
+                    palette.backgroundLightnessCap, palette.backgroundLuminanceLimit,
                 ),
             )
             assertTrue(
@@ -77,6 +81,20 @@ class NowPlayingPaletteTest {
     }
 
     @Test
+    fun brightCoversKeepAMidTonedBackdrop() {
+        // The old check darkened every stop until the lightest passed, which
+        // turned a pale cover's blur almost black. Only individual cells above
+        // the luminance ceiling may be toned down now.
+        listOf("white/grey with red accent", "all white", "bright yellow", "pure red").forEach { name ->
+            val palette = computeNowPlayingPalette(covers.first { it.name == name }.pixels)
+            assertEquals(MAX_BACKGROUND_L, palette.backgroundLightnessCap, 0f)
+            val brightest = palette.backgroundStops.maxOf { luminance(it) }
+            println(String.format(Locale.US, "%-26s brightest stop Y %.3f", name, brightest))
+            assertTrue("$name: backdrop crushed to $brightest luminance", brightest > 0.04f)
+        }
+    }
+
+    @Test
     fun chromaticSleevesKeepTheirHueInTheInk() {
         fun fg(name: String) = computeNowPlayingPalette(covers.first { it.name == name }.pixels).fg
 
@@ -88,5 +106,15 @@ class NowPlayingPaletteTest {
             "yellow accent should tint the ink yellow",
             yellow.red > yellow.blue && yellow.green > yellow.blue,
         )
+    }
+
+    private fun luminance(color: Color): Float {
+        val argb = color.toArgb()
+        fun linear(shift: Int): Float {
+            val channel = ((argb shr shift) and 0xFF) / 255f
+            return if (channel <= 0.04045f) channel / 12.92f
+            else ((channel + 0.055f) / 1.055f).pow(2.4f)
+        }
+        return 0.2126f * linear(16) + 0.7152f * linear(8) + 0.0722f * linear(0)
     }
 }

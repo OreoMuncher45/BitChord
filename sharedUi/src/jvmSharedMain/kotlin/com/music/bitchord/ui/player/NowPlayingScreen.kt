@@ -351,9 +351,6 @@ private const val ART_FADE_END_FRACTION = 1.0f
 /** Black at the very top of the player, fading out over [TOP_SCRIM_FRACTION]. */
 private const val TOP_SCRIM_ALPHA = 0.40f
 private const val TOP_SCRIM_FRACTION = 0.14f
-/** Black behind the credits block, reached at its bottom edge. */
-private const val CREDITS_SCRIM_ALPHA = 0.40f
-private const val CREDITS_SCRIM_LEAD_FRACTION = 0.06f
 
 /**
  * How often the backdrop re-reads the colours of a playing Canvas clip.
@@ -1454,6 +1451,7 @@ fun NowPlayingScreen(
                 canvasFrame,
                 ART_PX,
                 backgroundCap = nowPlayingPalette.backgroundLightnessCap,
+                backgroundLuminanceLimit = nowPlayingPalette.backgroundLuminanceLimit,
             )
         }
     // Whether the banner is the presentation at all: full-bleed is on, and there
@@ -2230,14 +2228,12 @@ fun NowPlayingScreen(
         // The wash the controls stand on, from the art's bottom edge down.
         //
         // ArchiveTune's Immersive theme grades the region under the stage
-        // rather than leaving the backdrop bare: transparent where the art
-        // ends, deepening to 40% black at the bottom of the screen. It is what
-        // makes the transport read as sitting ON the picture instead of
-        // floating over an ungraded one — the same reason the art itself
-        // dissolves into the backdrop instead of stopping at a hard edge.
+        // rather than leaving the backdrop bare. This is now only a hint of
+        // depth: the palette already tone-maps every backdrop cell to hold
+        // text contrast, so a heavier grade would only make the blur darker
+        // than the sleeve it came from.
         //
-        // Stops are its own: 0/3%/14%/40%, measured off the reference. The
-        // gradient is drawn from the stage's bottom edge, not the screen's
+        // The gradient is drawn from the stage's bottom edge, not the screen's
         // top, so it moves with the art.
         if (heroMode && heroHeight > 0.dp) {
             Box(
@@ -2248,9 +2244,9 @@ fun NowPlayingScreen(
                             brush = Brush.verticalGradient(
                                 colorStops = arrayOf(
                                     0f to Color.Transparent,
-                                    0.38f to Color.Black.copy(alpha = 0.03f),
-                                    0.68f to Color.Black.copy(alpha = 0.14f),
-                                    1f to Color.Black.copy(alpha = 0.40f),
+                                    0.38f to Color.Transparent,
+                                    0.68f to Color.Black.copy(alpha = 0.04f),
+                                    1f to Color.Black.copy(alpha = 0.12f),
                                 ),
                                 startY = heroHeight.toPx(),
                                 endY = size.height,
@@ -3372,26 +3368,6 @@ fun NowPlayingScreen(
                             ) { placeable.placeRelative(start, 0) }
                         }
                         .height(HEADER_HEIGHT)
-                        // A scrim under the whole credits block rather than a
-                        // chip behind each word: it starts 6% of the screen
-                        // above the block, at nothing, and reaches 40% black
-                        // at the block's bottom — so the title, artist, star
-                        // and menu read over the brightest sleeve without a
-                        // visible plate around them.
-                        .drawBehind {
-                            val shown = 1f - p()
-                            if (shown <= 0.01f) return@drawBehind
-                            val screen = playerBounds.height.toFloat()
-                            val lead = if (screen > 0f) screen * CREDITS_SCRIM_LEAD_FRACTION else size.height
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    1f to Color.Black.copy(alpha = CREDITS_SCRIM_ALPHA * shown),
-                                    startY = -lead,
-                                    endY = size.height,
-                                ),
-                            )
-                        }
                         // Where the dismiss band ends — see its top on the
                         // artwork above. Taken from the row rather than added up
                         // from the sleeve so the gap between the two is inside
